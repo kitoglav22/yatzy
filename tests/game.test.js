@@ -32,6 +32,12 @@ test('on a phone the total stays in a bar at the bottom of the screen until the 
   await ph.click('#tstats');
   await ph.evaluate(() => window.scrollTo(0, 0)); await ph.waitForTimeout(100);
   assert.equal(await bar(), null, 'no bar on the statistics tab');
+  await ph.evaluate(() => render()); await ph.waitForTimeout(100);
+  assert.equal(await bar(), null, 'not even after the page redraws');
+  await ph.click('#tgame'); await ph.evaluate(() => window.scrollTo(0, 0));
+  await ph.waitForFunction(() => !$('totbar').hidden);
+  await ph.click('#tstats');
+  assert.equal(await bar(), null, 'gone again right away');
   await ph.close();
 });
 

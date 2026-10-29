@@ -260,7 +260,7 @@ function drawTotbar(){
   bar.innerHTML=`<div class="card"><table>${$('table').querySelector('colgroup').outerHTML}<tbody>${row.outerHTML}</tbody></table></div>`;
   placeTotbar();
   if(!window.IntersectionObserver)return;
-  totObs=new IntersectionObserver(([e])=>{const r=e.boundingClientRect;bar.hidden=e.isIntersecting||r.height===0||r.top<0;if(!bar.hidden)placeTotbar()});
+  totObs=new IntersectionObserver(([e])=>{const r=e.boundingClientRect;bar.hidden=$('vgame').hidden||e.isIntersecting||r.height===0||r.top<0;if(!bar.hidden)placeTotbar()});
   totObs.observe(row);
 }
 function placeTotbar(){const bar=$('totbar'),c=$('table').parentElement.getBoundingClientRect();if(bar&&c.width){bar.style.left=c.left+'px';bar.style.width=c.width+'px'}}
@@ -327,8 +327,9 @@ function saveRoster(){lsSet('yatzy.roster',roster);store&&store.saveRoster(roste
 function setView(v){
   const st=v==='stats';
   $('vgame').hidden=st;$('vstats').hidden=!st;
-  // the total bar belongs to the game tab; coming back, the observer shows it again if the table's total is below the screen
-  if(st&&$('totbar'))$('totbar').hidden=true;
+  // the total bar belongs to the game tab: hidden at once on the statistics, set up afresh on the way back
+  // (an observer reports only changes, and the table's total stays out of view through both switches)
+  if(st){if($('totbar'))$('totbar').hidden=true}else drawTotbar();
   $('tgame').setAttribute('aria-selected',!st);$('tstats').setAttribute('aria-selected',st);
   if(st)renderStats();
 }

@@ -79,7 +79,7 @@ function animateRoll(free){
       const left=(stopAt[k]-t)/stopAt[k],gap=left>.6?45:left>.3?85:150;
       if(!next[k]||now>=next[k]){
         // rattle: random offset and tilt, strong at first and calmer towards the stop
-        const a=3+9*left;d.style.transform=`translate(${j(a)}px,${j(a)-a*.6}px) rotate(${j(8+22*left)}deg) scale(${1+.06*left})`;
+        const a=3+9*left;d.style.transform=`translate3d(${j(a)}px,${j(a)-a*.6}px,0) rotate(${j(8+22*left)}deg) scale(${1+.06*left})`;
         let f=rnd6();if(f===face[k])f=f%6+1;face[k]=f;setFace(d,f);next[k]=now+gap;
       }
     });

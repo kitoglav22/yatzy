@@ -1419,10 +1419,10 @@ function tgBot(tg,has){
     .then(b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,12)).catch(()=>''):Promise.resolve('');
   ready().then(ok=>{
     if(!ok)return;
-    // a nudge goes only to a player the bot can write to, and once in half an hour from this device
+    // a nudge goes only to a player the bot can write to, and once an hour from this device
     nudgeVia=async(code,name)=>{
       const say=(title,desc)=>toast({badge:'👉',label:'Бот',name:title,desc},name,false);
-      const key='yatzy.nudged.'+code,left=Math.ceil(((lsGet(key)||0)+30*60e3-Date.now())/60e3);
+      const key='yatzy.nudged.'+code,left=Math.ceil(((lsGet(key)||0)+60*60e3-Date.now())/60e3);
       if(left>0)return say('Уже напомнили',`ещё раз можно через ${left} мин`);
       const p=game&&game.players[whoseTurn()];if(!p)return;
       const can=await read('pub/tg/'+code).then(v=>v?v[p.id]:undefined,()=>null);

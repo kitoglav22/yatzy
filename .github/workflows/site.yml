@@ -1,5 +1,6 @@
 # Every push and pull request runs the tests. A push to main that passes them builds the page
-# and publishes it to the gh-pages branch, which GitHub Pages serves; a failing push publishes nothing.
+# and publishes it to Firebase Hosting (the site's own address; only once the FIREBASE_SERVICE_ACCOUNT secret is set)
+# and to the gh-pages branch, which GitHub Pages serves at the old address; a failing push publishes nothing.
 name: Tests and publishing
 
 on:
@@ -35,6 +36,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 build.py
+      - name: Publish to Firebase Hosting
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then echo "FIREBASE_SERVICE_ACCOUNT is not set: skipping Firebase Hosting"; exit 0; fi
+          mkdir hosting && cp index.html sw.js icon.png hosting/
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json" npx --yes firebase-tools@14 deploy --only hosting --project yatzy-654ba --non-interactive
+          rm -rf hosting "$RUNNER_TEMP/sa.json"
       - name: Publish to gh-pages
         run: |
           git fetch --depth=1 origin gh-pages

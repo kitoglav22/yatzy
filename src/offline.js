@@ -1,12 +1,22 @@
 // GitHub Pages version only: file backup and offline cache
 $('sync').textContent='Всё хранится на этом устройстве';
+// share sheet first ("Save to Files" can replace the previous copy), plain download as a fallback
 function exportBackup(){
-  const blob=new Blob([JSON.stringify({app:'yatzy',v:2,saved:Date.now(),roster,history,game},null,1)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download='yatzy-'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(a);a.click();
-  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);
-  $('bmsg').textContent='В копии партий: '+history.length+', игроков: '+roster.length;
-  lsSet('yatzy.backupAt',history.length);lsSet('yatzy.backupTime',Date.now());render();
+  const json=JSON.stringify({app:'yatzy',v:2,saved:Date.now(),roster,history,game},null,1);
+  const name='yatzy-backup.json';
+  const done=()=>{
+    $('bmsg').textContent='В копии партий: '+history.length+', игроков: '+roster.length;
+    lsSet('yatzy.backupAt',history.length);lsSet('yatzy.backupTime',Date.now());render();
+  };
+  const download=()=>{
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));
+    a.download=name;document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);done();
+  };
+  let file=null;try{file=new File([json],name,{type:'application/json'})}catch(e){}
+  if(file&&navigator.canShare&&navigator.canShare({files:[file]})){
+    navigator.share({files:[file],title:'Яцзы: резервная копия'}).then(done).catch(e=>{if(e&&e.name!=='AbortError')download()});
+  } else download();
 }
 $('exp').onclick=exportBackup;
 $('imp').onchange=async e=>{

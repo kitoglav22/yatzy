@@ -102,7 +102,7 @@ table.avg td.hi{color:var(--ok)}
 .ach{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:14px;background:var(--paper);border:1px solid var(--rule);min-width:0}
 .ach .badge{flex:none;display:grid;place-items:center;width:52px;height:44px;padding:0 4px;border-radius:12px;letter-spacing:-.02em;background:var(--accent);color:var(--on-accent);font-family:var(--display);font-weight:800;font-size:.72rem;text-align:center;line-height:1}
 #stats{display:flex;flex-direction:column;gap:24px}
-#banner:empty,#actions:empty,#remind:empty,#dice:empty{display:none}
+#banner:empty,#actions:empty,#remind:empty,#dice:empty,#net:empty{display:none}
 .ach.off{background:transparent;border-style:dashed}
 .ach.off b{color:var(--muted);font-weight:600}
 .ach.off .badge{background:transparent;color:var(--muted);border:1.5px solid var(--rule)}
@@ -121,6 +121,11 @@ table.avg td.hi{color:var(--ok)}
 .hist li{cursor:pointer}
 .hist li:hover{background:var(--bg)}
 .hist .early{font-size:.72rem;font-weight:700;color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:1px 8px;margin-left:6px}
+.netbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border-radius:14px;background:var(--paper);border:1px solid var(--rule)}
+.netbar>span:nth-child(2){flex:1;min-width:0}
+.netbar .dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--rule)}
+.netbar .dot.on{background:var(--ok)}
+.roomcode{font-size:2.4rem;font-weight:800;letter-spacing:.3em;text-align:center;padding:8px 0;font-variant-numeric:tabular-nums}
 .note{margin:0;padding:10px 12px;border-radius:12px;background:var(--win-soft);font-size:.9rem}
 .sheet table.avg td,.sheet table.avg th{padding:6px 10px}
 .sheet table.avg tr.t td{font-weight:800;background:var(--accent-soft)}
@@ -214,6 +219,7 @@ td.cell button.sug.best{background:var(--accent);color:var(--on-accent);font-wei
 
   <div id="vgame" class="view">
     <div id="remind"></div>
+    <div id="net"></div>
     <div id="banner"></div>
     <div id="dice"></div>
     <div class="card"><table id="table"></table></div>
@@ -251,7 +257,9 @@ const JK={id:'joker',name:'Джокер',hint:'повторный Яцзы, од
 const MAXP=4;
 const uid=()=>Math.random().toString(36).slice(2,9);
 
-let roster=[], game=null, history=[], ui={confirm:false}, store=null;
+let roster=[], game=null, history=[], ui={confirm:false}, store=null, net=null;
+// in an online room a device acts only for its own players
+const mine=i=>!net||net.mine(i);
 
 function normGame(g){
   if(!g||!Array.isArray(g.scores))return null;
@@ -272,7 +280,8 @@ function load(){
   const old=lsGet('yatzy.state');
   game=normGame(lsGet('yatzy.game'))||normGame(old);
   history=lsGet('yatzy.hist')||[];
-  if(game)ensureRoster(game);
+  // an online game keeps other devices' players out of the local roster
+  if(game&&!game.players.some(p=>p.dev))ensureRoster(game);
 }
 
 function totals(i){
@@ -296,19 +305,19 @@ const $=id=>document.getElementById(id);
 function render(){
   const tb=$('table');
   if(!game){
-    tb.innerHTML=`<tbody><tr><td style="padding:28px 20px;text-align:center"><p style="margin:0 0 14px;font-weight:700">Выберите, кто играет, и начните партию</p><button class="btn primary" id="start0">Выбрать игроков</button></td></tr></tbody>`;
-    $('start0').onclick=openSetup;$('banner').innerHTML='';$('actions').innerHTML='';renderHist();keepAwake();window.onAfterRender&&window.onAfterRender();return;
+    tb.innerHTML=`<tbody><tr><td style="padding:28px 20px;text-align:center"><p style="margin:0 0 14px;font-weight:700">Выберите, кто играет, и начните партию</p><div class="row" style="justify-content:center"><button class="btn primary" id="start0">Выбрать игроков</button>${window.openOnline?'<button class="btn" id="onl0">Играть онлайн</button>':''}</div></td></tr></tbody>`;
+    $('start0').onclick=openSetup;if($('onl0'))$('onl0').onclick=window.openOnline;$('banner').innerHTML='';$('actions').innerHTML='';renderHist();keepAwake();window.onAfterRender&&window.onAfterRender();return;
   }
   const n=game.players.length,T=game.players.map((_,i)=>totals(i)),turn=whoseTurn();
   const catW=n>=4?'30%':n===3?'34%':'40%';
   let h=`<colgroup><col style="width:${catW}">${game.players.map(()=>'<col>').join('')}</colgroup><thead><tr><th></th>`;
-  h+=game.players.map((p,i)=>`<th class="${turn===i?'active':''}"><div class="ph"><button class="nm" data-ren="${i}" aria-label="Переименовать ${esc(p.name)}">${esc(p.name)}</button><span class="tag">ходит</span></div></th>`).join('')+'</tr></thead><tbody>';
+  h+=game.players.map((p,i)=>`<th class="${turn===i?'active':''}"><div class="ph"><button class="nm" data-ren="${i}" ${net?'disabled':''} aria-label="Переименовать ${esc(p.name)}">${esc(p.name)}</button><span class="tag">ходит</span></div></th>`).join('')+'</tr></thead><tbody>';
   const sug=turn>=0?suggestions(turn):null,topSug=sug?Math.max(...Object.values(sug)):0;
   const cell=(i,c)=>{const v=game.scores[i][c.id];
-    if(v==null&&i===turn&&sug&&sug[c.id]!=null){const x=sug[c.id];
+    if(v==null&&i===turn&&sug&&sug[c.id]!=null&&mine(i)){const x=sug[c.id];
       return `<td class="cell colact"><button class="sug${x===0?' z':''}${x>0&&x===topSug?' best':''}" data-p="${i}" data-c="${c.id}" data-s="${x}" aria-label="${esc(game.players[i].name)}: ${c.name}, записать ${x}">${x}</button></td>`}
     const cls=v==null?'empty':v===0?'zero':'';
-    return `<td class="cell${turn===i?' colact':''}"><button class="${cls}" data-p="${i}" data-c="${c.id}" aria-label="${esc(game.players[i].name)}: ${c.name}">${v==null?'—':v}</button></td>`};
+    return `<td class="cell${turn===i?' colact':''}"><button class="${cls}" data-p="${i}" data-c="${c.id}" ${net?'disabled':''} aria-label="${esc(game.players[i].name)}: ${c.name}">${v==null?'—':v}</button></td>`};
   const row=c=>`<tr><td><div class="cat"><b>${c.name}</b><small>${c.hint}</small></div></td>${game.players.map((_,i)=>cell(i,c)).join('')}</tr>`;
   const need=t=>{if(t.bonus||!t.upFilled)return '';return t.par>=0?`<span class="need">с запасом +${t.par}</span>`:`<span class="need">отстаёт на ${-t.par}</span>`};
   const sec=t=>`<tr class="section"><td colspan="${n+1}">${t}</td></tr>`;
@@ -326,8 +335,8 @@ function render(){
     const msg=leaders>1?`Ничья, ${order.map(o=>o.t).join(' : ')}`:`Победа: ${esc(order[0].name)}, ${order.map(o=>o.t).join(' : ')}`;
     const na=(game.newAch||[]).filter(x=>x.list.length);
     const achHtml=na.length?`<p class="newach">Ачивки за партию: ${na.map(x=>`${esc(x.name)}: ${x.list.map(a=>a.first?`<b>${a.name}</b>`:a.name).join(', ')}`).join('; ')}${na.some(x=>x.list.some(a=>a.first))?'. Новые выделены.':''}</p>`:'';
-    bn.innerHTML=`<div class="banner"><div><strong>${msg}</strong>${game.ended&&!done()?'<p class="muted" style="margin-top:4px">Партия закончена досрочно.</p>':''}${achHtml}</div><button class="btn primary" id="again">Новая игра</button></div>`;
-    $('again').onclick=openSetup;
+    bn.innerHTML=`<div class="banner"><div><strong>${msg}</strong>${game.ended&&!done()?'<p class="muted" style="margin-top:4px">Партия закончена досрочно.</p>':''}${achHtml}</div><button class="btn primary" id="again">${net?'Ещё партию':'Новая игра'}</button></div>`;
+    $('again').onclick=net?net.again:openSetup;
   } else bn.innerHTML='';
 
   const ac=$('actions');
@@ -339,11 +348,13 @@ function render(){
     ac.innerHTML=`<div class="confirm"><span>Закончить партию сейчас? Она попадёт в историю с текущим счётом, пустые клетки не считаются. Ачивки за неё не начисляются.</span><button class="btn danger" id="fyes">Закончить</button><button class="btn" id="fno">Отмена</button></div>`;
     $('fyes').onclick=()=>{ui.finish=false;game.ended=true;archive();saveGame();render()};
     $('fno').onclick=()=>{ui.finish=false;render()};
+  } else if(net){net.actions(ac)
   } else {
     // reordering in the middle of a dice turn would hand the roll to another player
     const midTurn=game.dice&&game.roll&&(game.roll.n>0||game.roll.jokerTaken);
     const last=(game.log||[]).slice(-1)[0],lp=last&&game.players.find(p=>p.id===last.pid),lc=last&&[...ALL,JK].find(c=>c.id===last.cid);
-    ac.innerHTML=`<div class="row">${lp&&lc?`<button class="btn" id="undo">↶ Отменить: ${esc(lp.name)}, ${lc.name}</button>`:''}<button class="btn" id="ng">Новая игра</button>${over()||midTurn?'':`<button class="btn" id="sw">${n===2?'Поменять местами':'Сдвинуть порядок'}</button>`}${!over()&&anyScore()?'<button class="btn" id="fin">Закончить досрочно</button>':''}${over()?'':`<button class="btn" id="dmode">${game.dice?'Ввод вручную':'Кубики на экране'}</button>`}</div>`;
+    ac.innerHTML=`<div class="row">${lp&&lc?`<button class="btn" id="undo">↶ Отменить: ${esc(lp.name)}, ${lc.name}</button>`:''}<button class="btn" id="ng">Новая игра</button>${over()||midTurn?'':`<button class="btn" id="sw">${n===2?'Поменять местами':'Сдвинуть порядок'}</button>`}${!over()&&anyScore()?'<button class="btn" id="fin">Закончить досрочно</button>':''}${over()?'':`<button class="btn" id="dmode">${game.dice?'Ввод вручную':'Кубики на экране'}</button>`}${window.openOnline?'<button class="btn" id="onl">Играть онлайн</button>':''}</div>`;
+    if($('onl'))$('onl').onclick=window.openOnline;
     if($('dmode'))$('dmode').onclick=()=>{game.dice=!game.dice;if(game.dice&&!game.roll)game.roll=newRoll();lsSet('yatzy.dice',game.dice);saveGame();render()};
     if($('undo'))$('undo').onclick=undo;
     if($('fin'))$('fin').onclick=()=>{ui.finish=true;render()};
@@ -419,12 +430,12 @@ function renderDice(){
   const el=$('dice');
   if(!game||!game.dice||over()){el.innerHTML='';return}
   if(rolling)return;
-  const r=game.roll=game.roll||newRoll(),turn=whoseTurn(),who=game.players[turn].name,canHold=r.n>0&&r.n<3&&!r.jokerTaken;
-  const hint=r.jokerTaken?`Джокер записан. Теперь поставьте 0 в любую свободную клетку колонки «${esc(who)}».`
+  const r=game.roll=game.roll||newRoll(),turn=whoseTurn(),who=game.players[turn].name,my=mine(turn),showHeld=r.n>0&&r.n<3&&!r.jokerTaken,canHold=my&&showHeld;
+  const hint=!my?`Бросает ${esc(who)} на своём устройстве, здесь видно каждый бросок.`:r.jokerTaken?`Джокер записан. Теперь поставьте 0 в любую свободную клетку колонки «${esc(who)}».`
     :!r.n?'Нажмите «Бросить».':r.n<3?'Нажмите на кубики, которые хотите оставить, и бросайте ещё, или выберите клетку в таблице.':'Броски закончились: выберите клетку в таблице.';
   el.innerHTML=`<div class="dicebar"><div class="dicehead"><span>Ходит <b>${esc(who)}</b></span><span class="muted">бросок ${r.n} из 3</span></div>
-    <div class="dicerow"><div class="dies">${r.dice.map((v,k)=>`<button class="die${canHold&&r.held[k]?' held':''}${v?'':' blank'}" data-k="${k}" ${canHold?'':'disabled'} aria-label="${v?'Кубик '+v:'Кубик'}${canHold&&r.held[k]?', держу':''}">${range(0,8).map(q=>`<i class="${v&&PIPS[v].includes(q)?'on':''}"></i>`).join('')}</button>`).join('')}</div>
-    <button class="btn primary rollbtn" id="roll" ${r.n>=3||r.jokerTaken?'disabled':''}>${r.n?'Бросить ещё':'Бросить'}</button></div>
+    <div class="dicerow"><div class="dies">${r.dice.map((v,k)=>`<button class="die${showHeld&&r.held[k]?' held':''}${v?'':' blank'}" data-k="${k}" ${canHold?'':'disabled'} aria-label="${v?'Кубик '+v:'Кубик'}${showHeld&&r.held[k]?', держу':''}">${range(0,8).map(q=>`<i class="${v&&PIPS[v].includes(q)?'on':''}"></i>`).join('')}</button>`).join('')}</div>
+    <button class="btn primary rollbtn" id="roll" ${!my||r.n>=3||r.jokerTaken?'disabled':''}>${r.n?'Бросить ещё':'Бросить'}</button></div>
     <p class="muted">${hint}</p></div>`;
   el.querySelectorAll('.die').forEach(b=>b.onclick=()=>{const k=+b.dataset.k;r.held[k]=!r.held[k];saveGame();renderDice()});
   $('roll').onclick=rollDice;
@@ -434,13 +445,19 @@ function renderDice(){
 let rolling=false;
 function setFace(el,v){el.querySelectorAll('i').forEach((p,q)=>p.classList.toggle('on',PIPS[v].includes(q)));el.classList.remove('blank')}
 function rollDice(){
-  const r=game.roll;if(rolling||!r||r.n>=3||r.jokerTaken)return;
+  const r=game.roll;if(rolling||!r||r.n>=3||r.jokerTaken||!mine(whoseTurn()))return;
   const free=r.dice.map((_,k)=>!r.held[k]||!r.n);
   if(!r.n)r.held=r.held.map(()=>false);
   free.forEach((f,k)=>{if(f)r.dice[k]=rnd6()});
   r.n++;saveGame();
+  animateRoll(free);
+}
+// also shows a roll made on another device
+function animateRoll(free){
+  const r=game.roll,els=[...document.querySelectorAll('.die')];
+  if(rolling||els.length!==5||$('vgame').hidden){render();return}
   const quick=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const bar=document.querySelector('.dicebar'),els=[...document.querySelectorAll('.die')];
+  const bar=document.querySelector('.dicebar');
   const order=free.map((f,k)=>f?k:-1).filter(k=>k>=0);
   rolling=true;$('roll').disabled=true;els.forEach(d=>d.disabled=true);
   if(r.n>=3)els.forEach(d=>d.classList.remove('held'));
@@ -523,6 +540,7 @@ function openCell(i,cid){
 }
 function changed(){sheet.close();if(done()&&!game.saved)archive();else if(game.saved&&!over())unarchive();saveGame();render()}
 $('table').addEventListener('click',e=>{if(rolling)return;const b=e.target.closest('button[data-c]');
+  if(b&&!mine(+b.dataset.p))return;
   if(b&&b.dataset.s!=null)return setScore(+b.dataset.p,b.dataset.c,+b.dataset.s);
   if(b)return openCell(+b.dataset.p,b.dataset.c);
   const n=e.target.closest('button[data-ren]');if(n)openRename(game.players[+n.dataset.ren].id)});
@@ -583,7 +601,7 @@ function drawSetup(){
   $('go').onclick=()=>{if(over()&&!game.saved)archive();game=newGameFor(pick.map(id=>roster.find(r=>r.id===id)));ui.confirm=false;saveGame();sheet.close();render();window.scrollTo({top:0,behavior:'smooth'})};
   $('cancel').onclick=sheet.close;
 }
-$('players').onclick=()=>{if(game&&anyScore()&&!over()){ui.confirm=true;render();$('actions').scrollIntoView({behavior:'smooth',block:'center'})}else openSetup()};
+$('players').onclick=()=>{if(net)return net.openRoom();if(game&&anyScore()&&!over()){ui.confirm=true;render();$('actions').scrollIntoView({behavior:'smooth',block:'center'})}else openSetup()};
 
 function archive(){
   const T=game.players.map((_,i)=>totals(i)),best=Math.max(...T.map(t=>t.total)),w=T.filter(t=>t.total===best);
@@ -633,7 +651,7 @@ function openGame(at){
 }
 $('hist').addEventListener('click',e=>{const li=e.target.closest('li[data-at]');if(li)openGame(+li.dataset.at)});
 $('hist').addEventListener('keydown',e=>{const li=e.target.closest('li[data-at]');if(li&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openGame(+li.dataset.at)}});
-function saveGame(){lsSet('yatzy.game',game);store&&store.saveGame(game)}
+function saveGame(){lsSet('yatzy.game',game);store&&store.saveGame(game);net&&net.push()}
 function saveRoster(){lsSet('yatzy.roster',roster);store&&store.saveRoster(roster)}
 
 // statistics and achievements, computed from finished games

@@ -158,9 +158,12 @@ table.avg td.hi{color:var(--ok)}
 .die.held{border-color:var(--accent);background:var(--accent-soft);transform:translateY(-4px)}
 .die.held::after{content:"держу";position:absolute;bottom:-18px;left:0;right:0;text-align:center;font-size:.65rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
 .die:disabled{cursor:default}
-.die.spin{animation:spin .45s ease-out}
-@keyframes spin{30%{transform:rotate(-14deg) scale(.92)}70%{transform:rotate(10deg) scale(1.04)}}
-@media (prefers-reduced-motion:reduce){.die.spin{animation:none}}
+.die.tumble{animation:tumble .32s linear infinite}
+.die.land{animation:land .38s cubic-bezier(.2,1.6,.4,1)}
+@keyframes tumble{0%{transform:translateY(-6px) rotate(-18deg) scale(.94)}50%{transform:translateY(2px) rotate(16deg) scale(1.03)}100%{transform:translateY(-6px) rotate(-18deg) scale(.94)}}
+@keyframes land{0%{transform:translateY(-10px) scale(1.12)}60%{transform:translateY(2px) scale(.96)}100%{transform:none}}
+.dicebar.rolling .muted{visibility:hidden}
+@media (prefers-reduced-motion:reduce){.die.tumble,.die.land{animation:none}}
 .rollbtn{min-width:150px}
 .dicebar>p{margin-top:8px}
 td.cell button.sug{color:var(--accent);font-weight:700;font-size:1.05rem;background:color-mix(in srgb,var(--accent-soft) 60%,transparent);border:0}
@@ -430,14 +433,36 @@ function renderDice(){
   el.querySelectorAll('.die').forEach(b=>b.onclick=()=>{const k=+b.dataset.k;r.held[k]=!r.held[k];saveGame();renderDice()});
   $('roll').onclick=rollDice;
 }
+// the result is drawn and saved at once; the animation only reveals it:
+// free dice tumble, slow down and stop one by one, then the table shows the options
+let rolling=false;
+function setFace(el,v){el.querySelectorAll('i').forEach((p,q)=>p.classList.toggle('on',PIPS[v].includes(q)));el.classList.remove('blank')}
 function rollDice(){
-  const r=game.roll;if(!r||r.n>=3||r.jokerTaken)return;
+  const r=game.roll;if(rolling||!r||r.n>=3||r.jokerTaken)return;
   const free=r.dice.map((_,k)=>!r.held[k]||!r.n);
   if(!r.n)r.held=r.held.map(()=>false);
   free.forEach((f,k)=>{if(f)r.dice[k]=rnd6()});
-  r.n++;saveGame();render();
-  document.querySelectorAll('.die').forEach((d,k)=>{if(free[k]){d.classList.remove('spin');void d.offsetWidth;d.classList.add('spin')}});
-  try{navigator.vibrate&&navigator.vibrate(30)}catch(e){}
+  r.n++;saveGame();
+  const quick=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const els=[...document.querySelectorAll('.die')],order=free.map((f,k)=>f?k:-1).filter(k=>k>=0);
+  rolling=true;$('roll').disabled=true;els.forEach(d=>d.disabled=true);
+  document.querySelector('.dicebar').classList.add('rolling');
+  const t0=performance.now(),stopAt={};order.forEach((k,j)=>stopAt[k]=(quick?150:850)+j*(quick?0:220));
+  const last=Math.max(...Object.values(stopAt));
+  order.forEach(k=>{els[k].classList.remove('held');els[k].classList.add('tumble')});
+  let next={};
+  const tick=now=>{
+    const el=now-t0;
+    order.forEach(k=>{
+      const d=els[k];if(!d.classList.contains('tumble'))return;
+      if(el>=stopAt[k]){d.classList.remove('tumble');setFace(d,r.dice[k]);void d.offsetWidth;d.classList.add('land');try{navigator.vibrate&&navigator.vibrate(12)}catch(e){}return}
+      // faces flip fast at first and slower towards the stop
+      const left=stopAt[k]-el,gap=left>500?55:left>250?110:190;
+      if(!next[k]||now>=next[k]){let f;do f=rnd6();while(d.dataset.f==f);d.dataset.f=f;setFace(d,f);next[k]=now+gap}
+    });
+    if(el<last+380)requestAnimationFrame(tick);else{rolling=false;render()}
+  };
+  requestAnimationFrame(tick);
 }
 function setScore(i,cid,v){
   const beforeSc={...game.scores[i]};
@@ -489,7 +514,7 @@ function openCell(i,cid){
   const f=document.querySelector('.vals .sel')||document.querySelector('.vals button');f&&f.focus();
 }
 function changed(){sheet.close();if(done()&&!game.saved)archive();else if(game.saved&&!over())unarchive();saveGame();render()}
-$('table').addEventListener('click',e=>{const b=e.target.closest('button[data-c]');
+$('table').addEventListener('click',e=>{if(rolling)return;const b=e.target.closest('button[data-c]');
   if(b&&b.dataset.s!=null)return setScore(+b.dataset.p,b.dataset.c,+b.dataset.s);
   if(b)return openCell(+b.dataset.p,b.dataset.c);
   const n=e.target.closest('button[data-ren]');if(n)openRename(game.players[+n.dataset.ren].id)});

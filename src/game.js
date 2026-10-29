@@ -10,13 +10,12 @@ function render(){
   let h=`<colgroup><col style="width:${catW}">${game.players.map(()=>'<col>').join('')}</colgroup><thead><tr><th><button class="rulesbtn" data-help="all">Правила</button></th>`;
   h+=game.players.map((p,i)=>`<th class="${turn===i?'active':''}"><div class="ph"><button class="nm" data-ren="${i}" ${net?'disabled':''} aria-label="Переименовать ${esc(p.name)}">${esc(p.name)}</button><span class="tag">ходит</span></div></th>`).join('')+'</tr></thead><tbody>';
   const sug=turn>=0?suggestions(turn):null,topSug=sug?Math.max(...Object.values(sug)):0;
-  // each player's latest score gets a dot; a score that has just come in flashes once
-  const lastOf={};(game.log||[]).forEach(e=>lastOf[e.pid]=e.cid);
+  // a score that has just come in flashes once
   const lm=lastMove(),L=(game.log||[]).length,fresh=seen.game===game.started&&L>seen.n?lm:null;seen.game=game.started;seen.n=L;
   const cell=(i,c)=>{const v=game.scores[i][c.id];
     if(v==null&&i===turn&&sug&&sug[c.id]!=null&&mine(i)){const x=sug[c.id];
       return `<td class="cell"><button class="sug${x===0?' z':''}${x>0&&x===topSug?' best':''}" data-p="${i}" data-c="${c.id}" data-s="${x}" aria-label="${esc(game.players[i].name)}: ${c.name}, записать ${x}">${x}</button></td>`}
-    const cls=(v==null?'empty':v===0?'zero':'')+(v!=null&&lastOf[game.players[i].id]===c.id?' last':'')+(fresh&&fresh.i===i&&fresh.c.id===c.id?' flash':'');
+    const cls=(v==null?'empty':v===0?'zero':'')+(fresh&&fresh.i===i&&fresh.c.id===c.id?' flash':'');
     return `<td class="cell"><button class="${cls}" data-p="${i}" data-c="${c.id}" ${net?'disabled':''} aria-label="${esc(game.players[i].name)}: ${c.name}">${v==null?'—':v}</button></td>`};
   const row=c=>`<tr><td><button class="cat" data-help="${c.id}"><b>${c.name}</b><small>${c.hint}</small></button></td>${game.players.map((_,i)=>cell(i,c)).join('')}</tr>`;
   const need=t=>{if(t.bonus||!t.upFilled)return '';return t.par>=0?`<span class="need">с запасом +${t.par}</span>`:`<span class="need">отстаёт на ${-t.par}</span>`};
@@ -28,7 +27,7 @@ function render(){
   const best=Math.max(...T.map(t=>t.total)),leaders=T.filter(t=>t.total===best).length;
   h+=`<tr class="total"><td>Итого</td>${T.map(t=>`<td class="${t.total===best&&best>0&&leaders===1?'lead':''}">${t.total}</td>`).join('')}</tr></tbody>`;
   tb.innerHTML=h;
-  $('legend').innerHTML=over()?'':`${game.dice?'<span><i class="lg sug">16</i>можно записать</span><span><i class="lg best">25</i>лучший вариант</span>':''}<span><i class="lg dot">16</i>последняя запись</span><span>Нажмите на название, чтобы увидеть правило</span>`;
+  $('legend').innerHTML=over()?'':`${game.dice?'<span><i class="lg sug">16</i>можно записать</span><span><i class="lg best">25</i>лучший вариант</span>':''}<span>Нажмите на название, чтобы увидеть правило</span>`;
 
   const bn=$('banner');
   if(over()){

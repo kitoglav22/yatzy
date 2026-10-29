@@ -57,7 +57,7 @@ test('a score travels to the other device, undo only for your own move', async (
   assert.equal(s.turn, 1); assert.equal(Object.keys(s.scores[0]).length, 1);
   assert.ok(await A.$('#undo')); assert.equal(await B.$('#undo'), null);
   const cid = Object.keys(s.scores[0])[0];
-  assert.ok(await B.$(`button.last.flash[data-p="0"][data-c="${cid}"]`), 'the new score flashes on the other device');
+  assert.ok(await B.$(`button.flash[data-p="0"][data-c="${cid}"]`), 'the new score flashes on the other device');
   assert.match(await B.textContent('.dnote'), /Женя/);
 });
 

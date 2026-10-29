@@ -66,14 +66,14 @@ test('fits a phone screen without sideways scrolling', async () => {
   assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= 390));
 });
 
-test('the latest score is named under the dice and each player keeps a dot on their latest cell', async () => {
+test('the latest score is named under the dice and flashes once in its cell', async () => {
   await p.evaluate(() => { game = newGameFor(roster); game.dice = true; saveGame(); render(); });
   assert.equal(await p.$('.dnote'), null, 'no moves yet: the first-turn tip shows instead');
   await roll(); await p.click('button.sug[data-c="chance"]');
   assert.match(await p.textContent('.dnote'), /Записано: Аня, Шанс \d+/);
-  assert.ok(await p.$('button.last.flash[data-p="0"][data-c="chance"]'));
+  assert.ok(await p.$('button.flash[data-p="0"][data-c="chance"]'));
   await roll(); await p.click('button.sug[data-c="u1"]');
-  assert.deepEqual(await p.$$eval('button.last', x => x.map(b => b.dataset.p + b.dataset.c).sort()), ['0chance', '1u1']);
+  assert.deepEqual(await p.$$eval('button.flash', x => x.map(b => b.dataset.p + b.dataset.c)), ['1u1']);
   assert.match(await p.textContent('.dnote'), /Записано: Миша, Единицы (\d+|вычеркнуто)/);
 });
 

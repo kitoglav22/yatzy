@@ -105,8 +105,8 @@ function renderStats(){
     const z=Object.entries(p.zeros).sort((a,b)=>b[1]-a[1])[0];
     const zc=z?[...ALL].find(c=>c.id===z[0]).name:'—';
     return `<div class="pcard"><h3>${esc(p.name)}</h3>
-      <div class="big"><b>${p.wins}</b><span class="muted">${p.wins===1?'победа':p.wins>=2&&p.wins<=4?'победы':'побед'} из ${p.games} · ${pct(p.wins,p.games)}</span></div>
-      ${p.streak>=2?`<span class="streak">${p.streak} ${p.streak<=4?'победы':'побед'} подряд</span>`:''}
+      <div class="big"><b>${p.wins}</b><span class="muted">${plural(p.wins,'победа','победы','побед')} из ${p.games} · ${pct(p.wins,p.games)}</span></div>
+      ${p.streak>=2?`<span class="streak">${p.streak} ${plural(p.streak,'победа','победы','побед')} подряд</span>`:''}
       <dl class="kv"><dt>Средний счёт</dt><dd>${fmt(p.sum/p.games)}</dd><dt>Лучший / худший</dt><dd>${p.best} / ${p.worst}</dd>
       <dt>Бонус взят</dt><dd>${pct(p.bonus,p.games)}</dd><dt>Яцзы</dt><dd>${p.yatzy} из ${p.games}</dd><dt>Джокеров</dt><dd>${p.joker}</dd>
       <dt>Лучшая серия побед</dt><dd>${p.bestStreak}</dd><dt>Чаще вычёркивает</dt><dd>${zc}</dd></dl></div>`}).join('')}</div>`;

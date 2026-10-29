@@ -117,3 +117,9 @@ test('with dice on, the player on turn picks only what the dice give or 0, and o
   await p.click('.vals button[data-v="0"]');
   assert.equal((await state(p)).scores[0].large, 0);
 });
+
+test('with dice on, an empty cell of a player who is not on turn cannot be tapped', async () => {
+  await p.evaluate(() => { game = newGameFor(roster); game.dice = true; game.roll = newRoll(); saveGame(); render(); });
+  assert.ok(await p.$eval('button[data-p="1"][data-c="u1"]', b => b.disabled));
+  assert.ok(!(await p.$eval('button[data-p="0"][data-c="u1"]', b => b.disabled)));
+});

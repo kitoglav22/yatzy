@@ -63,7 +63,8 @@ const ACH=[
 ];
 
 function computeStats(){
-  const games=[...history].sort((a,b)=>a.at-b.at),P={},rec={best:null,margin:null,worst:null};
+  // a game finished early stays in the list of past games but counts nowhere: not in games, wins, averages, records or achievements
+  const games=history.filter(g=>!g.early).sort((a,b)=>a.at-b.at),P={},rec={best:null,margin:null,worst:null};
   const get=n=>P[n]||(P[n]={name:n,games:0,wins:0,sum:0,best:0,worst:Infinity,bonus:0,yatzy:0,joker:0,zeros:{},cat:{},streak:0,bestStreak:0,ach:{},last:[],lossRun:0,run200:0,days:{}});
   games.forEach(g=>{
     const sorted=[...g.players].sort((a,b)=>b.total-a.total);
@@ -83,7 +84,7 @@ function computeStats(){
       if(!rec.worst||p.total<rec.worst.v)rec.worst={v:p.total,who:p.name,at:g.at};
       const low=LOW.reduce((a,c)=>a+(sc[c.id]||0),0),top=sorted[0].total;
       const c={p,sc,up,low,won,margin,zeros,s,prevBest,lossRun,top,behind:top-p.total,draw:!g.winner&&g.players.length>1,hour:new Date(g.at).getHours(),dayN:s.days[dk]};
-      if(!g.early)ACH.forEach(a=>{if(a.t(c)){const r=s.ach[a.id]||(s.ach[a.id]={n:0,first:g.at});r.n++}});
+      ACH.forEach(a=>{if(a.t(c)){const r=s.ach[a.id]||(s.ach[a.id]={n:0,first:g.at});r.n++}});
     });
   });
   return {players:Object.values(P).sort((a,b)=>b.wins-a.wins||b.games-a.games),rec,count:games.length};

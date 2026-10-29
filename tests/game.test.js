@@ -67,6 +67,8 @@ test('a game finished early goes to the history without achievements', async () 
   assert.ok(early);
   const ach = await p.evaluate(() => computeStats().players.find(x => x.name === 'Аня').ach);
   assert.equal(ach.win.n, 1, 'only the full game counts');
+  const anya = await p.evaluate(() => computeStats().players.find(x => x.name === 'Аня'));
+  assert.equal(anya.games, 1, 'the early game is not counted at all');
 });
 
 test('a past game opens and is deleted after a second tap', async () => {

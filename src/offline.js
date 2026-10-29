@@ -6,7 +6,7 @@ function exportBackup(){
   a.download='yatzy-'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);
   $('bmsg').textContent='В копии партий: '+history.length+', игроков: '+roster.length;
-  lsSet('yatzy.backupAt',history.length);render();
+  lsSet('yatzy.backupAt',history.length);lsSet('yatzy.backupTime',Date.now());render();
 }
 $('exp').onclick=exportBackup;
 $('imp').onchange=async e=>{
@@ -30,11 +30,18 @@ if('serviceWorker' in navigator){
 }
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 // remind about a backup every 5 finished games
+function lastBackupText(since){
+  const t=lsGet('yatzy.backupTime');
+  if(!t)return 'Резервную копию ещё не сохраняли.';
+  const d=new Date(t).toLocaleString('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});
+  return 'Последняя копия: '+d+(since>0?', после неё сыграно партий: '+since:', все партии в ней')+'.';
+}
 window.onAfterRender=()=>{
-  const el=$('remind');if(!el)return;
   const since=history.length-(lsGet('yatzy.backupAt')||0);
+  if($('blast'))$('blast').textContent=lastBackupText(since);
+  const el=$('remind');if(!el)return;
   if(since>=5&&(!game||!anyScore()||over())){
-    el.innerHTML=`<div class="remind"><span>С последней резервной копии сыграно партий: ${since}. Сохраните копию, чтобы история не потерялась.</span><button class="btn small" id="rexp">Сохранить копию</button></div>`;
+    el.innerHTML=`<div class="remind"><span>${lastBackupText(since)} Сохраните копию, чтобы история не потерялась.</span><button class="btn small" id="rexp">Сохранить копию</button></div>`;
     $('rexp').onclick=exportBackup;
   } else el.innerHTML='';
 };

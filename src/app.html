@@ -261,7 +261,7 @@ function render(){
   const tb=$('table');
   if(!game){
     tb.innerHTML=`<tbody><tr><td style="padding:28px 20px;text-align:center"><p style="margin:0 0 14px;font-weight:700">Выберите, кто играет, и начните партию</p><button class="btn primary" id="start0">Выбрать игроков</button></td></tr></tbody>`;
-    $('start0').onclick=openSetup;$('banner').innerHTML='';$('actions').innerHTML='';renderHist();return;
+    $('start0').onclick=openSetup;$('banner').innerHTML='';$('actions').innerHTML='';renderHist();keepAwake();window.onAfterRender&&window.onAfterRender();return;
   }
   const n=game.players.length,T=game.players.map((_,i)=>totals(i)),turn=whoseTurn();
   const catW=n>=4?'30%':n===3?'34%':'40%';

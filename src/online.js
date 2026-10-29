@@ -219,6 +219,8 @@ window.onAfterRender=()=>{prevAfter&&prevAfter();renderNet()};
 // sheets
 let netPick=[];
 let inviteVia=null; // set inside Telegram
+// set inside Telegram: what the bot knows about each player of the room, a few words for the room sheet
+let roomBot=null;
 function shareRoom(code){
   const url=location.origin+location.pathname+'#room='+code,text=`Сыграем в Яцзы? Комната ${code}`;
   if(inviteVia)return inviteVia(code,text);
@@ -231,7 +233,7 @@ function drawRoom(){
   sheet.open(`<h3 id="roomsheet">Комната ${net.code}</h3>
     <p class="muted">Друг открывает сайт, нажимает «Играть онлайн» и вводит код. Или отправьте ему ссылку.</p>
     <div class="roomcode">${net.code}</div>
-    <div class="roster">${s.players.map((p,i)=>`<div class="pick on"><span class="seat">${i+1}</span><span>${esc(p.name)}${p.dev===DEV?' · это устройство':net.on[p.dev]?'':' · не в сети'}</span></div>`).join('')}</div>
+    <div class="roster">${s.players.map((p,i)=>`<div class="pick on"><span class="seat">${i+1}</span><span>${esc(p.name)}${p.dev===DEV?' · это устройство':net.on[p.dev]?'':' · не в сети'}${roomBot?roomBot.mark(net.code,p.id):''}</span></div>`).join('')}</div>
     ${roomList()}
     <p class="muted" id="nmsg">${playing?'Партия идёт. Новые игроки смогут войти, когда она закончится.':s.players.length<2?'Ждём второго игрока.':''}</p>
     <div class="row">${playing?'':`<button class="btn primary" id="nstart" ${canStart?'':'disabled'}>Начать партию</button>`}<button class="btn" id="nshare">Пригласить</button><button class="btn" id="nleave">Выйти из комнаты</button><button class="btn" id="cancel">Закрыть</button></div>`);
@@ -243,7 +245,7 @@ function drawRoom(){
   };
   $('cancel').onclick=sheet.close;bindRoomList();
 }
-function openRoom(){if(net)drawRoom()}
+function openRoom(){if(net){if(roomBot)roomBot.stale();drawRoom()}}
 // redraw the open room sheet only when its content changes, so a half-done "leave?" survives the other player's rolls
 let roomSig='';
 function redrawRoom(){const s=net&&net.state,sig=s?JSON.stringify([s.players,s.game&&!finished(s.game),net.on]):'';if(sig!==roomSig)drawRoom()}

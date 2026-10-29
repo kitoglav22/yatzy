@@ -94,6 +94,14 @@ function tgBot(tg,has){
       if(can===1){ask('nudge',{code});lsSet(key,Date.now());say('Напомню','бот напишет в течение минуты')}
       else say('Не получится',can===0?'не разрешил боту писать':can===null?'нет связи':'бот его пока не знает: пусть откроет игру из Telegram');
     };
+    // the room sheet says for each player whether the bot can write to them; read anew each time the sheet opens
+    let known={code:'',at:0,v:null};
+    roomBot={stale(){known.at=0},mark(code,pid){
+      if(known.code!==code||Date.now()-known.at>15e3){known={code,at:Date.now(),v:known.code===code?known.v:null};
+        read('pub/tg/'+code).then(v=>{if(known.code!==code)return;known.v=v||{};if(net&&net.code===code&&$('roomsheet'))drawRoom()},()=>{})}
+      const v=known.v;if(!v)return '';
+      return v[pid]===1?' · 🔔 бот напишет':v[pid]===0?' · бот не может писать':' · бот не знает';
+    }};
     // the invitation is a card from the bot with a button straight into the room
     if(has('6.7'))inviteVia=code=>tg.switchInlineQuery(code,['users','groups']);
     const sec=document.createElement('section');

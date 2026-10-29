@@ -92,7 +92,10 @@ test('a new game and every written cell are reported; a nudge goes only to a pla
 });
 
 test('the invite button sends the bot\'s card with the room code; the rating shows on the stats tab', async () => {
-  await A.click('#nroom'); await A.click('#nshare');
+  await A.click('#nroom'); await w(300);
+  const sheetText = await A.textContent('.sheet');
+  assert.match(sheetText, /🔔 бот напишет/); assert.match(sheetText, /бот не знает/);
+  await A.click('#nshare');
   assert.deepEqual(await A.evaluate(() => __tg.inline), ['QRSTU', ['users', 'groups']]);
   await A.click('#cancel');
   await A.click('#tstats'); await w(200);

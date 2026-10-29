@@ -372,6 +372,11 @@ function whoseTurn(){if(!game||over())return -1;const f=game.players.map((_,i)=>
 const anyScore=()=>game&&game.scores.some(s=>Object.keys(s).length);
 
 // also used inside attributes, so quotes are escaped too
+// a finished game from a backup or another device: anything else is skipped, so it cannot break the history
+const okSavedGame=g=>!!g&&typeof g.at==='number'&&Array.isArray(g.players)&&g.players.length>0&&g.players.every(p=>p&&typeof p.name==='string'&&p.name.length<=40&&Number.isFinite(p.total)
+  &&(p.scores==null||typeof p.scores==='object'&&Object.values(p.scores).every(v=>v===null||Number.isFinite(v))));
+// a player from a backup, the Telegram cloud or the claude.ai database: an id like uid() makes and a short name
+const okPerson=r=>!!r&&typeof r.id==='string'&&/^[a-z0-9]{1,24}$/.test(r.id)&&typeof r.name==='string'&&r.name.trim().length>0&&r.name.length<=16;
 const esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 const $=id=>document.getElementById(id);
 // a short vibration; inside Telegram its haptics are used, they also work on iPhone and iPad
@@ -598,7 +603,7 @@ function editInSetup(id){
 function drawSetup(){
   const canStart=pick.length>=2&&pick.length<=MAXP;
   sheet.open(`<h3>Кто играет</h3><p class="muted">Отметьте игроков в порядке хода, от 2 до ${MAXP}.</p>
-    <div class="roster">${roster.map(r=>{const k=pick.indexOf(r.id);return `<div class="ritem"><button class="pick${k>=0?' on':''}" data-id="${r.id}"><span class="seat">${k>=0?k+1:''}</span><span>${esc(r.name)}</span></button><button class="del" data-edit="${r.id}" aria-label="Переименовать ${esc(r.name)}">✎</button><button class="del${arm===r.id?' arm':''}" data-del="${r.id}" aria-label="Удалить ${esc(r.name)}">${arm===r.id?'Удалить?':'✕'}</button></div>`}).join('')}</div>
+    <div class="roster">${roster.map(r=>{const k=pick.indexOf(r.id);return `<div class="ritem"><button class="pick${k>=0?' on':''}" data-id="${esc(r.id)}"><span class="seat">${k>=0?k+1:''}</span><span>${esc(r.name)}</span></button><button class="del" data-edit="${esc(r.id)}" aria-label="Переименовать ${esc(r.name)}">✎</button><button class="del${arm===r.id?' arm':''}" data-del="${esc(r.id)}" aria-label="Удалить ${esc(r.name)}">${arm===r.id?'Удалить?':'✕'}</button></div>`}).join('')}</div>
     <form class="add" id="addf"><input id="newname" placeholder="Новый игрок" maxlength="16" autocomplete="off" aria-label="Имя нового игрока"><button class="btn" type="submit">Добавить</button></form>
     <div class="row"><button class="btn primary" id="go" ${canStart?'':'disabled'}>Начать игру</button><button class="btn" id="cancel">Отмена</button></div>`);
   document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{const id=b.dataset.id,k=pick.indexOf(id);arm=null;
@@ -942,16 +947,13 @@ function exportBackup(){
   } else download();
 }
 $('exp').onclick=exportBackup;
-// a finished game from a backup or another device: anything else is skipped, so it cannot break the history
-const okSavedGame=g=>!!g&&typeof g.at==='number'&&Array.isArray(g.players)&&g.players.length>0&&g.players.every(p=>p&&typeof p.name==='string'&&p.name.length<=40&&Number.isFinite(p.total)
-  &&(p.scores==null||typeof p.scores==='object'&&Object.values(p.scores).every(v=>v===null||Number.isFinite(v))));
 if(navigator.share)shareVia=text=>navigator.share({text,url:location.origin+location.pathname}).catch(()=>{});
 $('imp').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try{const d=JSON.parse(await f.text());if(!Array.isArray(d.history))throw 0;
     const seen=new Set(history.map(g=>g.at));let n=0;
     d.history.forEach(g=>{if(okSavedGame(g)&&!seen.has(g.at)){seen.add(g.at);history.push(g);n++}});
-    (Array.isArray(d.roster)?d.roster:[]).forEach(r=>{if(r&&r.id&&typeof r.name==='string'&&!roster.some(x=>x.name===r.name||x.id===r.id))roster.push({id:r.id,name:r.name})});
+    (Array.isArray(d.roster)?d.roster:[]).forEach(r=>{if(okPerson(r)&&!roster.some(x=>x.name===r.name||x.id===r.id))roster.push({id:r.id,name:r.name})});
     lsSet('yatzy.hist',history);saveRoster();render();
     $('bmsg').textContent='Добавлено партий: '+n+'. Всего в истории: '+history.length;
   }catch(_){$('bmsg').textContent='Это не файл копии Яцзы. Выберите файл yatzy-….json'}
@@ -1025,10 +1027,11 @@ async function fbBackend(){
 function pickKeys(g,keys){const o={};keys.forEach(k=>{if(g[k]!==undefined)o[k]=g[k]});return o}
 const finished=g=>!!g.ended||g.players.every((_,i)=>ALL.every(c=>g.scores[i][c.id]!=null));
 const roomCode=()=>{const a=new Uint8Array(5);crypto.getRandomValues(a);return [...a].map(x=>ROOM_CHARS[x%ROOM_CHARS.length]).join('')};
-// change the room state in a transaction; fn gets the parsed state and returns the new one, or undefined to leave it
+// change the room state in a transaction; fn gets the parsed state and returns the new one, or undefined to leave it.
+// t is the time of the last change: the bot removes rooms nobody touched for two months
 async function txRoom(code,fn){
   const b=await backend();
-  const r=await b.tx(code,cur=>{if(cur==null)return null;const s=parseState(cur);if(!s)return;const n=fn(s);return n===undefined?undefined:JSON.stringify(n)});
+  const r=await b.tx(code,cur=>{if(cur==null)return null;const s=parseState(cur);if(!s)return;const n=fn(s);if(n===undefined)return;n.t=Date.now();return JSON.stringify(n)});
   return parseState(r.val)||null;
 }
 
@@ -1142,7 +1145,7 @@ async function enterRoom(code){
   net=makeNet(code);const me=net;render();
   try{
     const b=await backend();if(net!==me)return;
-    me.offs.push(b.connected(c=>{me.connected=c;if(c)b.setOn(code,true).catch(()=>{});if(net===me)render()}));
+    me.offs.push(b.connected(c=>{me.connected=c;if(c)b.setOn(code,inApp).catch(()=>{});if(net===me)render()}));
     me.offs.push(b.watch(code,v=>{if(net===me)me.apply(v)}));
     me.offs.push(b.watchOn(code,v=>{me.on=v;if(net===me){renderNet();if($('roomsheet'))redrawRoom()}}));
   }catch(e){if(net===me){me.error=errCode(e)||true;render()}}
@@ -1153,8 +1156,11 @@ const netErr=e=>e&&e.msg||'Нет связи с сервером. Проверь
 const retry=()=>{if(net&&net.error&&navigator.onLine!==false){backendP=null;enterRoom(net.code)}};
 window.addEventListener('online',retry);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')retry()});
-// a player who switched away counts as "not in the app", so the bot may write to them
-document.addEventListener('visibilitychange',()=>{const me=net;if(!me||!me.connected)return;backend().then(b=>b.setOn(me.code,document.visibilityState==='visible')).catch(()=>{})});
+// a player who switched away counts as "not in the app", so the bot may write to them;
+// inside Telegram the app also tells when it is minimized
+let inApp=true;
+function present(on){inApp=on;const me=net;if(!me||!me.connected)return;backend().then(b=>b.setOn(me.code,on)).catch(()=>{})}
+document.addEventListener('visibilitychange',()=>present(document.visibilityState==='visible'));
 async function leaveRoom(gone){
   const me=net;if(!me)return;
   const st=me.state;keepRoom(me.code,!gone&&st&&st.game&&!finished(st.game)&&st.players.some(p=>p.dev===DEV)?st:null);
@@ -1239,7 +1245,7 @@ function redrawRoom(){const s=net&&net.state,sig=s?JSON.stringify([s.players,s.g
 function drawPick(title,cta,onGo,taken,code,seats){
   const back=seats?[...new Set(seats.map(p=>p.dev))].map(d=>seats.filter(p=>p.dev===d)):[];
   sheet.open(`<h3>${title}</h3><p class="muted">Кто играет на этом устройстве? Можно выбрать нескольких, если вы сидите вместе.</p>
-    <div class="roster">${roster.map(r=>{const k=netPick.indexOf(r.id);return `<div class="ritem"><button class="pick${k>=0?' on':''}" data-id="${r.id}"><span class="seat">${k>=0?'✓':''}</span><span>${esc(r.name)}</span></button></div>`}).join('')}</div>
+    <div class="roster">${roster.map(r=>{const k=netPick.indexOf(r.id);return `<div class="ritem"><button class="pick${k>=0?' on':''}" data-id="${esc(r.id)}"><span class="seat">${k>=0?'✓':''}</span><span>${esc(r.name)}</span></button></div>`}).join('')}</div>
     <form class="add" id="naddf"><input id="nname" placeholder="Новый игрок" maxlength="16" autocomplete="off" aria-label="Имя нового игрока"><button class="btn" type="submit">Добавить</button></form>
     <p class="muted" id="nmsg"></p>
     <div class="row"><button class="btn primary" id="ngo" ${netPick.length?'':'disabled'}>${cta}</button><button class="btn" id="cancel">Отмена</button></div>
@@ -1411,13 +1417,19 @@ function tgBot(tg,has){
   // asked again until the bot answers, so a bot started while the app is open is found on the next room
   let on=null;const ready=()=>on||(on=read('pub/bot').then(v=>{if(!v)on=null;return !!v},()=>{on=null;return false}));
   const mine=s=>[...new Set(s.players.concat(s.game?s.game.players:[]).filter(p=>p.dev===DEV).map(p=>p.id))];
-  // the bot learns which seats in the room are this Telegram account; Telegram asks once whether the bot may write
-  roomHook=(ev,code,s)=>{const pids=mine(s);if(pids.length)ready().then(ok=>{if(!ok)return;
-    if(lsGet('yatzy.tgAsked')||!has('6.9')||!tg.requestWriteAccess)return ask('hello',{code,pids});
-    lsSet('yatzy.tgAsked',1);
+  // the bot learns which seats in the room are this Telegram account. Telegram asks whether the bot may write:
+  // the first time, and again at most once a day while the bot says it cannot write to this player
+  roomHook=(ev,code,s)=>{const pids=mine(s);if(pids.length)ready().then(async ok=>{if(!ok)return;
+    const asked=+lsGet('yatzy.tgAsked')||0;let need=!asked;
+    if(!need&&Date.now()-asked>864e5){const v=await read('pub/tg/'+code).catch(()=>null);need=!!v&&pids.some(id=>v[id]===0)}
+    if(!need||!has('6.9')||!tg.requestWriteAccess)return ask('hello',{code,pids});
+    lsSet('yatzy.tgAsked',Date.now());
     try{tg.requestWriteAccess(ok=>ask('hello',{code,pids,allow:!!ok}))}catch(e){ask('hello',{code,pids})}})};
-  // and again each time the app comes back from the background, in case the bot missed the first time
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&net&&net.state)roomHook('back',net.code,net.state)});
+  // Telegram keeps a minimized app alive and visible, so these events say when the player left it
+  // and the room is reported again each time the app comes back, in case the bot missed the first time
+  const back=()=>{if(net&&net.state)roomHook('back',net.code,net.state)};
+  if(has('8.0')){tg.onEvent('deactivated',()=>present(false));tg.onEvent('activated',()=>{present(true);back()})}
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')back()});
   const u=tg.initDataUnsafe&&tg.initDataUnsafe.user;
   // the rating marks one's own line by a hash of the Telegram id, the same as the bot makes
   const myHash=u&&crypto.subtle?crypto.subtle.digest('SHA-256',new TextEncoder().encode('yatzy:'+u.id))
@@ -1485,7 +1497,7 @@ function tgCloud(tg){
     // deleted on another device
     const n=history.length;history=history.filter(g=>!gone.has(g.at));if(history.length!==n)changed=true;
     if(keys.includes('roster')){try{const r=JSON.parse(await call(cs.getItem,'roster'));
-      if(Array.isArray(r))r.forEach(x=>{if(x&&typeof x.id==='string'&&typeof x.name==='string'&&x.name.length<=16&&!roster.some(y=>y.name===x.name||y.id===x.id)){roster.push({id:x.id,name:x.name});changed=true}})}catch(e){}}
+      if(Array.isArray(r))r.forEach(x=>{if(okPerson(x)&&!roster.some(y=>y.name===x.name||y.id===x.id)){roster.push({id:x.id,name:x.name});changed=true}})}catch(e){}}
     if(changed){lsSet('yatzy.hist',history);lsSet('yatzy.roster',roster);render()}
     // what is only on this device goes up
     history.filter(g=>!inCloud.has(g.at)).forEach(g=>store.addGame(g));

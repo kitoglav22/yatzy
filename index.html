@@ -88,7 +88,7 @@ section{display:flex;flex-direction:column;gap:10px}
 .tabs{display:flex;gap:4px;padding:4px;border-radius:14px;background:var(--paper);border:1px solid var(--rule);align-self:flex-start}
 .tabs button{min-height:44px;padding:0 20px;border:0;border-radius:10px;background:transparent;font-weight:700;color:var(--muted)}
 .tabs button[aria-selected="true"]{background:var(--accent);color:var(--on-accent)}
-.view{display:flex;flex-direction:column;gap:20px}
+.view{display:flex;flex-direction:column;gap:24px}
 .pcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
 .pcard{background:var(--paper);border:1px solid var(--rule);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
 .pcard h3{margin:0;font-family:var(--display);font-size:1.05rem;font-weight:600;overflow-wrap:anywhere}
@@ -109,8 +109,10 @@ table.avg td.hi{color:var(--ok)}
 .achs{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
 .ach{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:14px;background:var(--paper);border:1px solid var(--rule);min-width:0}
 .ach .badge{flex:none;display:grid;place-items:center;width:52px;height:44px;padding:0 4px;border-radius:12px;letter-spacing:-.02em;background:var(--accent);color:var(--on-accent);font-family:var(--display);font-weight:800;font-size:.72rem;text-align:center;line-height:1}
-.ach.off{opacity:.5}
-.ach.off .badge{background:var(--bg);color:var(--muted);border:1.5px dashed var(--rule)}
+#stats{display:flex;flex-direction:column;gap:24px}
+.ach.off{background:transparent;border-style:dashed}
+.ach.off b{color:var(--muted);font-weight:600}
+.ach.off .badge{background:transparent;color:var(--muted);border:1.5px solid var(--rule)}
 .ach b{display:block}
 .ach small{display:block;color:var(--muted);font-size:.78rem;margin-top:2px}
 .ach .who{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}

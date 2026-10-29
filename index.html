@@ -150,26 +150,21 @@ table.avg td.hi{color:var(--ok)}
 .dicehead{display:flex;justify-content:space-between;align-items:baseline;gap:8px 16px;flex-wrap:wrap}
 .dicehead b{font-weight:800}
 .dicerow{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-.dies{display:flex;gap:12px;flex-wrap:wrap;padding:6px 0 14px}
-/* 3D dice: a cube of six faces, turned so the rolled value faces the viewer */
-.die{--s:62px;position:relative;width:var(--s);height:var(--s);padding:0;border:0;background:none;perspective:420px;transition:transform .2s}
-.die .lift{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none}
-.die .cube{position:absolute;inset:0;transform-style:preserve-3d}
-.die .shadow{pointer-events:none;position:absolute;left:8%;right:8%;bottom:-9px;height:10px;border-radius:50%;background:color-mix(in srgb,#000 22%,transparent);filter:blur(3px)}
-.face{position:absolute;inset:0;border-radius:13px;background:var(--paper);border:2px solid var(--rule);display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);place-items:center;padding:16%;backface-visibility:hidden;-webkit-backface-visibility:hidden;box-shadow:inset 0 -3px 0 color-mix(in srgb,var(--ink) 8%,transparent)}
-.face i{width:72%;aspect-ratio:1;border-radius:50%;background:var(--ink);visibility:hidden}
-.face i.on{visibility:visible}
-.die.blank .face i{visibility:hidden}
-.f1{transform:translateZ(calc(var(--s)/2))}
-.f6{transform:rotateY(180deg) translateZ(calc(var(--s)/2))}
-.f3{transform:rotateY(90deg) translateZ(calc(var(--s)/2))}
-.f4{transform:rotateY(-90deg) translateZ(calc(var(--s)/2))}
-.f5{transform:rotateX(90deg) translateZ(calc(var(--s)/2))}
-.f2{transform:rotateX(-90deg) translateZ(calc(var(--s)/2))}
-.die.held{transform:translateY(-6px)}
-.die.held .face{border-color:var(--accent);background:var(--accent-soft)}
+.dies{display:flex;gap:12px;flex-wrap:wrap;padding:4px 0 12px}
+.die{position:relative;width:62px;height:62px;padding:9px;border-radius:14px;border:2px solid var(--rule);background:var(--paper);display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);place-items:center;box-shadow:0 3px 0 var(--rule);transition:transform .2s,box-shadow .2s}
+.die i{width:10px;height:10px;border-radius:50%;background:var(--ink);visibility:hidden}
+.die i.on{visibility:visible}
+.die.blank i{visibility:hidden}
+.die.held{border-color:var(--accent);background:var(--accent-soft);transform:translateY(-5px);box-shadow:0 8px 0 color-mix(in srgb,var(--accent) 35%,transparent)}
 .die.held::after{content:"держу";position:absolute;bottom:-24px;left:-6px;right:-6px;text-align:center;font-size:.65rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
 .die:disabled{cursor:default}
+.die.shaking{transition:none;box-shadow:0 8px 14px color-mix(in srgb,#000 18%,transparent)}
+/* landing: a squash, a bounce and a ring that fades out */
+.die.land{animation:land .42s cubic-bezier(.2,1.5,.4,1)}
+.die.land::before{content:"";position:absolute;inset:-4px;border-radius:17px;border:2px solid var(--accent);animation:ring .5s ease-out forwards;pointer-events:none}
+@keyframes land{0%{transform:scale(1.18) rotate(-6deg)}35%{transform:scale(1.08,.88)}65%{transform:scale(.96,1.05)}100%{transform:none}}
+@keyframes ring{from{opacity:.8;transform:scale(.9)}to{opacity:0;transform:scale(1.35)}}
+@media (prefers-reduced-motion:reduce){.die.land,.die.land::before{animation:none}}
 .dicebar.rolling .muted{visibility:hidden}
 .dicebar.shake .dies{animation:shake .28s}
 @keyframes shake{25%{transform:translateX(-4px) rotate(-1deg)}75%{transform:translateX(4px) rotate(1deg)}}
@@ -183,7 +178,7 @@ table.avg td.hi{color:var(--ok)}
 td.cell button.sug{color:var(--accent);font-weight:700;font-size:1.05rem;background:color-mix(in srgb,var(--accent-soft) 60%,transparent);border:0}
 td.cell button.sug.z{color:var(--muted);font-weight:400}
 td.cell button.sug.best{background:var(--accent);color:var(--on-accent);font-weight:800}
-@media (max-width:520px){.die{--s:50px}.dies{gap:9px}}
+@media (max-width:520px){.die{width:50px;height:50px;padding:7px}.die i{width:8px;height:8px}.dies{gap:9px}}
 .sheet-bg{position:fixed;inset:0;background:color-mix(in srgb,#000 45%,transparent);display:flex;align-items:flex-end;justify-content:center;z-index:20;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .sheet{background:var(--paper);color:var(--ink);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px;max-height:88%;overflow:auto}
 @media (min-width:700px){.sheet-bg{align-items:center}.sheet{border-radius:20px;max-height:80%}}
@@ -434,10 +429,6 @@ function suggestions(i){
   if(sc.joker==null&&!r.jokerTaken&&isY&&sc.yatzy===50)out.joker=100;
   return out;
 }
-// cube orientation that shows each value to the viewer (faces: 1 front, 6 back, 3 right, 4 left, 5 top, 2 bottom)
-const FACE_ROT={0:[0,0],1:[0,0],2:[90,0],3:[0,-90],4:[0,90],5:[-90,0],6:[0,180]};
-const faceHtml=v=>range(0,8).map(q=>`<i class="${PIPS[v].includes(q)?'on':''}"></i>`).join('');
-const cubeHtml=v=>{const [x,y]=FACE_ROT[v];return `<span class="lift"><span class="cube" style="transform:rotateX(${x}deg) rotateY(${y}deg)">${[1,2,3,4,5,6].map(f=>`<span class="face f${f}">${faceHtml(f)}</span>`).join('')}</span></span><span class="shadow"></span>`};
 function renderDice(){
   const el=$('dice');
   if(!game||!game.dice||over()){el.innerHTML='';return}
@@ -446,15 +437,16 @@ function renderDice(){
   const hint=r.jokerTaken?`Джокер записан. Теперь поставьте 0 в любую свободную клетку колонки «${esc(who)}».`
     :!r.n?'Нажмите «Бросить».':r.n<3?'Нажмите на кубики, которые хотите оставить, и бросайте ещё, или выберите клетку в таблице.':'Броски закончились: выберите клетку в таблице.';
   el.innerHTML=`<div class="dicebar"><div class="dicehead"><span>Ходит <b>${esc(who)}</b></span><span class="muted">бросок ${r.n} из 3</span></div>
-    <div class="dicerow"><div class="dies">${r.dice.map((v,k)=>`<button class="die${r.held[k]?' held':''}${v?'':' blank'}" data-k="${k}" ${!r.n||r.n>=3||r.jokerTaken?'disabled':''} aria-label="${v?'Кубик '+v:'Кубик'}${r.held[k]?', держу':''}">${cubeHtml(v)}</button>`).join('')}</div>
+    <div class="dicerow"><div class="dies">${r.dice.map((v,k)=>`<button class="die${r.held[k]?' held':''}${v?'':' blank'}" data-k="${k}" ${!r.n||r.n>=3||r.jokerTaken?'disabled':''} aria-label="${v?'Кубик '+v:'Кубик'}${r.held[k]?', держу':''}">${range(0,8).map(q=>`<i class="${v&&PIPS[v].includes(q)?'on':''}"></i>`).join('')}</button>`).join('')}</div>
     <button class="btn primary rollbtn" id="roll" ${r.n>=3||r.jokerTaken?'disabled':''}>${r.n?'Бросить ещё':'Бросить'}</button></div>
     <p class="muted">${hint}</p></div>`;
   el.querySelectorAll('.die').forEach(b=>b.onclick=()=>{const k=+b.dataset.k;r.held[k]=!r.held[k];saveGame();renderDice()});
   $('roll').onclick=rollDice;
 }
 // the result is drawn and saved at once; the animation only reveals it:
-// free dice tumble in the air, slow down, land in random order on the rolled face
+// free dice rattle in place, calm down and slam onto the rolled face in random order
 let rolling=false;
+function setFace(el,v){el.querySelectorAll('i').forEach((p,q)=>p.classList.toggle('on',PIPS[v].includes(q)));el.classList.remove('blank')}
 function rollDice(){
   const r=game.roll;if(rolling||!r||r.n>=3||r.jokerTaken)return;
   const free=r.dice.map((_,k)=>!r.held[k]||!r.n);
@@ -466,39 +458,22 @@ function rollDice(){
   const order=free.map((f,k)=>f?k:-1).filter(k=>k>=0);
   rolling=true;$('roll').disabled=true;els.forEach(d=>d.disabled=true);
   bar.classList.add('rolling');bar.classList.remove('shake');void bar.offsetWidth;if(!quick)bar.classList.add('shake');
-  const span=quick?0:1200+Math.random()*1200,stopAt={},st={};
-  order.forEach(k=>{
-    stopAt[k]=quick?0:600+Math.random()*(span-600);
-    const d=els[k];d.classList.remove('blank');
-    const sgn=()=>Math.random()<.5?-1:1;
-    st[k]={x:Math.random()*360,y:Math.random()*360,z:0,vx:sgn()*(500+Math.random()*500),vy:sgn()*(500+Math.random()*500),vz:sgn()*(80+Math.random()*160),hop:2.2+Math.random()*1.6,landed:false,
-      cube:d.querySelector('.cube'),lift:d.querySelector('.lift'),shadow:d.querySelector('.shadow')};
-  });
-  const t0=performance.now();let prev=t0;
-  const land=k=>{
-    const s=st[k],[tx,ty]=FACE_ROT[r.dice[k]];s.landed=true;
-    // finish in the rolled orientation after spinning on a bit further in the same direction
-    const ahead=(cur,t,v)=>{let a=t+360*Math.round((cur-t)/360);if(v>0&&a<cur+200)a+=360*Math.ceil((cur+200-a)/360);if(v<0&&a>cur-200)a-=360*Math.ceil((a-(cur-200))/360);return a};
-    const fx=ahead(s.x,tx,s.vx),fy=ahead(s.y,ty,s.vy);
-    s.cube.style.transition=quick?'none':'transform .55s cubic-bezier(.15,1.25,.35,1)';
-    s.cube.style.transform=`rotateX(${fx}deg) rotateY(${fy}deg)`;
-    s.lift.style.transition=quick?'none':'transform .45s cubic-bezier(.3,1.8,.5,1)';s.lift.style.transform='none';
-    s.shadow.style.transition='transform .45s, opacity .45s';s.shadow.style.transform='none';s.shadow.style.opacity='1';
-    try{navigator.vibrate&&navigator.vibrate(12)}catch(e){}
-  };
+  const span=quick?0:1200+Math.random()*1200,stopAt={},next={},face={};
+  order.forEach(k=>{stopAt[k]=quick?0:600+Math.random()*(span-600);els[k].classList.remove('held','land');els[k].classList.add('shaking')});
+  const t0=performance.now(),j=a=>(Math.random()*2-1)*a;
   const tick=now=>{
-    const t=now-t0,dt=Math.min(.05,(now-prev)/1000);prev=now;
+    const t=now-t0;
     order.forEach(k=>{
-      const s=st[k];if(s.landed)return;
-      if(t>=stopAt[k])return land(k);
-      const left=Math.max(0,(stopAt[k]-t)/stopAt[k]),slow=.35+.65*left;
-      s.x+=s.vx*dt*slow;s.y+=s.vy*dt*slow;s.z+=s.vz*dt*slow;
-      const h=Math.abs(Math.sin(t/1000*Math.PI*s.hop))*(10+18*left);
-      s.cube.style.transition='none';s.cube.style.transform=`rotateX(${s.x}deg) rotateY(${s.y}deg) rotateZ(${s.z}deg)`;
-      s.lift.style.transition='none';s.lift.style.transform=`translateY(${-h}px)`;
-      s.shadow.style.transform=`scale(${1-h/60})`;s.shadow.style.opacity=String(1-h/45);
+      const d=els[k];if(!d.classList.contains('shaking'))return;
+      if(t>=stopAt[k]){d.classList.remove('shaking');d.style.transform='';setFace(d,r.dice[k]);void d.offsetWidth;d.classList.add('land');try{navigator.vibrate&&navigator.vibrate(15)}catch(e){}return}
+      const left=(stopAt[k]-t)/stopAt[k],gap=left>.6?45:left>.3?85:150;
+      if(!next[k]||now>=next[k]){
+        // rattle: random offset and tilt, strong at first and calmer towards the stop
+        const a=3+9*left;d.style.transform=`translate(${j(a)}px,${j(a)-a*.6}px) rotate(${j(8+22*left)}deg) scale(${1+.06*left})`;
+        let f=rnd6();if(f===face[k])f=f%6+1;face[k]=f;setFace(d,f);next[k]=now+gap;
+      }
     });
-    if(t<(quick?0:Math.max(...Object.values(stopAt),0))+600)requestAnimationFrame(tick);
+    if(t<(quick?0:Math.max(...Object.values(stopAt),0))+450)requestAnimationFrame(tick);
     else{
       rolling=false;
       const yz=r.dice.every(v=>v===r.dice[0]);

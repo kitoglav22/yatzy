@@ -18,6 +18,9 @@ const uid=()=>Math.random().toString(36).slice(2,9);
 let roster=[], game=null, history=[], ui={confirm:false}, store=null, net=null;
 // how a finished game is shared to a chat; set by the GitHub Pages and Telegram versions
 let shareVia=null;
+// quick reactions in an online game; they float up on every screen in the room
+const REACTS=['👍','😂','😱','😭','🔥','🎉'];
+function showReact(name,e){const d=document.createElement('div');d.className='reactfly';d.innerHTML=`<span class="rfe">${e}</span><span class="rfn">${esc(name)}</span>`;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
 // in an online room a device acts only for its own players
 const mine=i=>!net||net.mine(i);
 

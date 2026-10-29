@@ -43,12 +43,11 @@ thead th{padding:10px 6px;vertical-align:bottom;height:1px}
 .ph .nm{border:0;background:transparent;padding:4px 6px;border-radius:8px;font-weight:800;font-size:1.05rem;max-width:100%;overflow-wrap:break-word;hyphens:auto;text-align:center;line-height:1.2}
 .ph .tag{font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:999px;color:transparent}
 th.active .tag{background:var(--accent);color:var(--on-accent)}
-th.active,td.colact{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
-.cat{display:flex;flex-direction:column;gap:2px;min-width:0}
-.cat b{font-weight:700}
+.cat{display:flex;flex-direction:column;gap:2px;min-width:0;width:100%;border:0;background:none;padding:0;text-align:left;color:inherit;font:inherit}
+.cat b{font-weight:700;text-decoration:underline dotted color-mix(in srgb,var(--muted) 60%,transparent);text-underline-offset:4px}
 .cat small{font-size:.75rem;font-weight:400;color:var(--muted);overflow-wrap:anywhere}
 td.cell{padding:0;height:56px}
-td.cell button{display:block;width:100%;height:56px;border:0;background:transparent;font-size:1.3rem;font-weight:800}
+td.cell button{position:relative;display:block;width:100%;height:56px;border:0;background:transparent;font-size:1.3rem;font-weight:800}
 td.cell button:hover{background:var(--accent-soft)}
 td.cell button.empty{color:var(--muted);font-weight:400;font-size:1rem}
 td.cell button.zero{color:var(--muted);text-decoration:line-through}
@@ -142,17 +141,17 @@ table.avg td.hi{color:var(--ok)}
   @keyframes tout{to{opacity:0;transform:translateY(-12px)}}
 }
 #dice{position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
-.dicebar{display:flex;flex-direction:column;gap:12px;padding:14px 16px;border-radius:16px;background:var(--paper);border:1px solid var(--rule);box-shadow:0 6px 18px color-mix(in srgb,#000 10%,transparent)}
+.dicebar{display:flex;flex-direction:column;gap:8px;padding:10px 14px;border-radius:16px;background:var(--paper);border:1px solid var(--rule);box-shadow:0 6px 18px color-mix(in srgb,#000 10%,transparent)}
 .dicehead{display:flex;justify-content:space-between;align-items:baseline;gap:8px 16px;flex-wrap:wrap}
 .dicehead b{font-weight:800}
-.dicerow{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-.dies{display:flex;gap:12px;flex-wrap:wrap;padding:4px 0 12px}
-.die{position:relative;width:62px;height:62px;padding:9px;border-radius:14px;border:2px solid var(--rule);background:var(--paper);display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);place-items:center;box-shadow:0 3px 0 var(--rule);transition:transform .2s,box-shadow .2s}
+/* dice and the roll button share one row; the dice shrink to fit a phone */
+.dicerow{display:flex;gap:12px;align-items:center}
+.dies{display:flex;gap:12px;flex:1;min-width:0;padding:6px 0 4px}
+.die{position:relative;flex:0 1 62px;min-width:0;aspect-ratio:1;padding:9px;border-radius:14px;border:2px solid var(--rule);background:var(--paper);display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);place-items:center;box-shadow:0 3px 0 var(--rule);transition:transform .2s,box-shadow .2s}
 .die i{width:10px;height:10px;border-radius:50%;background:var(--ink);visibility:hidden}
 .die i.on{visibility:visible}
 .die.blank i{visibility:hidden}
 .die.held{border-color:var(--accent);background:var(--accent-soft);transform:translateY(-5px);box-shadow:0 8px 0 color-mix(in srgb,var(--accent) 35%,transparent)}
-.die.held::after{content:"держу";position:absolute;bottom:-24px;left:-6px;right:-6px;text-align:center;font-size:.65rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
 .die:disabled{cursor:default}
 .die.shaking{transition:none;box-shadow:0 8px 14px color-mix(in srgb,#000 18%,transparent)}
 /* landing: a squash, a bounce and a ring that fades out */
@@ -170,11 +169,43 @@ table.avg td.hi{color:var(--ok)}
 @keyframes ypop{0%{transform:scale(.3);opacity:0}25%{transform:scale(1.15);opacity:1}100%{transform:scale(1)}}
 @media (prefers-reduced-motion:reduce){.dicebar.shake .dies,.dicebar.yatzy,.yflash{animation:none}}
 .rollbtn{min-width:150px}
-.dicebar>p{margin-top:8px}
-td.cell button.sug{color:var(--accent);font-weight:700;font-size:1.05rem;background:color-mix(in srgb,var(--accent-soft) 60%,transparent);border:0}
-td.cell button.sug.z{color:var(--muted);font-weight:400}
-td.cell button.sug.best{background:var(--accent);color:var(--on-accent);font-weight:800}
-@media (max-width:520px){.die{width:50px;height:50px;padding:7px}.die i{width:8px;height:8px}.dies{gap:9px}}
+.dnote b{color:var(--ink)}
+.dhr{display:inline-flex;align-items:center;gap:10px}
+.rbtn{border:1.5px solid var(--rule);background:var(--bg);border-radius:999px;width:34px;height:30px;font-size:1rem;line-height:1;padding:0}
+.reacts{display:flex;justify-content:space-between;gap:6px}
+.reacts button{flex:1;border:1.5px solid var(--rule);background:var(--bg);border-radius:12px;height:40px;font-size:1.3rem;padding:0}
+.reactfly{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom,0px));z-index:40;display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none;transform:translateX(-50%);animation:rfly 2.6s ease-out forwards}
+.rfe{font-size:4rem;line-height:1}
+.rfn{font-size:.8rem;font-weight:800;padding:2px 10px;border-radius:999px;background:var(--paper);border:1px solid var(--rule)}
+@keyframes rfly{0%{opacity:0;transform:translate(-50%,30px) scale(.5)}12%{opacity:1;transform:translate(-50%,0) scale(1.1)}20%{transform:translate(-50%,0) scale(1)}75%{opacity:1}100%{opacity:0;transform:translate(-50%,-160px)}}
+@media (prefers-reduced-motion:reduce){.reactfly{animation:rfade 2.6s forwards}@keyframes rfade{0%,80%{opacity:1}100%{opacity:0}}}
+/* in a cell: a written score is plain bold; "+16" is what can be written; a ring marks the best of those; a dot marks each player's latest score */
+td.cell button.sug{color:var(--accent);font-weight:600;font-size:1rem;opacity:.85}
+td.cell button.sug::before,.lg.sug::before{content:"+"}
+td.cell button.sug.z{color:var(--muted);font-weight:400;font-size:.9rem;opacity:.6}
+td.cell button.sug.z::before{content:none}
+td.cell button.sug.best,.lg.best{outline:2px solid var(--accent);outline-offset:-7px;border-radius:14px;font-weight:800;opacity:1}
+td.cell button.last::after,.lg.dot::after{content:"";position:absolute;top:7px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+td.cell button.flash{animation:flash 1.8s ease-out}
+@keyframes flash{0%,30%{background:color-mix(in srgb,var(--accent) 30%,transparent)}}
+@media (prefers-reduced-motion:reduce){td.cell button.flash{animation:none}}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0;padding:0 4px;font-size:.8rem;color:var(--muted)}
+.legend:empty{display:none}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.lg{position:relative;display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:24px;font-style:normal;font-weight:700;color:var(--accent);border-radius:8px}
+.lg.best{outline-offset:0;padding:0 6px}
+.lg.dot{color:var(--ink);font-weight:800}
+.lg.dot::after{top:1px;right:1px;width:6px;height:6px}
+.rulesbtn{border:1.5px solid var(--rule);background:transparent;border-radius:999px;padding:4px 12px;font-weight:700;font-size:.8rem;color:var(--muted)}
+.sheet p{margin:0}
+.rules{margin:0}
+.rules dt{font-weight:800}
+.rules dd{margin:2px 0 12px;color:var(--muted);font-size:.92rem}
+.example{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.minidice{display:flex;gap:6px}
+.die.mini{width:36px;height:36px;padding:5px;border-radius:9px;box-shadow:none;border-width:1.5px}
+.die.mini i{width:6px;height:6px}
+@media (max-width:520px){.die{padding:6px;border-radius:12px}.die i{width:7px;height:7px}.dies{gap:7px}.dicerow{gap:10px}.rollbtn{min-width:0;padding:0 16px;border-radius:999px}}
 .sheet-bg{position:fixed;inset:0;background:color-mix(in srgb,#000 45%,transparent);display:flex;align-items:flex-end;justify-content:center;z-index:20;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .sheet{background:var(--paper);color:var(--ink);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px;max-height:88%;overflow:auto}
 @media (min-width:700px){.sheet-bg{align-items:center}.sheet{border-radius:20px;max-height:80%}}
@@ -186,6 +217,7 @@ td.cell button.sug.best{background:var(--accent);color:var(--on-accent);font-wei
 .roster{display:flex;flex-direction:column;gap:8px}
 .ritem{display:flex;gap:8px;align-items:center}
 .pick{flex:1;min-width:0;display:flex;align-items:center;gap:12px;min-height:52px;padding:0 14px;border-radius:12px;border:1.5px solid var(--rule);background:var(--bg);font-weight:700;text-align:left}
+.pick .rcode{flex:none;letter-spacing:.12em;font-variant-numeric:tabular-nums;color:var(--accent)}
 .pick .seat{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;border:1.5px solid var(--rule);font-size:.85rem;font-variant-numeric:tabular-nums}
 .pick span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pick.on{border-color:var(--accent);background:var(--accent-soft)}

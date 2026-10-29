@@ -65,3 +65,38 @@ test('fits a phone screen without sideways scrolling', async () => {
   await roll();
   assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= 390));
 });
+
+test('the latest score is named under the dice and each player keeps a dot on their latest cell', async () => {
+  await p.evaluate(() => { game = newGameFor(roster); game.dice = true; saveGame(); render(); });
+  assert.equal(await p.$('.dnote'), null, 'no moves yet: the first-turn tip shows instead');
+  await roll(); await p.click('button.sug[data-c="chance"]');
+  assert.match(await p.textContent('.dnote'), /Записано: Аня, Шанс \d+/);
+  assert.ok(await p.$('button.last.flash[data-p="0"][data-c="chance"]'));
+  await roll(); await p.click('button.sug[data-c="u1"]');
+  assert.deepEqual(await p.$$eval('button.last', x => x.map(b => b.dataset.p + b.dataset.c).sort()), ['0chance', '1u1']);
+  assert.match(await p.textContent('.dnote'), /Записано: Миша, Единицы (\d+|вычеркнуто)/);
+});
+
+test('tapping a combination name explains it, with the full rules one tap away', async () => {
+  await p.click('button[data-help="house"]');
+  assert.match(await p.textContent('.sheet'), /Запишется 25/);
+  await p.click('#hall');
+  assert.equal(await p.textContent('.sheet h3'), 'Правила');
+  assert.equal(await p.$$eval('.rules dt', x => x.length), 10);
+  await p.click('#hok');
+  assert.equal(await p.$('.sheet'), null);
+  await p.click('button[data-help="all"]');
+  assert.ok(await p.$('.rules')); await p.click('#hok');
+});
+
+test('on a phone the dice and the roll button share one row', async () => {
+  await p.setViewportSize({ width: 375, height: 700 });
+  const r = await p.evaluate(() => {
+    const b = e => e.getBoundingClientRect(), dies = [...document.querySelectorAll('.die')].map(b), btn = b(document.getElementById('roll'));
+    return { tops: dies.map(d => Math.round(d.top)), right: Math.max(...dies.map(d => d.right)), btn, bar: b(document.querySelector('.dicebar')).height };
+  });
+  assert.equal(new Set(r.tops.map(t => Math.abs(t - r.tops[0]) < 8)).size, 1, 'dice on one line');
+  assert.ok(r.right <= r.btn.left && r.btn.top < r.tops[0] + 40, 'button to the right of the dice');
+  assert.ok(r.bar < 160, `panel height ${r.bar}`);
+  await p.setViewportSize({ width: 820, height: 1180 });
+});

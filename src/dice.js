@@ -31,14 +31,19 @@ function renderDice(){
   if(!game||!game.dice||over()){el.innerHTML='';return}
   if(rolling)return;
   const r=game.roll=game.roll||newRoll(),turn=whoseTurn(),who=game.players[turn].name,my=mine(turn),showHeld=r.n>0&&r.n<3&&!r.jokerTaken,canHold=my&&showHeld;
-  const hint=!my?`Бросает ${esc(who)} на своём устройстве, здесь видно каждый бросок.`:r.jokerTaken?`Джокер записан. Теперь поставьте 0 в любую свободную клетку колонки «${esc(who)}».`
-    :!r.n?'Нажмите «Бросить».':r.n<3?'Нажмите на кубики, которые хотите оставить, и бросайте ещё, или выберите клетку в таблице.':'Броски закончились: выберите клетку в таблице.';
-  el.innerHTML=`<div class="dicebar"><div class="dicehead"><span>Ходит <b>${esc(who)}</b></span><span class="muted">бросок ${r.n} из 3</span></div>
+  // a hint while the first turn of the game goes on, after that a line about the latest score
+  const lm=lastMove(),first=!(game.log||[]).length;
+  const tip=r.jokerTaken&&my?`Джокер записан. Теперь поставьте 0 в любую свободную клетку колонки «${esc(who)}».`
+    :first&&my?(!r.n?'Нажмите «Бросить», потом на кубики, которые хотите оставить.':r.n<3?'Нажмите на кубики, которые оставить, и бросайте ещё, или выберите клетку.':'Выберите клетку в таблице.')
+    :'';
+  el.innerHTML=`<div class="dicebar"><div class="dicehead"><span>Ходит <b>${esc(who)}</b></span><span class="dhr"><span class="muted">бросок ${r.n} из 3</span>${net&&net.react?'<button class="rbtn" id="rbtn" aria-label="Реакция" aria-expanded="'+!!ui.reacts+'">😊</button>':''}</span></div>
+    ${net&&net.react&&ui.reacts?`<div class="reacts">${REACTS.map((e,k)=>`<button data-react="${k}">${e}</button>`).join('')}</div>`:''}
     <div class="dicerow"><div class="dies">${r.dice.map((v,k)=>`<button class="die${showHeld&&r.held[k]?' held':''}${v?'':' blank'}" data-k="${k}" ${canHold?'':'disabled'} aria-label="${v?'Кубик '+v:'Кубик'}${showHeld&&r.held[k]?', держу':''}">${range(0,8).map(q=>`<i class="${v&&PIPS[v].includes(q)?'on':''}"></i>`).join('')}</button>`).join('')}</div>
-    <button class="btn primary rollbtn" id="roll" ${!my||r.n>=3||r.jokerTaken?'disabled':''}>${r.n?'Бросить ещё':'Бросить'}</button></div>
-    <p class="muted">${hint}</p></div>`;
+    <button class="btn primary rollbtn" id="roll" ${!my||r.n>=3||r.jokerTaken?'disabled':''}>${r.n?'Ещё раз':'Бросить'}</button></div>
+    ${tip?`<p class="muted">${tip}</p>`:lm?`<p class="muted dnote">Записано: <b>${esc(game.players[lm.i].name)}</b>, ${lm.c.name} ${lm.v||'вычеркнуто'}</p>`:''}</div>`;
   el.querySelectorAll('.die').forEach(b=>b.onclick=()=>{const k=+b.dataset.k;r.held[k]=!r.held[k];saveGame();renderDice()});
   $('roll').onclick=rollDice;
+  if($('rbtn')){$('rbtn').onclick=()=>{ui.reacts=!ui.reacts;renderDice()};el.querySelectorAll('[data-react]').forEach(b=>b.onclick=()=>{ui.reacts=false;net.react(+b.dataset.react);renderDice()})}
 }
 // the result is drawn and saved at once; the animation only reveals it:
 // free dice rattle in place, calm down and slam onto the rolled face in random order

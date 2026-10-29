@@ -65,10 +65,20 @@ function makeNet(code){
         .catch(()=>{if(net!==n)return;toast({badge:'!',label:'Онлайн',name:'Ход не отправился',desc:'показываю то, что сохранено в комнате'},'Онлайн',false);n.resync()});
     },
     resync(){n.last='';if(n.state)n.apply(JSON.stringify(n.state),true)},
+    // a reaction only touches s.fx; one per 1.2 s from this device
+    react(k){
+      const now=Date.now();if(!REACTS[k]||now-(n.fxSent||0)<1200)return;n.fxSent=now;
+      const me=game&&game.players.find(p=>p.dev===DEV);showReact(me?me.name:'Вы',REACTS[k]);
+      txRoom(code,s=>{s.fx={dev:DEV,e:k,t:now};return s}).catch(()=>{});
+    },
     apply(str,force){
       const s=parseState(str);if(s===undefined)return;
       if(!s){if(n.loaded)leaveRoom(true);return}
-      const first=!n.loaded;n.state=s;n.loaded=true;
+      const first=!n.loaded,was=n.state&&JSON.stringify([n.state.players,n.state.game,n.state.prev]);n.state=s;n.loaded=true;
+      const fx=s.fx,fxNew=fx&&fx.t!==n.fxT;n.fxT=fx&&fx.t;
+      if(fxNew&&!first&&fx.dev!==DEV&&REACTS[fx.e]&&Number.isInteger(fx.e)){const p=s.players.find(x=>x.dev===fx.dev);if(p){showReact(p.name,REACTS[fx.e]);buzz('land')}}
+      // nothing but a reaction changed: the local game may already be a move ahead of the room, so it stays as it is
+      if(!first&&!force&&was===JSON.stringify([s.players,s.game,s.prev]))return;
       // a game that has just started closes the room sheet
       if($('roomsheet')){if(s.game&&!finished(s.game)&&!(game&&game.started===s.game.started))sheet.close();else redrawRoom()}
       // a device that missed the end of the previous game still gets it into its history
@@ -105,8 +115,30 @@ function makeNet(code){
   return n;
 }
 
+// rooms this device left in the middle of a game; "Мои комнаты" brings them back in one tap
+const myRooms=()=>(lsGet('yatzy.rooms')||[]).filter(r=>r&&typeof r.code==='string'&&/^[A-Z0-9]{5}$/.test(r.code)&&Array.isArray(r.names));
+function keepRoom(code,s){
+  const rest=myRooms().filter(r=>r.code!==code);
+  if(s)rest.unshift({code,names:(s.game||s).players.map(p=>String(p.name).slice(0,40))});
+  lsSet('yatzy.rooms',rest.slice(0,8));
+}
+function roomList(){
+  const rs=myRooms().filter(r=>!net||r.code!==net.code);if(!rs.length)return '';
+  return `<p class="muted">Мои комнаты, где партия не закончена:</p><div class="roster">${rs.map(r=>`<button class="pick" data-room="${r.code}"><b class="rcode">${r.code}</b><span>${r.names.map(esc).join(', ')}</span></button>`).join('')}</div>`;
+}
+function bindRoomList(){
+  document.querySelectorAll('[data-room]').forEach(b=>b.onclick=async()=>{
+    const code=b.dataset.room;$('nmsg')&&($('nmsg').textContent='Подключаюсь…');
+    try{
+      if(net)await leaveRoom();
+      const err=await startJoin(code);
+      if(err){keepRoom(code,null);window.openOnline();$('nmsg').textContent=err}
+    }catch(e){if(!$('nmsg'))window.openOnline();$('nmsg').textContent=netErr(e)}
+  });
+}
 // joining: the local game waits on the side and comes back after leaving the room
 async function enterRoom(code){
+  keepRoom(code,null);
   if(!net&&!lsGet('yatzy.online')){lsSet('yatzy.offgame',game&&!game.players.some(p=>p.dev)?game:null);game=null;lsSet('yatzy.game',null)}
   lsSet('yatzy.online',{code});
   if(net)net.offs.forEach(f=>f&&f());
@@ -126,6 +158,7 @@ window.addEventListener('online',retry);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')retry()});
 async function leaveRoom(gone){
   const me=net;if(!me)return;
+  const st=me.state;keepRoom(me.code,!gone&&st&&st.game&&!finished(st.game)&&st.players.some(p=>p.dev===DEV)?st:null);
   net=null;me.offs.forEach(f=>f&&f());
   lsSet('yatzy.online',null);
   game=normGame(lsGet('yatzy.offgame'));lsSet('yatzy.offgame',null);lsSet('yatzy.game',game);
@@ -185,15 +218,16 @@ function drawRoom(){
     <p class="muted">Друг открывает сайт, нажимает «Играть онлайн» и вводит код. Или отправьте ему ссылку.</p>
     <div class="roomcode">${net.code}</div>
     <div class="roster">${s.players.map((p,i)=>`<div class="pick on"><span class="seat">${i+1}</span><span>${esc(p.name)}${p.dev===DEV?' · это устройство':net.on[p.dev]?'':' · не в сети'}</span></div>`).join('')}</div>
+    ${roomList()}
     <p class="muted" id="nmsg">${playing?'Партия идёт. Новые игроки смогут войти, когда она закончится.':s.players.length<2?'Ждём второго игрока.':''}</p>
     <div class="row">${playing?'':`<button class="btn primary" id="nstart" ${canStart?'':'disabled'}>Начать партию</button>`}<button class="btn" id="nshare">Пригласить</button><button class="btn" id="nleave">Выйти из комнаты</button><button class="btn" id="cancel">Закрыть</button></div>`);
   if($('nstart'))$('nstart').onclick=()=>{sheet.close();startRoomGame()};
   $('nshare').onclick=()=>shareRoom(net.code);
   $('nleave').onclick=()=>{
-    if(playing&&$('nleave').dataset.arm!=='1'){$('nleave').dataset.arm='1';$('nleave').textContent='Точно выйти?';$('nmsg').textContent='Партия не закончена. Вернуться в неё можно будет по тому же коду.';return}
+    if(playing&&$('nleave').dataset.arm!=='1'){$('nleave').dataset.arm='1';$('nleave').textContent='Точно выйти?';$('nmsg').textContent='Партия не закончена. Комната останется в списке «Мои комнаты», вернуться можно в одно касание.';return}
     leaveRoom();
   };
-  $('cancel').onclick=sheet.close;
+  $('cancel').onclick=sheet.close;bindRoomList();
 }
 function openRoom(){if(net)drawRoom()}
 // redraw the open room sheet only when its content changes, so a half-done "leave?" survives the other player's rolls
@@ -272,12 +306,13 @@ window.openOnline=(code)=>{
   if(net)return openRoom();
   sheet.open(`<h3>Игра онлайн</h3><p class="muted">Каждый играет на своём устройстве. Кубики бросает тот, чей ход, остальные видят каждый бросок. Партия на этом устройстве никуда не денется и вернётся, когда вы выйдете из комнаты.</p>
     <div class="row"><button class="btn primary" id="ncreate">Создать комнату</button></div>
+    ${roomList()}
     <form class="add" id="njoin"><input id="ncode" placeholder="Код комнаты" maxlength="5" autocomplete="off" autocapitalize="characters" aria-label="Код комнаты" value="${typeof code==='string'?esc(code):''}"><button class="btn" type="submit">Войти</button></form>
     <p class="muted" id="nmsg"></p><div class="row"><button class="btn" id="cancel">Отмена</button></div>`);
   $('ncreate').onclick=()=>{netPick=game&&!game.players.some(p=>p.dev)?game.players.map(p=>p.id).filter(id=>roster.some(r=>r.id===id)).slice(0,1):[];drawPick('Новая комната','Создать комнату',createRoom)};
   $('njoin').onsubmit=async e=>{e.preventDefault();$('nmsg').textContent='Ищу комнату…';
     try{const err=await startJoin($('ncode').value);if(err&&$('nmsg'))$('nmsg').textContent=err}catch(e){$('nmsg')&&($('nmsg').textContent=netErr(e))}};
-  $('cancel').onclick=sheet.close;
+  $('cancel').onclick=sheet.close;bindRoomList();
 };
 if(!FB&&!window.__yatzyNet)delete window.openOnline;
 else{

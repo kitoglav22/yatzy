@@ -3,28 +3,32 @@ function render(){
   const tb=$('table');
   if(!game){
     tb.innerHTML=`<tbody><tr><td style="padding:28px 20px;text-align:center"><p style="margin:0 0 14px;font-weight:700">Выберите, кто играет, и начните партию</p><div class="row" style="justify-content:center"><button class="btn primary" id="start0">Выбрать игроков</button>${window.openOnline?'<button class="btn" id="onl0">Играть онлайн</button>':''}</div></td></tr></tbody>`;
-    $('start0').onclick=openSetup;if($('onl0'))$('onl0').onclick=window.openOnline;$('banner').innerHTML='';$('actions').innerHTML='';renderHist();keepAwake();window.onAfterRender&&window.onAfterRender();return;
+    $('start0').onclick=openSetup;if($('onl0'))$('onl0').onclick=window.openOnline;$('banner').innerHTML='';$('actions').innerHTML='';$('legend').innerHTML='';renderHist();keepAwake();window.onAfterRender&&window.onAfterRender();return;
   }
   const n=game.players.length,T=game.players.map((_,i)=>totals(i)),turn=whoseTurn();
   const catW=n>=4?'30%':n===3?'34%':'40%';
-  let h=`<colgroup><col style="width:${catW}">${game.players.map(()=>'<col>').join('')}</colgroup><thead><tr><th></th>`;
+  let h=`<colgroup><col style="width:${catW}">${game.players.map(()=>'<col>').join('')}</colgroup><thead><tr><th><button class="rulesbtn" data-help="all">Правила</button></th>`;
   h+=game.players.map((p,i)=>`<th class="${turn===i?'active':''}"><div class="ph"><button class="nm" data-ren="${i}" ${net?'disabled':''} aria-label="Переименовать ${esc(p.name)}">${esc(p.name)}</button><span class="tag">ходит</span></div></th>`).join('')+'</tr></thead><tbody>';
   const sug=turn>=0?suggestions(turn):null,topSug=sug?Math.max(...Object.values(sug)):0;
+  // each player's latest score gets a dot; a score that has just come in flashes once
+  const lastOf={};(game.log||[]).forEach(e=>lastOf[e.pid]=e.cid);
+  const lm=lastMove(),L=(game.log||[]).length,fresh=seen.game===game.started&&L>seen.n?lm:null;seen.game=game.started;seen.n=L;
   const cell=(i,c)=>{const v=game.scores[i][c.id];
     if(v==null&&i===turn&&sug&&sug[c.id]!=null&&mine(i)){const x=sug[c.id];
-      return `<td class="cell colact"><button class="sug${x===0?' z':''}${x>0&&x===topSug?' best':''}" data-p="${i}" data-c="${c.id}" data-s="${x}" aria-label="${esc(game.players[i].name)}: ${c.name}, записать ${x}">${x}</button></td>`}
-    const cls=v==null?'empty':v===0?'zero':'';
-    return `<td class="cell${turn===i?' colact':''}"><button class="${cls}" data-p="${i}" data-c="${c.id}" ${net?'disabled':''} aria-label="${esc(game.players[i].name)}: ${c.name}">${v==null?'—':v}</button></td>`};
-  const row=c=>`<tr><td><div class="cat"><b>${c.name}</b><small>${c.hint}</small></div></td>${game.players.map((_,i)=>cell(i,c)).join('')}</tr>`;
+      return `<td class="cell"><button class="sug${x===0?' z':''}${x>0&&x===topSug?' best':''}" data-p="${i}" data-c="${c.id}" data-s="${x}" aria-label="${esc(game.players[i].name)}: ${c.name}, записать ${x}">${x}</button></td>`}
+    const cls=(v==null?'empty':v===0?'zero':'')+(v!=null&&lastOf[game.players[i].id]===c.id?' last':'')+(fresh&&fresh.i===i&&fresh.c.id===c.id?' flash':'');
+    return `<td class="cell"><button class="${cls}" data-p="${i}" data-c="${c.id}" ${net?'disabled':''} aria-label="${esc(game.players[i].name)}: ${c.name}">${v==null?'—':v}</button></td>`};
+  const row=c=>`<tr><td><button class="cat" data-help="${c.id}"><b>${c.name}</b><small>${c.hint}</small></button></td>${game.players.map((_,i)=>cell(i,c)).join('')}</tr>`;
   const need=t=>{if(t.bonus||!t.upFilled)return '';return t.par>=0?`<span class="need">с запасом +${t.par}</span>`:`<span class="need">отстаёт на ${-t.par}</span>`};
   const sec=t=>`<tr class="section"><td colspan="${n+1}">${t}</td></tr>`;
   h+=sec('Верхняя часть')+UP.map(row).join('');
   h+=`<tr class="sum"><td>Сумма</td>${T.map(t=>`<td class="v">${t.up}</td>`).join('')}</tr>`;
-  h+=`<tr class="sum"><td><div class="cat"><b>Бонус</b><small>50 очков при 63+</small></div></td>${T.map(t=>`<td class="v${t.bonus?' got':''}">${t.bonus?'+50':'0'}${need(t)}</td>`).join('')}</tr>`;
+  h+=`<tr class="sum"><td><button class="cat" data-help="bonus"><b>Бонус</b><small>50 очков при 63+</small></button></td>${T.map(t=>`<td class="v${t.bonus?' got':''}">${t.bonus?'+50':'0'}${need(t)}</td>`).join('')}</tr>`;
   h+=sec('Нижняя часть')+LOW.map(row).join('')+row(JK);
   const best=Math.max(...T.map(t=>t.total)),leaders=T.filter(t=>t.total===best).length;
   h+=`<tr class="total"><td>Итого</td>${T.map(t=>`<td class="${t.total===best&&best>0&&leaders===1?'lead':''}">${t.total}</td>`).join('')}</tr></tbody>`;
   tb.innerHTML=h;
+  $('legend').innerHTML=over()?'':`${game.dice?'<span><i class="lg sug">16</i>можно записать</span><span><i class="lg best">25</i>лучший вариант</span>':''}<span><i class="lg dot">16</i>последняя запись</span><span>Нажмите на название, чтобы увидеть правило</span>`;
 
   const bn=$('banner');
   if(over()){
@@ -126,8 +130,49 @@ function openCell(i,cid){
   document.querySelectorAll('.vals button').forEach(b=>b.onclick=()=>setScore(i,cid,+b.dataset.v));
   const f=document.querySelector('.vals .sel')||document.querySelector('.vals button');f&&f.focus();
 }
+// the latest score written, for the line under the dice and the flash in its cell
+let seen={game:null,n:0};
+function lastMove(){
+  const e=(game.log||[]).slice(-1)[0];if(!e)return null;
+  const i=game.players.findIndex(p=>p.id===e.pid),c=[...ALL,JK].find(x=>x.id===e.cid),v=i<0?null:game.scores[i][e.cid];
+  return c&&v!=null?{i,c,v}:null;
+}
+// rules of each combination, opened by tapping its name; the example dice score themselves
+const HELP={
+  three:['Хотя бы три одинаковых кубика. Записывается сумма всех пяти.',[5,5,5,2,3]],
+  four:['Хотя бы четыре одинаковых кубика. Записывается сумма всех пяти.',[6,6,6,6,1]],
+  small:['Четыре числа подряд: 1-2-3-4, 2-3-4-5 или 3-4-5-6. Всегда 30 очков.',[1,2,3,4,6]],
+  large:['Пять чисел подряд: 1-2-3-4-5 или 2-3-4-5-6. Всегда 40 очков.',[2,3,4,5,6]],
+  house:['Три одинаковых и ещё два одинаковых. Всегда 25 очков.',[3,3,3,5,5]],
+  chance:['Любые кубики. Записывается сумма всех пяти.',[6,5,4,2,1]],
+  yatzy:['Все пять кубиков одинаковые. 50 очков.',[4,4,4,4,4]],
+  joker:['Ещё один Яцзы, когда в клетке «Яцзы» уже стоит 50. Даёт 100 очков, один раз за игру. После этого в любую другую свободную клетку ставится 0.',[4,4,4,4,4]],
+  bonus:['Если сумма верхней части 63 или больше, добавляется 50 очков. 63 это по три кубика каждого числа. Под бонусом видно, с каким запасом идёт игрок или сколько ему не хватает.'],
+};
+UP.forEach((c,k)=>{const n=k+1;HELP[c.id]=[`${c.hint[0].toUpperCase()+c.hint.slice(1)}: складываются только кубики с числом ${n}, остальные не считаются.`,[n,n,n,n%6+1,(n+1)%6+1]]});
+const miniDice=d=>`<span class="minidice">${d.map(v=>`<span class="die mini">${range(0,8).map(q=>`<i class="${PIPS[v].includes(q)?'on':''}"></i>`).join('')}</span>`).join('')}</span>`;
+function openHelp(id){
+  const name=x=>x==='bonus'?'Бонус':[...ALL,JK].find(c=>c.id===x).name;
+  const pts=x=>x==='joker'?100:scoreFor(x,HELP[x][1]);
+  if(id==='all'){
+    sheet.open(`<h3>Правила</h3>
+      <p>За ход можно бросить кубики до трёх раз. После броска нажмите на кубики, которые хотите оставить, и перебросьте остальные.</p>
+      <p>В конце хода запишите очки в любую свободную клетку своей колонки. Если ничего не подходит, вычеркните какую-нибудь клетку нулём. Игра заканчивается, когда все клетки заполнены.</p>
+      <dl class="rules"><dt>Единицы … Шестёрки</dt><dd>Сумма кубиков с нужным числом, остальные не считаются. Например, 4 4 4 2 6 в «Четвёрки» дают 12.</dd>${['bonus',...LOW.map(c=>c.id),'joker'].map(x=>`<dt>${name(x)}</dt><dd>${HELP[x][0]}</dd>`).join('')}</dl>
+      <div class="row"><button class="btn primary" id="hok">Понятно</button></div>`);
+  } else {
+    const ex=HELP[id][1];
+    sheet.open(`<h3>${name(id)}</h3><p>${HELP[id][0]}</p>
+      ${ex?`<div class="example">${miniDice(ex)}<span>Запишется <b>${pts(id)}</b></span></div>`:''}
+      ${id==='bonus'?'':'<p class="muted">Любую клетку можно вычеркнуть, записав 0.</p>'}
+      <div class="row"><button class="btn primary" id="hok">Понятно</button><button class="btn" id="hall">Все правила</button></div>`);
+    $('hall').onclick=()=>openHelp('all');
+  }
+  $('hok').onclick=sheet.close;
+}
 function changed(){sheet.close();if(done()&&!game.saved)archive();else if(game.saved&&!over())unarchive();saveGame();render()}
-$('table').addEventListener('click',e=>{if(rolling)return;const b=e.target.closest('button[data-c]');
+$('table').addEventListener('click',e=>{const hb=e.target.closest('button[data-help]');if(hb)return openHelp(hb.dataset.help);
+  if(rolling)return;const b=e.target.closest('button[data-c]');
   if(b&&!mine(+b.dataset.p))return;
   if(b&&b.dataset.s!=null)return setScore(+b.dataset.p,b.dataset.c,+b.dataset.s);
   if(b)return openCell(+b.dataset.p,b.dataset.c);

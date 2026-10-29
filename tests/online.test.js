@@ -56,6 +56,21 @@ test('a score travels to the other device, undo only for your own move', async (
   const s = await state(B);
   assert.equal(s.turn, 1); assert.equal(Object.keys(s.scores[0]).length, 1);
   assert.ok(await A.$('#undo')); assert.equal(await B.$('#undo'), null);
+  const cid = Object.keys(s.scores[0])[0];
+  assert.ok(await B.$(`button.last.flash[data-p="0"][data-c="${cid}"]`), 'the new score flashes on the other device');
+  assert.match(await B.textContent('.dnote'), /Женя/);
+});
+
+test('a reaction floats up on the other screen and does not touch the game', async () => {
+  const before = JSON.stringify((await state(A)).scores);
+  await B.click('#rbtn'); await B.click('[data-react="1"]'); await w(300);
+  assert.match(await A.textContent('.reactfly'), /😂\s*Друг/);
+  assert.match(await B.textContent('.reactfly'), /😂/, 'the sender sees it too');
+  assert.equal(JSON.stringify((await state(A)).scores), before);
+  assert.equal(await B.$('.reacts'), null, 'the picker closes');
+  // hostile reaction data is ignored
+  env.tamper(code, s => { s.fx = { dev: s.players[1].dev, e: '<img src=x onerror=window.pwned=1>', t: 1 }; }); await w(200);
+  assert.equal(await A.evaluate(() => window.pwned), undefined);
 });
 
 test('a half-done "leave?" survives the other player\'s rolls', async () => {
@@ -116,4 +131,20 @@ test('leaving brings the local game back', async () => {
   assert.equal(await A.evaluate(() => net), null);
   await w(300);
   assert.match(await B.textContent('#net'), /Женя не в сети/);
+});
+
+test('a room left mid-game waits under "Мои комнаты" and comes back in one tap', async () => {
+  await A.click('#onl');
+  assert.match(await A.textContent(`[data-room="${code}"]`), /Друг, Женя/);
+  await A.click(`[data-room="${code}"]`); await w(400);
+  assert.equal(await A.evaluate(() => net && net.code), code);
+  assert.deepEqual((await state(A)).names, ['Друг', 'Женя']);
+  assert.equal(await A.$('.sheet'), null, 'the game is on, the sheet is out of the way');
+  // a room that is gone drops off the list
+  await A.evaluate(c => lsSet('yatzy.rooms', [{ code: 'ZZZZZ', names: ['X'] }]), code);
+  await A.click('#nroom');
+  assert.equal(await A.$(`[data-room="${code}"]`), null, 'the room you are in is not listed');
+  await A.click('[data-room="ZZZZZ"]'); await w(400);
+  assert.match(await A.textContent('#nmsg'), /нет/);
+  assert.deepEqual(await A.evaluate(() => lsGet('yatzy.rooms')), [{ code, names: ['Друг', 'Женя'] }]);
 });

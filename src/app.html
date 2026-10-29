@@ -382,7 +382,7 @@ const LIVE=['yatzy','joker','bonus','upper80','sixes','ladder','chance','ones','
 function toast(a,name,first){
   const box=$('toasts');if(!box)return;
   const t=document.createElement('div');t.className='toast'+(first?' first':'');
-  t.innerHTML=`<span class="badge">${a.badge}</span><div style="min-width:0"><small>${first?'Новая ачивка':'Ачивка'}</small><b>${a.name}</b><span class="who">${esc(name)} · ${a.desc}</span></div>`;
+  t.innerHTML=`<span class="badge">${a.badge}</span><div style="min-width:0"><small>${a.label||(first?'Новая ачивка':'Ачивка')}</small><b>${a.name}</b><span class="who">${esc(name)} · ${a.desc}</span></div>`;
   const kill=()=>{if(t.classList.contains('out'))return;t.classList.add('out');setTimeout(()=>t.remove(),260)};
   t.onclick=kill;box.appendChild(t);setTimeout(kill,4200);
   while(box.children.length>4)box.firstChild.remove();

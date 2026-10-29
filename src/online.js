@@ -4,6 +4,8 @@
 const FB={apiKey:"AIzaSyCD5cYHREOmhXcU4_89V5TcMf4SOtNAddg",authDomain:"yatzy-654ba.firebaseapp.com",databaseURL:"https://yatzy-654ba-default-rtdb.europe-west1.firebasedatabase.app",projectId:"yatzy-654ba",appId:"1:621596129875:web:808ef98d27ba240cf5a4a6"};
 const ROOM_CHARS='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SYNC=['players','scores','started','ended','dice','roll','log'];
+// the shared part of the game; undo history is cut to the last moves to keep the room small
+const synced=g=>{const o=pickKeys(g,SYNC);if(o.log)o.log=o.log.slice(-40);return o};
 const DEV=lsGet('yatzy.dev')||(()=>{const d=uid()+uid();lsSet('yatzy.dev',d);return d})();
 
 let backendP=null;
@@ -26,7 +28,7 @@ async function fbBackend(){
     connected(cb){return D.onValue(R('.info/connected'),s=>cb(!!s.val()))},
   };
 }
-const pickKeys=(g,keys)=>{const o={};keys.forEach(k=>{if(g[k]!==undefined)o[k]=g[k]});return o};
+function pickKeys(g,keys){const o={};keys.forEach(k=>{if(g[k]!==undefined)o[k]=g[k]});return o}
 const finished=g=>!!g.ended||g.players.every((_,i)=>ALL.every(c=>g.scores[i][c.id]!=null));
 const roomCode=()=>{const a=new Uint8Array(5);crypto.getRandomValues(a);return [...a].map(x=>ROOM_CHARS[x%ROOM_CHARS.length]).join('')};
 // change the room state in a transaction; fn gets the parsed state and returns the new one, or undefined to leave it
@@ -48,7 +50,7 @@ const okGame=g=>!!g&&typeof g==='object'&&okPlayers(g.players)&&g.players.length
   &&g.scores.every(sc=>sc&&typeof sc==='object'&&!Array.isArray(sc)&&Object.entries(sc).every(([k,v])=>cellOk(k,v)))
   &&Number.isFinite(g.started)&&(g.ended==null||typeof g.ended==='boolean')&&(g.dice==null||typeof g.dice==='boolean')&&okRoll(g.roll)
   &&(g.log==null||Array.isArray(g.log)&&g.log.length<=200&&g.log.every(e=>e&&okId(e.pid)&&cellOk(e.cid,e.prev??null)&&okRoll(e.roll)));
-const okState=s=>!!s&&typeof s==='object'&&okPlayers(s.players)&&(s.game==null||okGame(s.game));
+const okState=s=>!!s&&typeof s==='object'&&okPlayers(s.players)&&(s.game==null||okGame(s.game))&&(s.prev==null||okGame(s.prev));
 function parseState(str){if(str==null)return null;try{const s=JSON.parse(str);return okState(s)?s:undefined}catch(e){return undefined}}
 
 function makeNet(code){
@@ -56,17 +58,26 @@ function makeNet(code){
     mine(i){return n.connected&&!!game&&!!game.players[i]&&game.players[i].dev===DEV},
     push(){
       if(!n.connected||!game||!n.state||!n.state.game||game.started!==n.state.game.started)return;
-      const g=pickKeys(game,SYNC),j=JSON.stringify(g);if(j===n.last)return;n.last=j;
-      txRoom(code,s=>{if(!s.game||s.game.started!==g.started)return;s.game=g;s.by=DEV;s.rev=(s.rev||0)+1;return s}).catch(()=>{});
+      const g=synced(game),j=JSON.stringify(g);if(j===n.last)return;n.last=j;
+      // if the move does not reach the room, go back to what the room has
+      txRoom(code,s=>{if(!s.game||s.game.started!==g.started)return;s.game=g;s.by=DEV;s.rev=(s.rev||0)+1;return s})
+        .then(s=>{if(!s||!s.game||JSON.stringify(s.game)!==j)throw 0})
+        .catch(()=>{if(net!==n)return;toast({badge:'!',label:'Онлайн',name:'Ход не отправился',desc:'показываю то, что сохранено в комнате'},'Онлайн',false);n.resync()});
     },
-    apply(str){
+    resync(){n.last='';if(n.state)n.apply(JSON.stringify(n.state),true)},
+    apply(str,force){
       const s=parseState(str);if(s===undefined)return;
       if(!s){if(n.loaded)leaveRoom(true);return}
       const first=!n.loaded;n.state=s;n.loaded=true;
       // a game that has just started closes the room sheet
-      if($('roomsheet')){if(s.game&&!finished(s.game)&&!(game&&game.started===s.game.started))sheet.close();else drawRoom()}
+      if($('roomsheet')){if(s.game&&!finished(s.game)&&!(game&&game.started===s.game.started))sheet.close();else redrawRoom()}
+      // a device that missed the end of the previous game still gets it into its history
+      if(s.prev&&s.prev.players.some(p=>p.dev===DEV)&&!history.some(h=>h.started===s.prev.started)&&!(game&&game.started===s.prev.started&&game.saved)){
+        const keep=game&&game.started!==s.prev.started?game:null;game=normGame(JSON.parse(JSON.stringify(s.prev)));game.shown=(keep&&keep.shown)||{};
+        if(over())archive();game=keep;
+      }
       // own writes come back too; the local game is already ahead of them
-      if(s.by===DEV&&!first&&s.game&&game&&game.started===s.game.started)return;
+      if(!force&&s.by===DEV&&!first&&s.game&&game&&game.started===s.game.started)return;
       if(!s.game){if(game&&game.players.some(p=>p.dev)){game=null;lsSet('yatzy.game',null)}render();return}
       const old=game&&game.started===s.game.started?game:null;
       const ng=normGame(JSON.parse(JSON.stringify(s.game)));if(!ng)return;
@@ -74,7 +85,7 @@ function makeNet(code){
       if(old){ng.saved=old.saved;ng.savedAt=old.savedAt;ng.newAch=old.newAch;ng.shown=old.shown}
       else{const h=history.find(x=>x.started===ng.started);ng.saved=!!h;ng.savedAt=h?h.at:null}
       const prevN=old&&old.roll?old.roll.n:0;
-      game=ng;n.last=JSON.stringify(pickKeys(game,SYNC));
+      game=ng;n.last=JSON.stringify(synced(game));
       // achievements of the other devices' players pop up here as well
       if(old)game.players.forEach((p,i)=>{if(p.dev!==DEV&&JSON.stringify(old.scores[i])!==JSON.stringify(game.scores[i]))checkLive(i,old.scores[i]||{})});
       if(over()&&!game.saved)archive();else if(game.saved&&!over()&&old)unarchive();
@@ -88,7 +99,7 @@ function makeNet(code){
       ac.innerHTML=canUndo?`<div class="row"><button class="btn" id="undo">↶ Отменить: ${esc(game.players[li].name)}, ${lc.name}</button></div>`:'';
       if(canUndo)$('undo').onclick=undo;
     },
-    again(){startRoomGame()},
+    again(){if(n.state&&n.state.players.length>=2)startRoomGame();else openRoom()},
     openRoom(){openRoom()},
   };
   return n;
@@ -96,7 +107,7 @@ function makeNet(code){
 
 // joining: the local game waits on the side and comes back after leaving the room
 async function enterRoom(code){
-  if(!net&&!lsGet('yatzy.online'))lsSet('yatzy.offgame',game&&!game.players.some(p=>p.dev)?game:null);
+  if(!net&&!lsGet('yatzy.online')){lsSet('yatzy.offgame',game&&!game.players.some(p=>p.dev)?game:null);game=null;lsSet('yatzy.game',null)}
   lsSet('yatzy.online',{code});
   if(net)net.offs.forEach(f=>f&&f());
   net=makeNet(code);const me=net;render();
@@ -104,20 +115,26 @@ async function enterRoom(code){
     const b=await backend();if(net!==me)return;
     me.offs.push(b.connected(c=>{me.connected=c;if(c)b.setOn(code,true).catch(()=>{});if(net===me)render()}));
     me.offs.push(b.watch(code,v=>{if(net===me)me.apply(v)}));
-    me.offs.push(b.watchOn(code,v=>{me.on=v;if(net===me){renderNet();if($('roomsheet'))drawRoom()}}));
-  }catch(e){if(net===me){me.error=true;render()}}
+    me.offs.push(b.watchOn(code,v=>{me.on=v;if(net===me){renderNet();if($('roomsheet'))redrawRoom()}}));
+  }catch(e){if(net===me){me.error=errCode(e)||true;render()}}
 }
+const errCode=e=>e&&typeof e.code==='string'?e.code:'';
+const netErr=e=>e&&e.msg||'Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.'+(errCode(e)?' ('+errCode(e)+')':'');
+// a room that could not connect tries again when the network or the app comes back
+const retry=()=>{if(net&&net.error&&navigator.onLine!==false){backendP=null;enterRoom(net.code)}};
+window.addEventListener('online',retry);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')retry()});
 async function leaveRoom(gone){
   const me=net;if(!me)return;
   net=null;me.offs.forEach(f=>f&&f());
   lsSet('yatzy.online',null);
   game=normGame(lsGet('yatzy.offgame'));lsSet('yatzy.offgame',null);lsSet('yatzy.game',game);
   sheet.close();ui.confirm=false;render();
-  if(gone){toast({badge:'✕',name:'Комната закрыта',desc:'все игроки вышли'},'Онлайн',false);return}
+  if(gone){toast({badge:'✕',label:'Онлайн',name:'Комната закрыта',desc:'все игроки вышли'},'Онлайн',false);return}
   try{
     const b=await backend();await b.setOn(me.code,false);
     // players leave the room between games; the last one out removes it
-    const s=await txRoom(me.code,s=>{if(s.game&&!finished(s.game))return;s.players=s.players.filter(p=>p.dev!==DEV);if(s.game)s.game=null;return s});
+    const s=await txRoom(me.code,s=>{if(s.game&&!finished(s.game))return;s.players=s.players.filter(p=>p.dev!==DEV);if(s.game){s.prev=s.game;s.game=null}return s});
     if(s&&!s.players.length)await b.remove(me.code);
   }catch(e){}
 }
@@ -129,6 +146,7 @@ async function startRoomGame(){
     // each new game in the room starts with the next player
     const k=(s.round||0)%s.players.length,ps=s.players.slice(k).concat(s.players.slice(0,k));
     s.round=(s.round||0)+1;
+    if(s.game)s.prev=s.game;
     s.game={players:ps.map(p=>({id:p.id,name:p.name,dev:p.dev})),scores:ps.map(()=>({})),started:Date.now(),dice:true,roll:newRoll(),log:[]};
     s.by=DEV;s.rev=(s.rev||0)+1;return s;
   }).catch(()=>{});
@@ -139,7 +157,7 @@ function renderNet(){
   $('sync').textContent=net?'Онлайн-партия хранится в комнате, история и ачивки на этом устройстве':'Всё хранится на этом устройстве';
   if(!net){el.innerHTML='';return}
   const s=net.state,away=s?s.players.filter(p=>p.dev!==DEV&&net.on[p.dev]!==true):[];
-  const status=net.error?'не удалось подключиться':!net.connected?'подключаюсь…':away.length?`${away.map(p=>esc(p.name)).join(', ')} не в сети`:'все на связи';
+  const status=net.error?'не удалось подключиться'+(typeof net.error==='string'?' ('+esc(net.error)+')':''):!net.connected?'подключаюсь…':away.length?`${away.map(p=>esc(p.name)).join(', ')} не в сети`:'все на связи';
   el.innerHTML=`<div class="netbar"><span class="dot${net.connected&&!away.length?' on':''}"></span><span>Онлайн, комната <b>${net.code}</b> · ${status}</span><button class="btn small" id="nroom">Комната</button></div>`;
   $('nroom').onclick=openRoom;
   if(!game){
@@ -159,7 +177,7 @@ function shareRoom(code){
   else navigator.clipboard&&navigator.clipboard.writeText(text+': '+url).then(()=>{$('nmsg')&&($('nmsg').textContent='Ссылка скопирована')}).catch(()=>{});
 }
 function drawRoom(){
-  const s=net&&net.state;if(!s){sheet.open(`<h3 id="roomsheet">Комната ${net?net.code:''}</h3><p class="muted">Подключаюсь…</p><div class="row"><button class="btn" id="cancel">Закрыть</button></div>`);$('cancel').onclick=sheet.close;return}
+  const s=net&&net.state;roomSig=s?JSON.stringify([s.players,s.game&&!finished(s.game),net.on]):'';if(!s){sheet.open(`<h3 id="roomsheet">Комната ${net?net.code:''}</h3><p class="muted">Подключаюсь…</p><div class="row"><button class="btn" id="cancel">Закрыть</button></div>`);$('cancel').onclick=sheet.close;return}
   const playing=s.game&&!finished(s.game),canStart=!playing&&s.players.length>=2;
   sheet.open(`<h3 id="roomsheet">Комната ${net.code}</h3>
     <p class="muted">Друг открывает сайт, нажимает «Играть онлайн» и вводит код. Или отправьте ему ссылку.</p>
@@ -176,14 +194,20 @@ function drawRoom(){
   $('cancel').onclick=sheet.close;
 }
 function openRoom(){if(net)drawRoom()}
+// redraw the open room sheet only when its content changes, so a half-done "leave?" survives the other player's rolls
+let roomSig='';
+function redrawRoom(){const s=net&&net.state,sig=s?JSON.stringify([s.players,s.game&&!finished(s.game),net.on]):'';if(sig!==roomSig)drawRoom()}
 // who plays on this device: names from the roster or a new one
-function drawPick(title,cta,onGo,taken){
+function drawPick(title,cta,onGo,taken,code,seats){
+  const back=seats?[...new Set(seats.map(p=>p.dev))].map(d=>seats.filter(p=>p.dev===d)):[];
   sheet.open(`<h3>${title}</h3><p class="muted">Кто играет на этом устройстве? Можно выбрать нескольких, если вы сидите вместе.</p>
     <div class="roster">${roster.map(r=>{const k=netPick.indexOf(r.id);return `<div class="ritem"><button class="pick${k>=0?' on':''}" data-id="${r.id}"><span class="seat">${k>=0?'✓':''}</span><span>${esc(r.name)}</span></button></div>`}).join('')}</div>
     <form class="add" id="naddf"><input id="nname" placeholder="Новый игрок" maxlength="16" autocomplete="off" aria-label="Имя нового игрока"><button class="btn" type="submit">Добавить</button></form>
     <p class="muted" id="nmsg"></p>
-    <div class="row"><button class="btn primary" id="ngo" ${netPick.length?'':'disabled'}>${cta}</button><button class="btn" id="cancel">Отмена</button></div>`);
-  const redraw=()=>drawPick(title,cta,onGo,taken);
+    <div class="row"><button class="btn primary" id="ngo" ${netPick.length?'':'disabled'}>${cta}</button><button class="btn" id="cancel">Отмена</button></div>
+    ${back.length?`<p class="muted">Уже играли в этой комнате с другого устройства или из Safari? Продолжите за себя:</p><div class="row">${back.map(g=>`<button class="btn" data-seat="${esc(g[0].id)}">${g.map(p=>esc(p.name)).join(' и ')}</button>`).join('')}</div>`:''}`);
+  const redraw=()=>drawPick(title,cta,onGo,taken,code,seats);
+  document.querySelectorAll('[data-seat]').forEach(b=>b.onclick=async()=>{$('nmsg').textContent='Подключаюсь…';try{await reclaimSeat(code,b.dataset.seat)}catch(e){$('nmsg')&&($('nmsg').textContent=netErr(e))}});
   document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{const id=b.dataset.id,k=netPick.indexOf(id);if(k>=0)netPick.splice(k,1);else if(netPick.length<MAXP-1)netPick.push(id);redraw()});
   $('naddf').onsubmit=e=>{e.preventDefault();const v=$('nname').value.trim().slice(0,16);if(!v)return;
     let r=roster.find(x=>x.name.toLowerCase()===v.toLowerCase());if(!r){r={id:uid(),name:v};roster.push(r);saveRoster()}
@@ -193,7 +217,7 @@ function drawPick(title,cta,onGo,taken){
     const clash=taken?ps.find(p=>taken.some(t=>t.toLowerCase()===p.name.toLowerCase())):null;
     if(clash){$('nmsg').textContent=`В комнате уже есть «${clash.name}». Переименуйте игрока или выберите другого.`;return}
     $('ngo').disabled=true;$('nmsg').textContent='Подключаюсь…';
-    try{await onGo(ps)}catch(e){$('nmsg').textContent=e&&e.msg||'Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.';$('ngo').disabled=false}
+    try{await onGo(ps)}catch(e){if($('nmsg')){$('nmsg').textContent=netErr(e);$('ngo').disabled=false}}
   };
   $('cancel').onclick=sheet.close;
 }
@@ -214,7 +238,7 @@ async function joinRoom(code,ps){
     if(s.players.length+ps.length>MAXP){why=`В комнате уже ${s.players.length} игрока, всего можно ${MAXP}.`;return}
     const names=s.players.map(p=>p.name.toLowerCase()),dup=ps.find(p=>names.includes(p.name.toLowerCase()));
     if(dup){why=`В комнате уже есть «${dup.name}». Переименуйте игрока или выберите другого.`;return}
-    ps.forEach(p=>s.players.push({id:p.id,name:p.name,dev:DEV}));s.by=DEV;s.rev=(s.rev||0)+1;return s;
+    ps.forEach(p=>s.players.push({id:s.players.some(x=>x.id===p.id)?uid():p.id,name:p.name,dev:DEV}));s.by=DEV;s.rev=(s.rev||0)+1;return s;
   });
   if(!s)throw fail('Комнаты с таким кодом нет. Проверьте код.');
   if(!s.players.some(p=>p.dev===DEV))throw fail(why||'Не получилось войти, попробуйте ещё раз.');
@@ -227,7 +251,20 @@ async function startJoin(code){
   const s=await txRoom(code,s=>undefined);
   if(!s)return 'Комнаты с таким кодом нет. Проверьте код.';
   if(s.players.some(p=>p.dev===DEV)){await enterRoom(code);drawRoom();return ''}
-  netPick=[];drawPick(`Вход в комнату ${code}`,'Войти',ps=>joinRoom(code,ps),s.players.map(p=>p.name));return '';
+  netPick=[];drawPick(`Вход в комнату ${code}`,'Войти',ps=>joinRoom(code,ps),s.players.map(p=>p.name),code,s.players);return '';
+}
+// the same person on a new device, e.g. the invitation opened in Safari and the game continued from the home-screen icon
+async function reclaimSeat(code,pid){
+  let why='';
+  const s=await txRoom(code,s=>{
+    const p=s.players.find(x=>x.id===pid);if(!p){why='Такого игрока в комнате больше нет.';return}
+    const old=p.dev;s.players.filter(x=>x.dev===old).forEach(x=>x.dev=DEV);
+    [s.game,s.prev].forEach(g=>g&&g.players.forEach(x=>{if(x.dev===old)x.dev=DEV}));
+    s.by=DEV;s.rev=(s.rev||0)+1;return s;
+  });
+  if(!s)throw fail('Комнаты с таким кодом нет. Проверьте код.');
+  if(!s.players.some(p=>p.id===pid&&p.dev===DEV))throw fail(why||'Не получилось, попробуйте ещё раз.');
+  await enterRoom(code);drawRoom();
 }
 window.openOnline=(code)=>{
   if(net)return openRoom();
@@ -237,12 +274,12 @@ window.openOnline=(code)=>{
     <p class="muted" id="nmsg"></p><div class="row"><button class="btn" id="cancel">Отмена</button></div>`);
   $('ncreate').onclick=()=>{netPick=game&&!game.players.some(p=>p.dev)?game.players.map(p=>p.id).filter(id=>roster.some(r=>r.id===id)).slice(0,1):[];drawPick('Новая комната','Создать комнату',createRoom)};
   $('njoin').onsubmit=async e=>{e.preventDefault();$('nmsg').textContent='Ищу комнату…';
-    try{const err=await startJoin($('ncode').value);if(err&&$('nmsg'))$('nmsg').textContent=err}catch(e){$('nmsg')&&($('nmsg').textContent='Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.')}};
+    try{const err=await startJoin($('ncode').value);if(err&&$('nmsg'))$('nmsg').textContent=err}catch(e){$('nmsg')&&($('nmsg').textContent=netErr(e))}};
   $('cancel').onclick=sheet.close;
 };
 if(!FB&&!window.__yatzyNet)delete window.openOnline;
 else{
-  const saved=lsGet('yatzy.online');if(saved&&saved.code)enterRoom(saved.code);
+  const saved=lsGet('yatzy.online');if(saved&&typeof saved.code==='string'&&/^[A-Z0-9]{5}$/.test(saved.code))enterRoom(saved.code);
   // an invitation link ends with #room=CODE
   const fromLink=()=>{const m=location.hash.match(/^#room=([A-Za-z0-9]{5})$/);if(!m)return;
     window.history.replaceState(null,'',location.pathname+location.search);if(!net||net.code!==m[1].toUpperCase())window.openOnline(m[1].toUpperCase())};

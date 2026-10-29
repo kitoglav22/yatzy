@@ -203,3 +203,8 @@ td.cell button.sug.best{background:var(--accent);color:var(--on-accent);font-wei
 @media (prefers-reduced-motion:no-preference){td.cell button,.pick{transition:background .15s,border-color .15s}}
 /* Telegram full screen: Telegram's own buttons float over the top of the page */
 html.tgfull .wrap{padding-top:calc(20px + var(--tg-top,0px));padding-bottom:calc(48px + var(--tg-bottom,0px))}
+/* a solid strip under those buttons: the table scrolls away beneath it, and the dice stick just below it */
+html.tgfull body::before{content:"";position:fixed;left:0;right:0;top:0;height:var(--tg-top,0px);background:var(--bg);z-index:10}
+html.tgfull #dice{top:var(--tg-top,0px)}
+html.tgfull .toasts{padding-top:calc(12px + var(--tg-top,0px))}
+html.tgfull .sheet-bg{padding-top:var(--tg-top,0px)}

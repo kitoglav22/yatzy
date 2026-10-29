@@ -82,6 +82,8 @@ test('an invitation is shared as a link to the bot that opens the room', async (
 test('opens full screen and keeps the page clear of Telegram\'s buttons', async () => {
   assert.ok(await p.evaluate(() => document.documentElement.classList.contains('tgfull')));
   assert.equal(await p.evaluate(() => getComputedStyle(document.querySelector('.wrap')).paddingTop), '113px');
+  assert.equal(await p.evaluate(() => getComputedStyle($('dice')).top), '93px', 'the dice stick below Telegram\'s buttons');
+  assert.equal(await p.evaluate(() => getComputedStyle(document.body, '::before').height), '93px');
 });
 
 test('history and players come from the Telegram cloud, damaged and deleted games are skipped', async () => {

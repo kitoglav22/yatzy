@@ -136,6 +136,17 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')sheet.close()});
 function openCell(i,cid){
   const c=[...ALL,JK].find(x=>x.id===cid),cur=game.scores[i][cid];
   const noJoker=cid==='joker'&&game.scores[i].yatzy!==50;
+  // with dice on screen, the player on turn writes what the dice give or 0, and only after a roll
+  const r=game.dice&&game.roll,onTurn=r&&cur==null&&i===whoseTurn();
+  if(onTurn&&cid!=='joker'){
+    const x=r.n?(r.jokerTaken?0:scoreFor(cid,r.dice)):null,vals=x==null?[]:[...new Set([0,x])];
+    sheet.open(`<h3>${esc(game.players[i].name)} · ${c.name}</h3><p class="muted">${x==null?'Сначала бросьте кубики.':x?`Кубики дают ${x}. 0 — вычеркнуть.`:'С этими кубиками здесь 0: клетка будет вычеркнута.'}</p>
+      ${vals.length?`<div class="vals">${vals.map(v=>`<button data-v="${v}" class="${v===0?'z':''}">${v}</button>`).join('')}</div>`:''}
+      <div class="row"><button class="btn" id="cancel">Отмена</button></div>`);
+    $('cancel').onclick=sheet.close;
+    document.querySelectorAll('.vals button').forEach(b=>b.onclick=()=>setScore(i,cid,+b.dataset.v));
+    return;
+  }
   sheet.open(`<h3>${esc(game.players[i].name)} · ${c.name}</h3><p class="muted">${c.hint}${cid==='joker'?'':'. 0 — вычеркнуть'}.</p>
     ${noJoker?'<p class="note">Джокер можно поставить только после Яцзы: сначала впишите 50 в клетку «Яцзы».</p>':`<div class="vals">${c.vals.map(v=>`<button data-v="${v}" class="${v===cur?'sel':''}${v===0?' z':''}">${v}</button>`).join('')}</div>`}
     <div class="row">${cur!=null?'<button class="btn" id="clr">Стереть</button>':''}<button class="btn" id="cancel">Отмена</button></div>`);

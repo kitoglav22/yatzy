@@ -104,3 +104,16 @@ test('on a phone the dice and the roll button share one row', async () => {
   assert.ok(Math.abs(r.btn.width - r.dw) < 1 && Math.abs(r.btn.height - r.dw) < 1, `the button is the size of a die: ${r.btn.width} vs ${r.dw}`);
   await p.setViewportSize({ width: 820, height: 1180 });
 });
+
+test('with dice on, the player on turn picks only what the dice give or 0, and only after a roll', async () => {
+  await p.evaluate(() => { game = newGameFor(roster); game.dice = true; game.roll = newRoll(); saveGame(); render(); });
+  await p.click('button[data-p="0"][data-c="large"]');
+  assert.match(await p.textContent('.sheet'), /Сначала бросьте/);
+  assert.equal(await p.$$eval('.vals button', x => x.length), 0);
+  await p.click('#cancel');
+  await p.evaluate(() => { game.roll = { dice: [2, 2, 3, 3, 3], held: [false, false, false, false, false], n: 1, jokerTaken: false }; saveGame(); render(); });
+  await p.click('button[data-p="0"][data-c="large"]');
+  assert.deepEqual(await p.$$eval('.vals button', x => x.map(b => b.textContent)), ['0']);
+  await p.click('.vals button[data-v="0"]');
+  assert.equal((await state(p)).scores[0].large, 0);
+});

@@ -11,17 +11,17 @@
 <style>
 /* Layout: a printed dice-game score block — one tall table, categories left, a column per player, tap a cell to pick a score */
 :root{
-  --bg:#eef2f5; --paper:#ffffff; --ink:#1d2a3a; --muted:#66758a; --rule:#d3dbe4;
-  --accent:#1f5fd1; --on-accent:#ffffff; --accent-soft:#e3ecfb; --win:#c23b22; --win-soft:#fbe9e5; --ok:#1f8a4c; --stripe:rgba(31,95,209,.08);
+  --bg:#eef2f5; --paper:#ffffff; --ink:#1d2a3a; --muted:#5d6b80; --rule:#d3dbe4;
+  --accent:#1f5fd1; --on-accent:#ffffff; --accent-soft:#e3ecfb; --win:#187a42; --win-soft:#e2f3e8; --danger:#c23b22; --danger-soft:#fbe9e5; --ok:#1f8a4c; --stripe:rgba(31,95,209,.08);
   --display:"Unbounded", "Arial Black", system-ui, sans-serif;
   --body:"Manrope", -apple-system, "Segoe UI", system-ui, sans-serif;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0f1520; --paper:#182131; --ink:#e6ecf4; --muted:#93a1b5; --rule:#2b384c;
-  --accent:#6ea0ff; --on-accent:#0f1520; --accent-soft:#1f2f4d; --win:#ff8a70; --win-soft:#3a2420; --ok:#5ccf8c; --stripe:rgba(110,160,255,.10); color-scheme:dark}}
+  --accent:#6ea0ff; --on-accent:#0f1520; --accent-soft:#1f2f4d; --win:#5ccf8c; --win-soft:#16301f; --danger:#ff8a70; --danger-soft:#3a2420; --ok:#5ccf8c; --stripe:rgba(110,160,255,.10); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0f1520; --paper:#182131; --ink:#e6ecf4; --muted:#93a1b5; --rule:#2b384c;
-  --accent:#6ea0ff; --on-accent:#0f1520; --accent-soft:#1f2f4d; --win:#ff8a70; --win-soft:#3a2420; --ok:#5ccf8c; --stripe:rgba(110,160,255,.10); color-scheme:dark}
+  --accent:#6ea0ff; --on-accent:#0f1520; --accent-soft:#1f2f4d; --win:#5ccf8c; --win-soft:#16301f; --danger:#ff8a70; --danger-soft:#3a2420; --ok:#5ccf8c; --stripe:rgba(110,160,255,.10); color-scheme:dark}
 *{box-sizing:border-box}
 /* no double-tap zoom: quick taps on dice and cells must stay taps; no rubber-band bounce, which on a sharp flick dragged the sticky dice panel and total row off their edges */
 html,body{background:var(--bg);touch-action:manipulation;overscroll-behavior-y:none}
@@ -39,7 +39,7 @@ button{cursor:pointer}
 button:focus-visible,input:focus-visible,label:focus-within{outline:3px solid var(--accent);outline-offset:2px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1.5px solid var(--rule);background:var(--paper);border-radius:12px;padding:0 18px;font-weight:700;min-height:48px;white-space:nowrap}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
-.btn.danger{background:var(--win);border-color:var(--win);color:var(--on-accent)}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:var(--on-accent)}
 /* a long label (undo with two long names) wraps instead of pushing the page wider than the screen */
 .btn{max-width:100%}
 #undo{white-space:normal;line-height:1.2;padding-block:8px;text-align:center}
@@ -64,11 +64,11 @@ th.active .tag{background:var(--accent);color:var(--on-accent)}
 .cat{display:flex;flex-direction:column;gap:2px;min-width:0;width:100%;border:0;background:none;padding:0;text-align:left;color:inherit;font:inherit}
 .cat b{font-weight:700;text-decoration:underline dotted color-mix(in srgb,var(--muted) 60%,transparent);text-underline-offset:4px}
 .cat small{font-size:.75rem;font-weight:400;color:var(--muted);overflow-wrap:anywhere}
-td.cell{padding:0;height:56px}
-td.cell button{position:relative;display:block;width:100%;height:56px;border:0;background:transparent;font-size:1.3rem;font-weight:800}
+td.cell{padding:0;height:48px}
+td.cell button{position:relative;display:block;width:100%;height:48px;border:0;background:transparent;font-size:1.3rem;font-weight:800}
 td.cell button:hover{background:var(--accent-soft)}
 td.cell button.empty{color:var(--muted);font-weight:400;font-size:1rem}
-td.cell button.zero{color:var(--muted);text-decoration:line-through}
+td.cell button.zero{color:var(--muted);font-weight:400;font-size:1rem}
 tr.sum td{background:var(--bg);font-weight:800}
 tr.sum td.v{font-size:1.1rem}
 .v .need{display:block;font-size:.72rem;font-weight:600;color:var(--muted);margin-top:2px}
@@ -84,7 +84,7 @@ tr.section td{padding:10px 12px 6px;font-size:.72rem;letter-spacing:.1em;text-tr
 
 .banner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:16px 18px;border-radius:16px;background:var(--win-soft);border:1px solid var(--win)}
 .banner strong{font-family:var(--display);font-size:1.1rem;font-weight:600}
-.confirm{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-radius:14px;background:var(--win-soft)}
+.confirm{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-radius:14px;background:var(--danger-soft)}
 .confirm span{flex:1 1 220px}
 
 h2{font-family:var(--display);font-size:1.05rem;margin:0;font-weight:600}
@@ -132,12 +132,16 @@ table.avg td.hi{color:var(--ok)}
 .ach small{display:block;color:var(--muted);font-size:.78rem;margin-top:2px}
 .ach .who{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
 .ach .who span{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--accent-soft)}
-.ach .who span.no{background:transparent;color:var(--muted);font-weight:600;text-decoration:line-through;border:1px dashed var(--rule)}
+.ach .who span.no{display:none}
 .seg{display:flex;gap:6px;flex-wrap:wrap}
 .seg button{min-height:40px;padding:0 14px;border-radius:999px;border:1.5px solid var(--rule);background:var(--paper);font-weight:700}
 .seg button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
-.newach{margin:8px 0 0;font-size:.9rem}
-.newach b{color:var(--win)}
+.newach{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.newach p{margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.newach .who{font-weight:800;margin-right:4px}
+.newach p.muted{font-size:.8rem}
+.achip{font-size:.78rem;font-weight:700;padding:2px 9px;border-radius:999px;border:1px solid var(--rule);background:var(--paper);color:var(--muted)}
+.achip.new{background:var(--win);border-color:var(--win);color:var(--on-accent)}
 .banner>div{min-width:0;flex:1 1 260px}
 .remind{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 14px;border-radius:14px;background:var(--accent-soft)}
 .hist li{cursor:pointer}
@@ -235,7 +239,11 @@ td.cell button.flash{animation:flash 1.8s ease-out}
 .sheet-bg{position:fixed;inset:0;background:color-mix(in srgb,#000 45%,transparent);display:flex;align-items:flex-end;justify-content:center;z-index:20;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .sheet{background:var(--paper);color:var(--ink);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px;max-height:88%;overflow:auto}
 @media (min-width:700px){.sheet-bg{align-items:center}.sheet{border-radius:20px;max-height:80%}}
-.sheet h3{margin:0;font-family:var(--display);font-size:1.1rem;font-weight:600}
+.sheet h3{margin:0;font-family:var(--display);font-size:1.1rem;font-weight:600;padding-right:40px}
+.sheet{position:relative}
+.more{display:flex;flex-direction:column;gap:10px}
+.more .btn{justify-content:flex-start}
+.sheetx{position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;border:0;background:var(--bg);color:var(--muted);font-size:1rem;line-height:1;display:grid;place-items:center}
 .vals{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
 .vals button{min-height:56px;border-radius:12px;border:1.5px solid var(--rule);background:var(--bg);font-size:1.25rem;font-weight:800;font-variant-numeric:tabular-nums}
 .vals button.sel{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
@@ -249,7 +257,7 @@ td.cell button.flash{animation:flash 1.8s ease-out}
 .pick.on{border-color:var(--accent);background:var(--accent-soft)}
 .pick.on .seat{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .del{flex:none;min-height:52px;min-width:52px;border-radius:12px;border:1.5px solid var(--rule);background:var(--paper);color:var(--muted);font-weight:700;padding:0 10px}
-.del.arm{background:var(--win);border-color:var(--win);color:var(--on-accent)}
+.del.arm{background:var(--danger);border-color:var(--danger);color:var(--on-accent)}
 .add{display:flex;gap:8px}
 .add input{font-size:16px;flex:1;min-width:0;min-height:48px;border-radius:12px;border:1.5px solid var(--rule);background:var(--bg);padding:0 14px}
 @media (max-width:520px){
@@ -331,6 +339,8 @@ const ALL=[...UP,...LOW];
 const JK={id:'joker',name:'Джокер',hint:'повторный Яцзы, один раз за игру; в другую клетку 0',vals:[0,100]};
 const MAXP=4;
 const uid=()=>Math.random().toString(36).slice(2,9);
+// Russian plural: 1 ачивка, 2 ачивки, 5 ачивок
+const plural=(n,one,few,many)=>{const a=n%10,b=n%100;return a===1&&b!==11?one:a>=2&&a<=4&&(b<12||b>14)?few:many};
 
 let roster=[], game=null, history=[], ui={confirm:false}, store=null, net=null;
 // how a finished game is shared to a chat; set by the GitHub Pages and Telegram versions
@@ -409,10 +419,12 @@ function render(){
   // a score that has just come in flashes once
   const lm=lastMove(),L=(game.log||[]).length,fresh=seen.game===game.started&&L>seen.n?lm:null;seen.game=game.started;seen.n=L;
   const cell=(i,c)=>{const v=game.scores[i][c.id];
-    if(v==null&&i===turn&&sug&&sug[c.id]!=null&&mine(i)){const x=sug[c.id];
+    // only cells that score get a suggestion; a cell worth 0 stays a plain empty cell and a tap opens the picker,
+    // except right after the joker, when a 0 in any free cell is exactly what is due
+    if(v==null&&i===turn&&sug&&sug[c.id]!=null&&(sug[c.id]>0||game.roll&&game.roll.jokerTaken)&&mine(i)){const x=sug[c.id];
       return `<td class="cell${me(i)}"><button class="sug${x===0?' z':''}${x>0&&x===topSug?' best':''}" data-p="${i}" data-c="${c.id}" data-s="${x}" aria-label="${esc(game.players[i].name)}: ${c.name}, записать ${x}">${x}</button></td>`}
     const cls=(v==null?'empty':v===0?'zero':'')+(fresh&&fresh.i===i&&fresh.c.id===c.id?' flash':'');
-    return `<td class="cell${me(i)}"><button class="${cls}" data-p="${i}" data-c="${c.id}" ${net?'disabled':''} aria-label="${esc(game.players[i].name)}: ${c.name}">${v==null?'—':v}</button></td>`};
+    return `<td class="cell${me(i)}"><button class="${cls}" data-p="${i}" data-c="${c.id}" ${net?'disabled':''} aria-label="${esc(game.players[i].name)}: ${c.name}${v===0?', вычеркнуто':''}">${v==null?'—':v===0?'✕':v}</button></td>`};
   const row=c=>`<tr><td><button class="cat" data-help="${c.id}"><b>${c.name}</b><small>${c.hint}</small></button></td>${game.players.map((_,i)=>cell(i,c)).join('')}</tr>`;
   const need=t=>{if(t.bonus||!t.upFilled)return '';return t.par>=0?`<span class="need">с запасом +${t.par}</span>`:`<span class="need">отстаёт на ${-t.par}</span>`};
   const sec=t=>`<tr class="section"><td colspan="${n+1}">${t}</td></tr>`;
@@ -423,14 +435,14 @@ function render(){
   const best=Math.max(...T.map(t=>t.total)),leaders=T.filter(t=>t.total===best).length;
   h+=`<tr class="total"><td>Итого</td>${T.map((t,i)=>`<td class="${t.total===best&&best>0&&leaders===1?'lead':''}${me(i)}">${t.total}</td>`).join('')}</tr></tbody>`;
   tb.innerHTML=h;drawTotbar();
-  $('legend').innerHTML=over()?'':`${game.dice?'<span><i class="lg sug">16</i>можно записать</span><span><i class="lg best">25</i>лучший вариант</span>':''}<span>Нажмите на название, чтобы увидеть правило</span>`;
+  $('legend').innerHTML=over()||history.length>=5?'':`${game.dice?'<span><i class="lg sug">16</i>можно записать</span><span><i class="lg best">25</i>лучший вариант</span>':''}<span>Нажмите на название, чтобы увидеть правило</span>`;
 
   const bn=$('banner');
   if(over()){
     const order=T.map((t,i)=>({t:t.total,name:game.players[i].name})).sort((a,b)=>b.t-a.t);
     const msg=leaders>1?`Ничья, ${order.map(o=>o.t).join(' : ')}`:`Победа: ${esc(order[0].name)}, ${order.map(o=>o.t).join(' : ')}`;
     const na=(game.newAch||[]).filter(x=>x.list.length);
-    const achHtml=na.length?`<p class="newach">Ачивки за партию: ${na.map(x=>`${esc(x.name)}: ${x.list.map(a=>a.first?`<b>${a.name}</b>`:a.name).join(', ')}`).join('; ')}${na.some(x=>x.list.some(a=>a.first))?'. Новые выделены.':''}</p>`:'';
+    const achHtml=na.length?`<div class="newach">${na.map(x=>`<p><span class="who">${esc(x.name)}</span>${x.list.map(a=>`<span class="achip${a.first?' new':''}">${a.name}</span>`).join('')}</p>`).join('')}${na.some(x=>x.list.some(a=>a.first))?'<p class="muted">Закрашены новые ачивки</p>':''}</div>`:'';
     bn.innerHTML=`<div class="banner"><div><strong>${msg}</strong>${game.ended&&!done()?'<p class="muted" style="margin-top:4px">Партия закончена досрочно.</p>':''}${achHtml}</div><div class="row">${shareVia?'<button class="btn" id="shareres">Поделиться</button>':''}<button class="btn primary" id="again">${net?'Ещё партию':'Новая игра'}</button></div></div>`;
     $('again').onclick=net?net.again:openSetup;
     if($('shareres'))$('shareres').onclick=()=>shareVia(resultText());
@@ -450,17 +462,28 @@ function render(){
     // reordering in the middle of a dice turn would hand the roll to another player
     const midTurn=game.dice&&game.roll&&(game.roll.n>0||game.roll.jokerTaken);
     const last=(game.log||[]).slice(-1)[0],lp=last&&game.players.find(p=>p.id===last.pid),lc=last&&[...ALL,JK].find(c=>c.id===last.cid);
-    ac.innerHTML=`<div class="row">${lp&&lc?`<button class="btn" id="undo">↶ Отменить: ${esc(lp.name)}, ${lc.name}</button>`:''}<button class="btn" id="ng">Новая игра</button>${over()||midTurn?'':`<button class="btn" id="sw">${n===2?'Поменять местами':'Сдвинуть порядок'}</button>`}${!over()&&anyScore()?'<button class="btn" id="fin">Закончить досрочно</button>':''}${over()?'':`<button class="btn" id="dmode">${game.dice?'Ввод вручную':'Кубики на экране'}</button>`}${window.openOnline?'<button class="btn" id="onl">Играть онлайн</button>':''}</div>`;
+    // on screen: undo, online and «Ещё»; the rest waits in the «Ещё» sheet, so ending a game early takes a deliberate tap
+    ac.innerHTML=`<div class="row">${lp&&lc?`<button class="btn" id="undo">↶ Отменить: ${esc(lp.name)}, ${lc.name}</button>`:''}${window.openOnline?'<button class="btn" id="onl">Играть онлайн</button>':''}${over()?'':'<button class="btn" id="more">Ещё</button>'}</div>`;
     if($('onl'))$('onl').onclick=window.openOnline;
-    if($('dmode'))$('dmode').onclick=()=>{game.dice=!game.dice;if(game.dice&&!game.roll)game.roll=newRoll();lsSet('yatzy.dice',game.dice);saveGame();render()};
     if($('undo'))$('undo').onclick=undo;
-    if($('fin'))$('fin').onclick=()=>{ui.finish=true;render()};
-    // first player moves to the end; each column keeps its scores
-    if($('sw'))$('sw').onclick=()=>{game.players.push(game.players.shift());game.scores.push(game.scores.shift());saveGame();render()};
-    $('ng').onclick=()=>{if(over()||!anyScore())openSetup();else{ui.confirm=true;render()}};
+    if($('more'))$('more').onclick=()=>openMore(n,midTurn);
   }
   renderDice();renderHist();keepAwake();
   window.onAfterRender&&window.onAfterRender();
+}
+
+// the «Ещё» sheet: new game, order, dice or manual entry, and ending the game early
+function openMore(n,midTurn){
+  sheet.open(`<h3>Партия</h3><div class="more">
+    <button class="btn" id="ng">Новая игра</button>
+    ${midTurn?'':`<button class="btn" id="sw">${n===2?'Поменять местами':'Сдвинуть порядок'}</button>`}
+    <button class="btn" id="dmode">${game.dice?'Ввод вручную':'Кубики на экране'}</button>
+    ${anyScore()?'<button class="btn danger" id="fin">Закончить досрочно</button>':''}</div>`);
+  const then=f=>()=>{sheet.close();f();render();if(ui.confirm||ui.finish)$('actions').scrollIntoView({behavior:'smooth',block:'center'})};
+  $('ng').onclick=then(()=>{if(!anyScore())openSetup();else ui.confirm=true});
+  if($('sw'))$('sw').onclick=then(()=>{game.players.push(game.players.shift());game.scores.push(game.scores.shift());saveGame()});
+  $('dmode').onclick=then(()=>{game.dice=!game.dice;if(game.dice&&!game.roll)game.roll=newRoll();lsSet('yatzy.dice',game.dice);saveGame()});
+  if($('fin'))$('fin').onclick=then(()=>{ui.finish=true});
 }
 
 // keep the iPad screen on while a game is in progress
@@ -509,8 +532,8 @@ function renderHist(){
 }
 
 const sheet={el:null,
-  open(html){$('sheet').innerHTML=`<div class="sheet-bg" id="bg"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
-    $('bg').onclick=e=>{if(e.target.id==='bg')sheet.close()};},
+  open(html){$('sheet').innerHTML=`<div class="sheet-bg" id="bg"><div class="sheet" role="dialog" aria-modal="true"><button class="sheetx" id="sheetx" type="button" aria-label="Закрыть">✕</button>${html}</div></div>`;
+    $('bg').onclick=e=>{if(e.target.id==='bg')sheet.close()};$('sheetx').onclick=sheet.close;},
   close(){$('sheet').innerHTML=''}};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')sheet.close()});
 
@@ -657,10 +680,11 @@ function archive(){
   const after=computeStats();
   game.newAch=after.players.filter(p=>g.players.some(x=>x.name===p.name)).map(p=>{const b=before.players.find(x=>x.name===p.name);
     return {name:p.name,list:ACH.filter(a=>p.ach[a.id]&&(!b||!b.ach[a.id]||b.ach[a.id].n<p.ach[a.id].n)).map(a=>({id:a.id,name:a.name,first:!b||!b.ach[a.id]}))}});
-  // pop up first-time ones not shown during the game, at most five; all of the game's achievements are listed under the result
+  // pop up first-time ones not shown during the game; all of the game's achievements are listed under the result
   const pend=[];game.newAch.forEach(x=>x.list.forEach(a=>{if(a.first&&!((game.shown||{})[x.name]||[]).includes(a.id))pend.push({a:ACH.find(z=>z.id===a.id),name:x.name,first:true})}));
-  pend.slice(0,5).forEach(x=>toastLater(x.a,x.name,x.first));
-  if(pend.length>5)toastLater({badge:'+'+(pend.length-5),name:'И ещё '+(pend.length-5),desc:'список под итогом партии'},'Ачивки',false);
+  // several at once make one card instead of a stack over the result
+  if(pend.length===1)toastLater(pend[0].a,pend[0].name,true);
+  else if(pend.length)toastLater({badge:'+'+pend.length,label:'Новые ачивки',name:`${pend.length} ${plural(pend.length,'новая ачивка','новые ачивки','новых ачивок')}`,desc:'список под итогом партии'},[...new Set(pend.map(x=>x.name))].join(', '),true);
   store&&store.addGame(g);renderHist();
 }
 function unarchive(){
@@ -997,7 +1021,7 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had){had=true;return}if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 // the release number under the page shows whether a new version has arrived
-{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 52';$('sync').after(v)}
+{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 53';$('sync').after(v)}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 // remind about a backup every 5 finished games, unless the Telegram cloud already keeps every game
 let cloudKeeps=false;

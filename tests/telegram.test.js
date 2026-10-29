@@ -59,3 +59,10 @@ test('dice use Telegram haptics', async () => {
   await p.click('#roll'); await p.waitForFunction(() => !rolling);
   assert.ok(await p.evaluate(() => __tg.haptics) >= 1);
 });
+
+test('an invitation is shared as a link to the bot that opens the room', async () => {
+  await p.evaluate(() => shareRoom('K7MPX'));
+  const link = new URL(await p.evaluate(() => __tg.link));
+  assert.equal(link.origin + link.pathname, 'https://t.me/share/url');
+  assert.equal(link.searchParams.get('url'), 'https://t.me/k22_yatzy_bot/play?startapp=K7MPX');
+});

@@ -151,7 +151,8 @@ table.avg td.hi{color:var(--ok)}
   @keyframes tin{from{opacity:0;transform:translateY(-16px) scale(.96)}}
   @keyframes tout{to{opacity:0;transform:translateY(-12px)}}
 }
-#dice{position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+/* the page colour behind the sticky panel (and a strip above it) keeps the table from showing through its rounded corners */
+#dice{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);box-shadow:0 -12px 0 var(--bg)}
 .dicebar{display:flex;flex-direction:column;gap:8px;padding:10px 14px;border-radius:16px;background:var(--paper);border:1px solid var(--rule);box-shadow:0 6px 18px color-mix(in srgb,#000 10%,transparent)}
 .dicehead{display:flex;justify-content:space-between;align-items:baseline;gap:8px 16px;flex-wrap:wrap}
 .dicehead b{font-weight:800}

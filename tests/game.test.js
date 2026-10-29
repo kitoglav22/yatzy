@@ -11,6 +11,14 @@ before(async () => { env = await start(); p = await env.device('ipad', twoPlayer
 after(async () => { assert.deepEqual(env.errors, []); await env.stop(); });
 const fresh = () => p.evaluate(() => { game = newGameFor(roster); game.dice = false; game.roll = null; saveGame(); render(); });
 
+test('on one device the stripe follows the player on turn', async () => {
+  await fresh();
+  const striped = () => p.$$eval('#table thead th', x => x.slice(1).map(e => e.classList.contains('me')));
+  assert.deepEqual(await striped(), [true, false]);
+  await p.click('button[data-c="u1"][data-p="0"]'); await p.click('.vals button[data-v="3"]');
+  assert.deepEqual(await striped(), [false, true]);
+});
+
 test('the last cell ends the game, undo reopens it and takes it out of the history', async () => {
   await fresh();
   await p.evaluate(() => {

@@ -64,7 +64,8 @@ function parseState(str){if(str==null)return null;try{const s=JSON.parse(str);re
 
 function makeNet(code){
   const n={code,state:null,on:{},connected:false,loaded:false,last:'',offs:[],
-    mine(i){return n.connected&&!!game&&!!game.players[i]&&game.players[i].dev===DEV},
+    own(i){return !!game&&!!game.players[i]&&game.players[i].dev===DEV},
+    mine(i){return n.connected&&n.own(i)},
     push(){
       if(!n.connected||!game||!n.state||!n.state.game||game.started!==n.state.game.started)return;
       const g=synced(game),j=JSON.stringify(g);if(j===n.last)return;n.last=j;
@@ -250,6 +251,8 @@ function drawRoom(){
   $('cancel').onclick=sheet.close;bindRoomList();
 }
 function openRoom(){if(net){if(roomBot)roomBot.stale();drawRoom()}}
+// back in a room: a game in progress goes straight to the score sheet, otherwise the room sheet
+function showRoom(){const s=net&&net.state;if(s&&s.game&&!finished(s.game))sheet.close();else drawRoom()}
 // redraw the open room sheet only when its content changes, so a half-done "leave?" survives the other player's rolls
 let roomSig='';
 function redrawRoom(){const s=net&&net.state,sig=s?JSON.stringify([s.players,s.game&&!finished(s.game),net.on]):'';if(sig!==roomSig)drawRoom()}
@@ -319,7 +322,7 @@ async function startJoin(code){
   // already in this room on this device: just come back
   const s=await txRoom(code,s=>undefined);
   if(!s)return 'Комнаты с таким кодом нет. Проверьте код.';
-  if(s.players.some(p=>p.dev===DEV)){await enterRoom(code);drawRoom();return ''}
+  if(s.players.some(p=>p.dev===DEV)){await enterRoom(code);showRoom();return ''}
   netPick=[];drawPick(`Вход в комнату ${code}`,'Войти',ps=>joinRoom(code,ps),s.players.map(p=>p.name),code,s.players);return '';
 }
 // the same person on a new device, e.g. the invitation opened in Safari and the game continued from the home-screen icon
@@ -333,7 +336,7 @@ async function reclaimSeat(code,pid){
   });
   if(!s)throw fail('Комнаты с таким кодом нет. Проверьте код.');
   if(!s.players.some(p=>p.id===pid&&p.dev===DEV))throw fail(why||'Не получилось, попробуйте ещё раз.');
-  await enterRoom(code);drawRoom();
+  await enterRoom(code);showRoom();
 }
 window.openOnline=(code)=>{
   if(net)return openRoom();

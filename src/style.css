@@ -48,6 +48,8 @@ thead th{padding:10px 6px;vertical-align:bottom;height:1px}
 .ph .nm{border:0;background:transparent;padding:4px 6px;border-radius:8px;font-weight:800;font-size:1.05rem;max-width:100%;overflow-wrap:break-word;hyphens:auto;text-align:center;line-height:1.2}
 .ph .tag{font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:999px;color:transparent}
 th.active .tag{background:var(--accent);color:var(--on-accent)}
+/* the tint lies over each row's own background, so the stripe runs through the sums too */
+#table th.me,#table td.me{background-image:linear-gradient(color-mix(in srgb,var(--accent) 9%,transparent),color-mix(in srgb,var(--accent) 9%,transparent))}
 .cat{display:flex;flex-direction:column;gap:2px;min-width:0;width:100%;border:0;background:none;padding:0;text-align:left;color:inherit;font:inherit}
 .cat b{font-weight:700;text-decoration:underline dotted color-mix(in srgb,var(--muted) 60%,transparent);text-underline-offset:4px}
 .cat small{font-size:.75rem;font-weight:400;color:var(--muted);overflow-wrap:anywhere}

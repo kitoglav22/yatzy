@@ -68,19 +68,20 @@ async function start() {
 }
 
 // runs in the page: the same interface as the Firebase backend in src/online.js, backed by the test process.
-// Like Firebase, a transaction is first tried against an empty local cache.
+// Like Firebase, a transaction is first tried against an empty local cache,
+// and a room read by a transaction is handed to a new watcher at once.
 function fakeNet() {
   window.__yatzyNet = () => {
-    const L = { st: {}, on: {} }, dev = () => JSON.parse(localStorage.getItem('yatzy.dev'));
+    const L = { st: {}, on: {}, seen: {} }, dev = () => JSON.parse(localStorage.getItem('yatzy.dev'));
     window.__netPush = (c, s, o) => { (L.st[c] || []).forEach(f => f(s)); (L.on[c] || []).forEach(f => f(o || {})); };
-    const sub = (map, code, cb, first) => { (map[code] = map[code] || []).push(cb); first(code).then(cb); return () => { map[code] = map[code].filter(f => f !== cb); }; };
+    const sub = (map, code, cb, first) => { (map[code] = map[code] || []).push(cb); if (map === L.st && code in L.seen) cb(L.seen[code]); first(code).then(cb); return () => { map[code] = map[code].filter(f => f !== cb); }; };
     return {
       async tx(code, fn) {
         let cur = null;
         for (let i = 0; i < 6; i++) {
           const v = fn(cur);
-          if (v === undefined) { const real = await window.__netGet(code); if (real === cur) return { ok: false, val: cur }; cur = real; continue; }
-          if (await window.__netCas(code, cur, v)) return { ok: true, val: v };
+          if (v === undefined) { const real = await window.__netGet(code); if (real === cur) { L.seen[code] = cur; return { ok: false, val: cur }; } cur = real; continue; }
+          if (await window.__netCas(code, cur, v)) { L.seen[code] = v; return { ok: true, val: v }; }
           cur = await window.__netGet(code);
         }
         return { ok: false, val: cur };

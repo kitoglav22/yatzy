@@ -61,6 +61,15 @@ test('a score travels to the other device, undo only for your own move', async (
   assert.match(await B.textContent('.dnote'), /Женя/);
 });
 
+test('your own column carries a stripe on your device, whoever is on turn', async () => {
+  for (const P of [A, B]) {
+    const want = await P.evaluate(() => game.players.map(p => p.dev === DEV));
+    const got = await P.$$eval('#table thead th', x => x.slice(1).map(e => e.classList.contains('me')));
+    assert.deepEqual(got, want);
+    assert.equal(await P.$$eval('#table td.me', x => x.length), (await P.$$eval('#table tbody tr:not(.section)', x => x.length)));
+  }
+});
+
 test('a reaction floats up on the other screen and does not touch the game', async () => {
   const before = JSON.stringify((await state(A)).scores);
   await B.click('#rbtn'); await B.click('[data-react="1"]'); await w(300);

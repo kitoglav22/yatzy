@@ -76,7 +76,12 @@ test('a new game and every written cell are reported; a nudge goes only to a pla
   const pid = await first.evaluate(() => game.players[whoseTurn()].id);
   env.pub.tg = { QRSTU: {} };
   await first.click('#nudge'); await w(300);
-  assert.match(await first.textContent('#toasts'), /Не получится.*не из Telegram/);
+  assert.match(await first.textContent('#toasts'), /Не получится.*пусть откроет игру из Telegram/);
+  // coming back to the app introduces the player to the bot again
+  const before = ops(fn === 'A' ? 'B' : 'A', 'hello').length;
+  await other.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+  await w(300);
+  assert.equal(ops(fn === 'A' ? 'B' : 'A', 'hello').length, before + 1);
   env.pub.tg.QRSTU[pid] = 1;
   await first.click('#nudge'); await w(300);
   assert.match(await first.textContent('#toasts'), /Напомню/);

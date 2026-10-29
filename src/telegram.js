@@ -68,13 +68,16 @@ function tgSetup(tg){
 function tgBot(tg,has){
   const ask=(op,data)=>backend().then(b=>b.send(JSON.stringify({op,init:tg.initData,...data}))).catch(()=>{});
   const read=p=>backend().then(b=>b.read(p));
-  let on=null;const ready=()=>on||(on=read('pub/bot').then(v=>!!v,()=>{on=null;return false}));
+  // asked again until the bot answers, so a bot started while the app is open is found on the next room
+  let on=null;const ready=()=>on||(on=read('pub/bot').then(v=>{if(!v)on=null;return !!v},()=>{on=null;return false}));
   const mine=s=>[...new Set(s.players.concat(s.game?s.game.players:[]).filter(p=>p.dev===DEV).map(p=>p.id))];
   // the bot learns which seats in the room are this Telegram account; Telegram asks once whether the bot may write
   roomHook=(ev,code,s)=>{const pids=mine(s);if(pids.length)ready().then(ok=>{if(!ok)return;
     if(lsGet('yatzy.tgAsked')||!has('6.9')||!tg.requestWriteAccess)return ask('hello',{code,pids});
     lsSet('yatzy.tgAsked',1);
     try{tg.requestWriteAccess(ok=>ask('hello',{code,pids,allow:!!ok}))}catch(e){ask('hello',{code,pids})}})};
+  // and again each time the app comes back from the background, in case the bot missed the first time
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&net&&net.state)roomHook('back',net.code,net.state)});
   const u=tg.initDataUnsafe&&tg.initDataUnsafe.user;
   // the rating marks one's own line by a hash of the Telegram id, the same as the bot makes
   const myHash=u&&crypto.subtle?crypto.subtle.digest('SHA-256',new TextEncoder().encode('yatzy:'+u.id))
@@ -89,7 +92,7 @@ function tgBot(tg,has){
       const p=game&&game.players[whoseTurn()];if(!p)return;
       const can=await read('pub/tg/'+code).then(v=>v?v[p.id]:undefined,()=>null);
       if(can===1){ask('nudge',{code});lsSet(key,Date.now());say('Напомню','бот напишет в течение минуты')}
-      else say('Не получится',can===0?'не разрешил боту писать':can===null?'нет связи':'играет не из Telegram');
+      else say('Не получится',can===0?'не разрешил боту писать':can===null?'нет связи':'бот его пока не знает: пусть откроет игру из Telegram');
     };
     // the invitation is a card from the bot with a button straight into the room
     if(has('6.7'))inviteVia=code=>tg.switchInlineQuery(code,['users','groups']);

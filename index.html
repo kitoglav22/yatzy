@@ -1074,7 +1074,7 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had){had=true;return}if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 // the release number under the page shows whether a new version has arrived
-{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 61';$('sync').after(v)}
+{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 62';$('sync').after(v)}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 // remind about a backup every 5 finished games, unless the Telegram cloud already keeps every game
 let cloudKeeps=false;
@@ -1636,6 +1636,20 @@ function tgCloud(tg){
     updateGame(g){put('g'+g.at,plain(g))},
     deleteGame(g){call(cs.removeItem,'g'+g.at).catch(()=>{});put('d'+g.at,1)},
   };
+  // rooms with an unfinished game where this account has a seat go to the cloud too, so «Мои комнаты» on a tablet
+  // shows the rooms played on the phone; a room that is over or left for good stays in a short list of gone ones,
+  // so another device with an old list does not bring it back
+  let pushed=null,roomsGone=[];
+  const roomsNow=()=>{
+    const rs=typeof myRooms==='function'?myRooms():[],st=net&&net.state;
+    if(st&&st.game&&!finished(st.game)&&st.players.some(p=>p.dev===DEV)&&!rs.some(r=>r.code===net.code))rs.unshift({code:net.code,names:st.game.players.map(p=>String(p.name).slice(0,40))});
+    return rs.slice(0,8)};
+  const syncRooms=()=>{
+    if(pushed==null)return;const now=roomsNow(),j=JSON.stringify(now);if(j===pushed)return;
+    const left=JSON.parse(pushed).map(r=>r.code).filter(c=>!now.some(r=>r.code===c));pushed=j;
+    roomsGone=[...left,...roomsGone.filter(c=>!left.includes(c))].filter(c=>!now.some(r=>r.code===c)).slice(0,30);
+    put('rooms',{rooms:now,gone:roomsGone})};
+  const after=window.onAfterRender;window.onAfterRender=()=>{after&&after();syncRooms()};
   const show=t=>{tgCloudInfo=t;const el=$('tgcloud');if(el)el.textContent=t};
   show('Подключаюсь к облаку Telegram…');
   (async()=>{
@@ -1654,11 +1668,17 @@ function tgCloud(tg){
     if(keys.length>900){const old=keys.filter(k=>k[0]==='d'&&num(k)<Date.now()-182*864e5);if(old.length)call(cs.removeItems,old).catch(()=>{})}
     if(keys.includes('roster')){try{const r=JSON.parse(await call(cs.getItem,'roster'));
       if(Array.isArray(r))r.forEach(x=>{if(okPerson(x)&&!roster.some(y=>y.name===x.name||y.id===x.id)){roster.push({id:x.id,name:x.name});changed=true}})}catch(e){}}
+    if(keys.includes('rooms')&&typeof keepRoom==='function'){try{const v=JSON.parse(await call(cs.getItem,'rooms'));
+      roomsGone=(v.gone||[]).filter(c=>typeof c==='string').slice(0,30);
+      const mine=myRooms(),add=(v.rooms||[]).filter(r=>r&&typeof r.code==='string'&&/^[A-Z0-9]{5}$/.test(r.code)&&Array.isArray(r.names)&&!roomsGone.includes(r.code)&&!mine.some(x=>x.code===r.code)&&!(net&&net.code===r.code));
+      const keep=mine.filter(r=>!roomsGone.includes(r.code)).concat(add.map(r=>({code:r.code,names:r.names.map(n=>String(n).slice(0,40))})));
+      if(JSON.stringify(keep)!==JSON.stringify(mine)){lsSet('yatzy.rooms',keep.slice(0,8));changed=true}}catch(e){}}
+    pushed='[]';
     if(changed){lsSet('yatzy.hist',history);lsSet('yatzy.roster',roster);render()}
     // what is only on this device goes up
     cloudKeeps=true;render();
     history.filter(g=>!inCloud.has(g.at)).forEach(g=>store.addGame(g));
-    store.saveRoster(roster);
+    store.saveRoster(roster);syncRooms();
     show(`Партии и игроки сохраняются в облаке Telegram и видны на всех ваших устройствах с этим аккаунтом. Сейчас там партий: ${history.length}.`);
   })().catch(()=>show('Облако Telegram недоступно, партии хранятся только на этом устройстве.'));
 }

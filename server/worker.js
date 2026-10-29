@@ -13,7 +13,7 @@ const CELLS = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'three', 'four', 'small', 'la
 const NAMES = { u1: 'Единицы', u2: 'Двойки', u3: 'Тройки', u4: 'Четвёрки', u5: 'Пятёрки', u6: 'Шестёрки', three: 'Тройка', four: 'Каре', small: 'Малый стрит', large: 'Большой стрит', house: 'Фулл-хаус', chance: 'Шанс', yatzy: 'Яцзы', joker: 'Джокер' };
 const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
-const NUDGE_GAP = 30 * MIN;   // one nudge per room and sender
+const NUDGE_GAP = HOUR;       // one nudge per room and sender
 const FIRST_NOTE = 5 * MIN;   // a player who was in the app when the turn came gets the message once they are gone, but not before this
 const REMINDERS = 3;          // daily reminders for one turn, then the bot stops
 const IDLE = 30 * DAY;        // a room nobody played in for this long is forgotten

@@ -113,7 +113,7 @@ test('a reminder is not sent for a game that ended without a word to the bot', a
   assert.equal(x.db.at('srv/turn/ABCDE'), null);
 });
 
-test('a nudge reaches the player on turn, then waits half an hour; the app sees who can be nudged', async () => {
+test('a nudge reaches the player on turn, then waits an hour; the app sees who can be nudged', async () => {
   const x = setup();
   x.room('ABCDE', game([{ u1: 3 }, {}]), { d2: true });
   x.hello(1, 'ABCDE', ['a1']); x.hello(2, 'ABCDE', ['b1']); await x.tick();
@@ -122,9 +122,9 @@ test('a nudge reaches the player on turn, then waits half an hour; the app sees 
   assert.equal(x.sent.length, 1); assert.match(x.sent[0].text, /Женя ждёт твой ход/); assert.equal(x.sent[0].chat_id, 2);
   x.nudge(1, 'ABCDE'); await x.tick();
   assert.equal(x.sent.length, 1, 'too soon');
-  x.later(31 * 60e3); x.nudge(1, 'ABCDE'); await x.tick();
+  x.later(61 * 60e3); x.nudge(1, 'ABCDE'); await x.tick();
   assert.equal(x.sent.length, 2);
-  x.later(31 * 60e3); x.nudge(2, 'ABCDE'); x.nudge(9, 'ABCDE'); x.db.set('req/zz', JSON.stringify({ op: 'nudge', code: 'ABCDE', init: signed({ id: 1 }).replace('hash=', 'hash=0') }));
+  x.later(61 * 60e3); x.nudge(2, 'ABCDE'); x.nudge(9, 'ABCDE'); x.db.set('req/zz', JSON.stringify({ op: 'nudge', code: 'ABCDE', init: signed({ id: 1 }).replace('hash=', 'hash=0') }));
   await x.tick();
   assert.equal(x.sent.length, 2, 'not to oneself, not from a stranger, not with a forged sign-in');
 });

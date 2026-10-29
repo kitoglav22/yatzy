@@ -81,7 +81,7 @@ test('a new game and every written cell are reported; a nudge goes only to a pla
   await first.click('#nudge'); await w(300);
   assert.match(await first.textContent('#toasts'), /Напомню/);
   await first.click('#nudge'); await w(300);
-  assert.match(await first.textContent('#toasts'), /Уже напомнили.*через 30 мин/);
+  assert.match(await first.textContent('#toasts'), /Уже напомнили.*через 60 мин/);
   assert.equal(ops(fn, 'nudge').length, 1);
   assert.equal(ops(fn, 'nudge')[0].code, 'QRSTU'); assert.match(ops(fn, 'nudge')[0].init, /^user=/);
 });

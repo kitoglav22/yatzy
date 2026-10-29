@@ -1,6 +1,8 @@
 // GitHub Pages version only: the same page opened as a Telegram Mini App from the bot.
 // Telegram's script is loaded only there; it gives the theme, the back button, haptics, the user's name and room invitations.
 const TG_APP='https://t.me/k22_yatzy_bot/play'; // direct link of the Mini App
+// the bot's server (server/index.js, a Yandex Cloud Function); while it is empty the bot features stay off
+const BOT_API=window.__yatzyBot||'';
 (()=>{
   let inTg=/tgWebApp(Data|Platform|Version)=/.test(location.hash);
   try{if(inTg)sessionStorage.setItem('yatzy.tg','1');else inTg=sessionStorage.getItem('yatzy.tg')==='1'}catch(e){}
@@ -48,15 +50,47 @@ function tgSetup(tg){
   shareVia=text=>tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(TG_APP||location.origin+location.pathname)+'&text='+encodeURIComponent(text+' Сыграем?'));
   if(has('6.9')&&tg.CloudStorage)tgCloud(tg);
   tgSection(tg,has);
-  render();
   // invitations open the bot's Mini App right in the room
   if(TG_APP)inviteVia=(code,text)=>tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(TG_APP+'?startapp='+code)+'&text='+encodeURIComponent(text));
+  if(BOT_API&&window.openOnline)tgBot(tg,has);
+  render();
+  // a link with a room code opens that room; NEW-<code> comes from an invitation made in a chat and creates the room
   const sp=String(tg.initDataUnsafe&&tg.initDataUnsafe.start_param||'').toUpperCase();
   let seen='';try{seen=sessionStorage.getItem('yatzy.tgStart')||''}catch(e){}
-  if(/^[A-Z2-9]{5}$/.test(sp)&&sp!==seen&&window.openOnline){
+  const m=sp.match(/^(NEW-)?([A-HJ-NP-Z2-9]{5})$/);
+  if(m&&sp!==seen&&window.openOnline){
     try{sessionStorage.setItem('yatzy.tgStart',sp)}catch(e){}
-    if(!net||net.code!==sp)window.openOnline(sp);
+    if(!net||net.code!==m[2])m[1]?window.openInvite(m[2]):window.openOnline(m[2]);
   }
+}
+
+// the bot: "your turn" messages and reminders, a nudge for the player on turn, invitations through @bot in any chat, the rating
+function tgBot(tg,has){
+  // a plain-text body keeps it a simple request: no CORS preflight, half the calls to the function
+  const call=(op,data)=>fetch(BOT_API,{method:'POST',body:JSON.stringify({op,init:tg.initData,...data})})
+    .then(r=>r.json()).catch(()=>({ok:false}));
+  const mine=s=>[...new Set(s.players.concat(s.game?s.game.players:[]).filter(p=>p.dev===DEV).map(p=>p.id))];
+  roomHook=(ev,code,s)=>{
+    if(ev==='moved')return call('moved',{code});
+    const pids=mine(s);if(!pids.length)return;
+    // Telegram asks once whether the bot may write; the answer goes to the bot with the seats
+    if(lsGet('yatzy.tgAsked')||!has('6.9')||!tg.requestWriteAccess)return call('hello',{code,pids});
+    lsSet('yatzy.tgAsked',1);
+    try{tg.requestWriteAccess(ok=>call('hello',{code,pids,allow:!!ok}))}catch(e){call('hello',{code,pids})}
+  };
+  nudgeVia=async(code,who)=>{
+    const r=await call('nudge',{code});
+    toast({badge:'👉',label:'Бот',name:r.ok?'Напомнил':'Не получилось',desc:r.ok?`повторить можно через ${r.wait} мин`:r.wait?`повторить можно через ${r.wait} мин`:esc(r.why||'нет связи с ботом')},who,false);
+  };
+  // the invitation is a card from the bot with a button straight into the room
+  if(has('6.7'))inviteVia=code=>tg.switchInlineQuery(code,['users','groups']);
+  const sec=document.createElement('section');
+  sec.innerHTML='<h2>Рейтинг друзей</h2><p class="muted">Онлайн-партии через Telegram, где все игроки зашли из Telegram. Старт 1000, победа над более сильным даёт больше очков.</p><div class="card"><ol class="records" id="tgrating"><li>Загружаю…</li></ol></div>';
+  $('vstats').appendChild(sec);
+  const load=()=>call('rating',{}).then(r=>{const el=$('tgrating');if(!el)return;
+    el.innerHTML=!r.ok?'<li>Бот сейчас недоступен</li>':!r.list.length?'<li>Пока пусто: рейтинг появится после первой такой партии</li>'
+      :r.list.map((x,k)=>`<li${x.me?' class="me"':''}><span>${k+1}. ${esc(x.name)}</span><span><b>${x.r}</b> <small class="muted">${x.g} парт., ${x.w} побед</small></span></li>`).join('')});
+  load();$('tstats').addEventListener('click',load);
 }
 
 // finished games and players also live in the user's Telegram cloud: they survive a cleared cache and show up

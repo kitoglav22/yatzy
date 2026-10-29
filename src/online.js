@@ -6,6 +6,8 @@ const ROOM_CHARS='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SYNC=['players','scores','started','ended','dice','roll','log'];
 // the shared part of the game; undo history is cut to the last moves to keep the room small
 const synced=g=>{const o=pickKeys(g,SYNC);if(o.log)o.log=o.log.slice(-40);return o};
+// the Telegram bot listens here: 'enter' when a room is loaded, 'moved' after a move or a new game reached the room
+let roomHook=null;
 const DEV=lsGet('yatzy.dev')||(()=>{const d=uid()+uid();lsSet('yatzy.dev',d);return d})();
 
 let backendP=null;
@@ -60,8 +62,10 @@ function makeNet(code){
       if(!n.connected||!game||!n.state||!n.state.game||game.started!==n.state.game.started)return;
       const g=synced(game),j=JSON.stringify(g);if(j===n.last)return;n.last=j;
       // if the move does not reach the room, go back to what the room has
-      txRoom(code,s=>{if(!s.game||s.game.started!==g.started)return;s.game=g;s.by=DEV;s.rev=(s.rev||0)+1;return s})
-        .then(s=>{if(!s||!s.game||JSON.stringify(s.game)!==j)throw 0})
+      // the bot hears about written cells only, not about every roll
+      const cells=x=>x.scores.reduce((a,sc)=>a+ALL.filter(c=>sc[c.id]!=null).length,0);let wrote=false;
+      txRoom(code,s=>{if(!s.game||s.game.started!==g.started)return;wrote=cells(s.game)!==cells(g);s.game=g;s.by=DEV;s.rev=(s.rev||0)+1;return s})
+        .then(s=>{if(!s||!s.game||JSON.stringify(s.game)!==j)throw 0;if(wrote&&roomHook)roomHook('moved',code)})
         .catch(()=>{if(net!==n)return;toast({badge:'!',label:'Онлайн',name:'Ход не отправился',desc:'показываю то, что сохранено в комнате'},'Онлайн',false);n.resync()});
     },
     resync(){n.last='';if(n.state)n.apply(JSON.stringify(n.state),true)},
@@ -75,6 +79,7 @@ function makeNet(code){
       const s=parseState(str);if(s===undefined)return;
       if(!s){if(n.loaded)leaveRoom(true);return}
       const first=!n.loaded,was=n.state&&JSON.stringify([n.state.players,n.state.game,n.state.prev]);n.state=s;n.loaded=true;
+      if(first&&roomHook)roomHook('enter',code,s);
       const fx=s.fx,fxNew=fx&&fx.t!==n.fxT;n.fxT=fx&&fx.t;
       if(fxNew&&!first&&fx.dev!==DEV&&REACTS[fx.e]&&Number.isInteger(fx.e)){const p=s.players.find(x=>x.dev===fx.dev);if(p){showReact(p.name,REACTS[fx.e]);buzz('land')}}
       // nothing but a reaction changed: the local game may already be a move ahead of the room, so it stays as it is
@@ -156,6 +161,8 @@ const netErr=e=>e&&e.msg||'Нет связи с сервером. Проверь
 const retry=()=>{if(net&&net.error&&navigator.onLine!==false){backendP=null;enterRoom(net.code)}};
 window.addEventListener('online',retry);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')retry()});
+// a player who switched away counts as "not in the app", so the bot may write to them
+document.addEventListener('visibilitychange',()=>{const me=net;if(!me||!me.connected)return;backend().then(b=>b.setOn(me.code,document.visibilityState==='visible')).catch(()=>{})});
 async function leaveRoom(gone){
   const me=net;if(!me)return;
   const st=me.state;keepRoom(me.code,!gone&&st&&st.game&&!finished(st.game)&&st.players.some(p=>p.dev===DEV)?st:null);
@@ -182,7 +189,7 @@ async function startRoomGame(){
     if(s.game)s.prev=s.game;
     s.game={players:ps.map(p=>({id:p.id,name:p.name,dev:p.dev})),scores:ps.map(()=>({})),started:Date.now(),dice:true,roll:newRoll(),log:[]};
     s.by=DEV;s.rev=(s.rev||0)+1;return s;
-  }).catch(()=>{});
+  }).then(s=>{if(s&&s.game&&roomHook)roomHook('moved',net.code)}).catch(()=>{});
 }
 
 function renderNet(){
@@ -258,14 +265,27 @@ function drawPick(title,cta,onGo,taken,code,seats){
   $('cancel').onclick=sheet.close;
 }
 const fail=msg=>{const e=new Error(msg);e.msg=msg;return e};
-async function createRoom(ps){
-  for(let t=0;t<5;t++){
-    const code=roomCode(),st={v:1,players:ps.map(p=>({id:p.id,name:p.name,dev:DEV})),game:null,by:DEV,rev:1,at:Date.now()};
+async function createRoom(ps,fixed){
+  for(let t=0;t<(fixed?1:5);t++){
+    const code=fixed||roomCode(),st={v:1,players:ps.map(p=>({id:p.id,name:p.name,dev:DEV})),game:null,by:DEV,rev:1,at:Date.now()};
     const b=await backend(),r=await b.tx(code,cur=>cur==null?JSON.stringify(st):undefined);
     if(r.ok){await enterRoom(code);drawRoom();return}
   }
+  // someone opened the same invitation a moment earlier
+  if(fixed)return joinRoom(fixed,ps);
   throw fail('Не удалось создать комнату, попробуйте ещё раз.');
 }
+// an invitation sent through the bot carries a fresh code: the first one to open it creates the room
+window.openInvite=async code=>{
+  if(net&&net.code===code)return openRoom();
+  if(net)await leaveRoom();
+  try{
+    const s=await txRoom(code,s=>undefined);
+    if(s){const err=await startJoin(code);if(err){window.openOnline(code);$('nmsg').textContent=err}return}
+    netPick=game&&!game.players.some(p=>p.dev)?game.players.map(p=>p.id).filter(id=>roster.some(r=>r.id===id)).slice(0,1):[];
+    drawPick(`Новая комната ${code}`,'Создать комнату',ps=>createRoom(ps,code));
+  }catch(e){window.openOnline();$('nmsg').textContent=netErr(e)}
+};
 async function joinRoom(code,ps){
   let why='';
   const s=await txRoom(code,s=>{

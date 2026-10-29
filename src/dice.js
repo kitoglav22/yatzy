@@ -36,13 +36,14 @@ function renderDice(){
   const tip=r.jokerTaken&&my?`Джокер записан. Теперь поставьте 0 в любую свободную клетку колонки «${esc(who)}».`
     :first&&my?(!r.n?'Нажмите синюю кнопку со стрелкой, потом на кубики, которые хотите оставить.':r.n<3?'Нажмите на кубики, которые оставить, и бросайте ещё, или выберите клетку.':'Выберите клетку в таблице.')
     :'';
-  el.innerHTML=`<div class="dicebar"><div class="dicehead"><span>Ходит <b>${esc(who)}</b></span><span class="dhr"><span class="muted">бросок ${r.n} из 3</span>${net&&net.react?'<button class="rbtn" id="rbtn" aria-label="Реакция" aria-expanded="'+!!ui.reacts+'">😊</button>':''}</span></div>
+  el.innerHTML=`<div class="dicebar"><div class="dicehead"><span>Ходит <b>${esc(who)}</b></span><span class="dhr"><span class="muted">бросок ${r.n} из 3</span>${!my&&net&&nudgeVia?'<button class="rbtn" id="nudge" aria-label="Поторопить">👉</button>':''}${net&&net.react?'<button class="rbtn" id="rbtn" aria-label="Реакция" aria-expanded="'+!!ui.reacts+'">😊</button>':''}</span></div>
     ${net&&net.react&&ui.reacts?`<div class="reacts">${REACTS.map((e,k)=>`<button data-react="${k}">${e}</button>`).join('')}</div>`:''}
     <div class="dicerow"><div class="dies">${r.dice.map((v,k)=>`<button class="die${showHeld&&r.held[k]?' held':''}${v?'':' blank'}" data-k="${k}" ${canHold?'':'disabled'} aria-label="${v?'Кубик '+v:'Кубик'}${showHeld&&r.held[k]?', держу':''}">${range(0,8).map(q=>`<i class="${v&&PIPS[v].includes(q)?'on':''}"></i>`).join('')}</button>`).join('')}</div>
     <button class="btn primary rollbtn" id="roll" ${!my||r.n>=3||r.jokerTaken?'disabled':''} aria-label="${r.n?'Бросить ещё':'Бросить'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20.5 3.5v5h-5"/></svg></button></div>
     ${tip?`<p class="muted">${tip}</p>`:lm?`<p class="muted dnote">Записано: <b>${esc(game.players[lm.i].name)}</b>, ${lm.c.name} ${lm.v||'вычеркнуто'}</p>`:''}</div>`;
   el.querySelectorAll('.die').forEach(b=>b.onclick=()=>{const k=+b.dataset.k;r.held[k]=!r.held[k];saveGame();renderDice()});
   $('roll').onclick=rollDice;
+  if($('nudge'))$('nudge').onclick=()=>nudgeVia(net.code,who);
   if($('rbtn')){$('rbtn').onclick=()=>{ui.reacts=!ui.reacts;renderDice()};el.querySelectorAll('[data-react]').forEach(b=>b.onclick=()=>{ui.reacts=false;net.react(+b.dataset.react);renderDice()})}
 }
 // the result is drawn and saved at once; the animation only reveals it:

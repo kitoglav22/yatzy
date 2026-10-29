@@ -97,6 +97,7 @@ section{display:flex;flex-direction:column;gap:10px}
 .records li{display:flex;justify-content:space-between;gap:6px 16px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--rule)}
 .records li:last-child{border-bottom:0}
 .records b{font-variant-numeric:tabular-nums}
+.records li.me{background:var(--accent-soft)}
 .scroll{overflow-x:auto}
 table.avg td,table.avg th{padding:8px 12px;font-size:.92rem}
 table.avg td+td{font-weight:700}

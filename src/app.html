@@ -77,6 +77,39 @@ section{display:flex;flex-direction:column;gap:10px}
 .hist .res{font-variant-numeric:tabular-nums;font-weight:600;min-width:0;overflow-wrap:anywhere}
 .hist .res b{color:var(--win)}
 
+.tabs{display:flex;gap:4px;padding:4px;border-radius:14px;background:var(--paper);border:1px solid var(--rule);align-self:flex-start}
+.tabs button{min-height:44px;padding:0 20px;border:0;border-radius:10px;background:transparent;font-weight:700;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--on-accent)}
+.view{display:flex;flex-direction:column;gap:20px}
+.pcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.pcard{background:var(--paper);border:1px solid var(--rule);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.pcard h3{margin:0;font-family:var(--display);font-size:1.05rem;font-weight:600;overflow-wrap:anywhere}
+.big{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.big b{font-family:var(--display);font-size:2rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:0;font-size:.92rem}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+.streak{align-self:flex-start;font-size:.8rem;font-weight:800;padding:4px 10px;border-radius:999px;background:var(--win-soft);color:var(--win)}
+.records{list-style:none;margin:0;padding:0}
+.records li{display:flex;justify-content:space-between;gap:6px 16px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--rule)}
+.records li:last-child{border-bottom:0}
+.records b{font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto}
+table.avg td,table.avg th{padding:8px 12px;font-size:.92rem}
+table.avg td+td{font-weight:700}
+table.avg td.hi{color:var(--ok)}
+.achs{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.ach{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:14px;background:var(--paper);border:1px solid var(--rule);min-width:0}
+.ach .badge{flex:none;display:grid;place-items:center;width:52px;height:44px;padding:0 4px;border-radius:12px;letter-spacing:-.02em;background:var(--accent);color:var(--on-accent);font-family:var(--display);font-weight:800;font-size:.72rem;text-align:center;line-height:1}
+.ach.off{opacity:.5}
+.ach.off .badge{background:var(--bg);color:var(--muted);border:1.5px dashed var(--rule)}
+.ach b{display:block}
+.ach small{display:block;color:var(--muted);font-size:.78rem;margin-top:2px}
+.ach .who{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.ach .who span{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--accent-soft)}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{min-height:40px;padding:0 14px;border-radius:999px;border:1.5px solid var(--rule);background:var(--paper);font-weight:700}
+.seg button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .sheet-bg{position:fixed;inset:0;background:color-mix(in srgb,#000 45%,transparent);display:flex;align-items:flex-end;justify-content:center;z-index:20;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .sheet{background:var(--paper);color:var(--ink);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px;max-height:88%;overflow:auto}
 @media (min-width:700px){.sheet-bg{align-items:center}.sheet{border-radius:20px;max-height:80%}}
@@ -113,18 +146,26 @@ section{display:flex;flex-direction:column;gap:10px}
     <button class="btn small" id="players">Игроки</button>
   </header>
 
-  <div id="banner"></div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tgame" aria-selected="true">Партия</button>
+    <button role="tab" id="tstats" aria-selected="false">Статистика</button>
+  </nav>
 
-  <div class="card"><table id="table"></table></div>
+  <div id="vgame" class="view">
+    <div id="banner"></div>
+    <div class="card"><table id="table"></table></div>
+    <div id="actions"></div>
+  </div>
 
-  <div id="actions"></div>
-
-  <section>
-    <h2>Прошлые игры</h2>
-    <div class="tally" id="tally"></div>
-    <div class="card"><ul class="hist" id="hist"></ul></div>
-  </section>
-  <!--EXTRA-->
+  <div id="vstats" class="view" hidden>
+    <div id="stats"></div>
+    <section>
+      <h2>Прошлые игры</h2>
+      <div class="tally" id="tally"></div>
+      <div class="card"><ul class="hist" id="hist"></ul></div>
+    </section>
+<!--EXTRA-->
+  </div>
   <p class="muted" id="sync"></p>
 </div>
 <div id="sheet"></div>
@@ -231,6 +272,7 @@ function render(){
 }
 
 function renderHist(){
+  if(!$('vstats').hidden)renderStats();
   const list=[...history].sort((a,b)=>b.at-a.at);
   const wins={};list.forEach(g=>{if(g.winner!=null)wins[g.winner]=(wins[g.winner]||0)+1});
   const draws=list.filter(g=>g.winner==null).length;
@@ -285,7 +327,7 @@ $('players').onclick=()=>{if(game&&anyScore()&&!done()){ui.confirm=true;render()
 
 function archive(){
   const T=game.players.map((_,i)=>totals(i)),best=Math.max(...T.map(t=>t.total)),w=T.filter(t=>t.total===best);
-  const g={at:Date.now(),players:game.players.map((p,i)=>({id:p.id,name:p.name,total:T[i].total,scores:game.scores[i]})),
+  const g={at:Date.now(),started:game.started,players:game.players.map((p,i)=>({id:p.id,name:p.name,total:T[i].total,scores:game.scores[i]})),
     winner:w.length>1?null:game.players[T.findIndex(t=>t.total===best)].name};
   game.saved=true;history.push(g);lsSet('yatzy.hist',history);
   store&&store.addGame(g);renderHist();
@@ -293,5 +335,106 @@ function archive(){
 function saveGame(){lsSet('yatzy.game',game);store&&store.saveGame(game)}
 function saveRoster(){lsSet('yatzy.roster',roster);store&&store.saveRoster(roster)}
 
-load();render();
+// statistics and achievements, computed from finished games
+const ACH=[
+  {id:'win',badge:'1',name:'Первая победа',desc:'выиграть партию',t:c=>c.won},
+  {id:'yatzy',badge:'50',name:'Яцзы!',desc:'выбросить Яцзы',t:c=>c.sc.yatzy===50},
+  {id:'joker',badge:'+100',name:'Джокер',desc:'выбросить Яцзы второй раз',t:c=>c.sc.joker===100},
+  {id:'bonus',badge:'63',name:'Бонус',desc:'набрать 63+ в верхней части',t:c=>c.up>=63},
+  {id:'upper80',badge:'80',name:'Верхний этаж',desc:'80+ в верхней части',t:c=>c.up>=80},
+  {id:'sixes',badge:'6×5',name:'Пять шестёрок',desc:'30 в «Шестёрках»',t:c=>c.sc.u6===30},
+  {id:'ladder',badge:'4+5',name:'Лестница',desc:'оба стрита в одной партии',t:c=>c.sc.small===30&&c.sc.large===40},
+  {id:'fullset',badge:'7/7',name:'Полный набор',desc:'ни одного нуля в нижней части',t:c=>LOW.every(x=>c.sc[x.id]>0)},
+  {id:'clean',badge:'0×0',name:'Без потерь',desc:'ни одного вычёркивания за партию',t:c=>c.zeros===0},
+  {id:'chance',badge:'27+',name:'Не упустил шанс',desc:'27+ в «Шансе»',t:c=>c.sc.chance>=27},
+  {id:'s250',badge:'250',name:'Четверть тысячи',desc:'250+ очков за партию',t:c=>c.p.total>=250},
+  {id:'s300',badge:'300',name:'Трёхсотка',desc:'300+ очков за партию',t:c=>c.p.total>=300},
+  {id:'crush',badge:'+100',name:'Разгром',desc:'победить с отрывом 100+',t:c=>c.won&&c.margin>=100},
+  {id:'photo',badge:'≤5',name:'Фотофиниш',desc:'победить с отрывом до 5 очков',t:c=>c.won&&c.margin>0&&c.margin<=5},
+  {id:'streak3',badge:'×3',name:'Серия',desc:'3 победы подряд',t:c=>c.s.streak===3},
+  {id:'streak5',badge:'×5',name:'Неудержимый',desc:'5 побед подряд',t:c=>c.s.streak===5},
+  {id:'grave',badge:'✕5',name:'Кладбище',desc:'вычеркнуть 5+ клеток за партию',t:c=>c.zeros>=5},
+  {id:'g10',badge:'10',name:'Завсегдатай',desc:'сыграть 10 партий',t:c=>c.s.games===10},
+  {id:'g50',badge:'50',name:'Полсотни',desc:'сыграть 50 партий',t:c=>c.s.games===50},
+];
+
+function computeStats(){
+  const games=[...history].sort((a,b)=>a.at-b.at),P={},rec={best:null,margin:null,worst:null};
+  const get=n=>P[n]||(P[n]={name:n,games:0,wins:0,sum:0,best:0,worst:Infinity,bonus:0,yatzy:0,joker:0,zeros:{},cat:{},streak:0,bestStreak:0,ach:{},last:[]});
+  games.forEach(g=>{
+    const sorted=[...g.players].sort((a,b)=>b.total-a.total);
+    const margin=sorted.length>1?sorted[0].total-sorted[1].total:0;
+    if(g.winner&&(!rec.margin||margin>rec.margin.v))rec.margin={v:margin,who:g.winner,at:g.at};
+    g.players.forEach(p=>{
+      const s=get(p.name),sc=p.scores||{},won=g.winner===p.name;
+      const up=UP.reduce((a,c)=>a+(sc[c.id]||0),0),zeros=ALL.filter(c=>sc[c.id]===0).length;
+      s.games++;s.sum+=p.total;s.best=Math.max(s.best,p.total);s.worst=Math.min(s.worst,p.total);s.last.push(won);
+      if(up>=63)s.bonus++;if(sc.yatzy===50)s.yatzy++;if(sc.joker===100)s.joker++;
+      ALL.forEach(c=>{if(sc[c.id]==null)return;(s.cat[c.id]=s.cat[c.id]||[]).push(sc[c.id]);if(sc[c.id]===0)s.zeros[c.id]=(s.zeros[c.id]||0)+1});
+      if(won){s.wins++;s.streak++;s.bestStreak=Math.max(s.bestStreak,s.streak)}else s.streak=0;
+      if(!rec.best||p.total>rec.best.v)rec.best={v:p.total,who:p.name,at:g.at};
+      if(!rec.worst||p.total<rec.worst.v)rec.worst={v:p.total,who:p.name,at:g.at};
+      const c={p,sc,up,won,margin,zeros,s};
+      ACH.forEach(a=>{if(a.t(c)){const r=s.ach[a.id]||(s.ach[a.id]={n:0,first:g.at});r.n++}});
+    });
+  });
+  return {players:Object.values(P).sort((a,b)=>b.wins-a.wins||b.games-a.games),rec,count:games.length};
+}
+
+const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+const fmt=x=>Math.round(x).toLocaleString('ru-RU');
+const pct=(a,b)=>b?Math.round(100*a/b)+'%':'—';
+const day=t=>new Date(t).toLocaleDateString('ru-RU',{day:'numeric',month:'long'});
+let statFilter=null;
+
+function renderStats(){
+  const st=computeStats(),el=$('stats');
+  if(!st.count){
+    el.innerHTML=`<div class="card" style="padding:20px"><p style="margin:0 0 6px;font-weight:700">Статистика появится после первой законченной партии</p><p class="muted">Здесь будут победы, средний счёт, рекорды и средние очки по каждой клетке. Ниже все ачивки, которые можно открыть.</p></div>`+achGrid(st);
+    return;
+  }
+  let h=`<div class="pcards">${st.players.map(p=>{
+    const z=Object.entries(p.zeros).sort((a,b)=>b[1]-a[1])[0];
+    const zc=z?[...ALL].find(c=>c.id===z[0]).name:'—';
+    return `<div class="pcard"><h3>${esc(p.name)}</h3>
+      <div class="big"><b>${p.wins}</b><span class="muted">${p.wins===1?'победа':p.wins>=2&&p.wins<=4?'победы':'побед'} из ${p.games} · ${pct(p.wins,p.games)}</span></div>
+      ${p.streak>=2?`<span class="streak">${p.streak} ${p.streak<=4?'победы':'побед'} подряд</span>`:''}
+      <dl class="kv"><dt>Средний счёт</dt><dd>${fmt(p.sum/p.games)}</dd><dt>Лучший / худший</dt><dd>${p.best} / ${p.worst}</dd>
+      <dt>Бонус взят</dt><dd>${pct(p.bonus,p.games)}</dd><dt>Яцзы</dt><dd>${p.yatzy} из ${p.games}</dd><dt>Джокеров</dt><dd>${p.joker}</dd>
+      <dt>Лучшая серия побед</dt><dd>${p.bestStreak}</dd><dt>Чаще вычёркивает</dt><dd>${zc}</dd></dl></div>`}).join('')}</div>`;
+  const r=st.rec;
+  h+=`<section><h2>Рекорды</h2><div class="card"><ul class="records">
+    <li><span>Самый большой счёт</span><span><b>${r.best.v}</b> · ${esc(r.best.who)}, ${day(r.best.at)}</span></li>
+    ${r.margin?`<li><span>Самый крупный отрыв</span><span><b>${r.margin.v}</b> · ${esc(r.margin.who)}, ${day(r.margin.at)}</span></li>`:''}
+    <li><span>Самый скромный счёт</span><span><b>${r.worst.v}</b> · ${esc(r.worst.who)}, ${day(r.worst.at)}</span></li>
+    <li><span>Сыграно партий</span><span><b>${st.count}</b></span></li></ul></div></section>`;
+  const ps=st.players;
+  h+=`<section><h2>Средние очки по клеткам</h2><div class="card scroll"><table class="avg"><thead><tr><th style="width:40%"></th>${ps.map(p=>`<th>${esc(p.name)}</th>`).join('')}</tr></thead><tbody>
+    ${[...ALL,JK].map(c=>{const vals=ps.map(p=>avg(p.cat[c.id]||[]));const mx=Math.max(...vals);
+      return `<tr><td>${c.name}</td>${vals.map(v=>`<td class="${ps.length>1&&v===mx&&v>0?'hi':''}">${v?v.toFixed(1).replace('.',','):'0'}</td>`).join('')}</tr>`}).join('')}
+  </tbody></table></div></section>`;
+  el.innerHTML=h+achGrid(st);
+  el.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{statFilter=b.dataset.n||null;renderStats()});
+}
+
+function achGrid(st){
+  const ps=st.players,sel=ps.find(p=>p.name===statFilter);
+  const seg=ps.length>1?`<div class="seg"><button class="${sel?'':'on'}" data-n="">Все</button>${ps.map(p=>`<button class="${sel===p?'on':''}" data-n="${esc(p.name)}">${esc(p.name)}</button>`).join('')}</div>`:'';
+  const pool=sel?[sel]:ps,got=ACH.filter(a=>pool.some(p=>p.ach[a.id])).length;
+  return `<section><h2>Ачивки · ${got} из ${ACH.length}</h2>${seg}<div class="achs">${ACH.map(a=>{
+    const who=pool.filter(p=>p.ach[a.id]);
+    return `<div class="ach${who.length?'':' off'}"><span class="badge">${a.badge}</span><div style="min-width:0"><b>${a.name}</b><small>${a.desc}</small>${who.length?`<div class="who">${who.map(p=>`<span>${esc(p.name)}${p.ach[a.id].n>1?' ×'+p.ach[a.id].n:''}</span>`).join('')}</div>`:''}</div></div>`}).join('')}</div></section>`;
+}
+
+function setView(v){
+  const st=v==='stats';
+  $('vgame').hidden=st;$('vstats').hidden=!st;
+  $('tgame').setAttribute('aria-selected',!st);$('tstats').setAttribute('aria-selected',st);
+  if(st)renderStats();
+}
+$('tgame').onclick=()=>{location.hash='';setView('game')};
+$('tstats').onclick=()=>{location.hash='stats';setView('stats')};
+window.addEventListener('hashchange',()=>setView(location.hash==='#stats'?'stats':'game'));
+
+load();render();setView(location.hash==='#stats'?'stats':'game');
 </script>

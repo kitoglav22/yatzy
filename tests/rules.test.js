@@ -1,6 +1,8 @@
 // House rules: scores for dice, totals and bonus, the joker, fair dice
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { start, twoPlayers } = require('./helpers');
 
 let env, p;
@@ -46,4 +48,26 @@ test('the joker can be entered only after a Yatzy of 50', async () => {
 test('dice are fair: every face about 1/6', async () => {
   const c = await p.evaluate(() => { const c = [0, 0, 0, 0, 0, 0, 0]; for (let k = 0; k < 60000; k++) c[rnd6()]++; return c.slice(1); });
   for (const n of c) assert.ok(n > 9400 && n < 10600, `face count ${n}`);
+});
+
+test('the bot counts totals and the end of a game the same way as the app', async () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'server', 'worker.js'), 'utf8');
+  const W = await import('data:text/javascript,' + encodeURIComponent(src + '\nexport { total, finished };'));
+  // random sheets from the cells' allowed values, some cells left empty
+  const sheets = await p.evaluate(() => Array.from({ length: 300 }, () => {
+    const sc = {};
+    ALL.forEach(c => { if (Math.random() < .8) sc[c.id] = c.vals[Math.floor(Math.random() * c.vals.length)] });
+    if (Math.random() < .2) sc.joker = 100;
+    return sc;
+  }));
+  const app = await p.evaluate(sheets => sheets.map(sc => {
+    const keep = game;
+    game = { players: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], scores: [sc, sc], started: 1 };
+    const r = [totals(0).total, ALL.every(c => sc[c.id] != null)];
+    game = keep; return r;
+  }), sheets);
+  sheets.forEach((sc, i) => {
+    assert.equal(W.total(sc), app[i][0], JSON.stringify(sc));
+    assert.equal(W.finished({ players: [{}, {}], scores: [sc, sc] }), app[i][1]);
+  });
 });

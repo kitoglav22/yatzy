@@ -13,10 +13,10 @@
   };
   try{
     const [gs,rs,hs]=await Promise.all([db.doc('current/game').get(),db.doc('current/roster').get(),db.collection('games').get()]);
-    if(rs.exists){try{const r=JSON.parse(rs.data().json);if(Array.isArray(r)&&r.length)roster=r}catch(e){}}
+    if(rs.exists){try{const r=JSON.parse(rs.data().json);if(Array.isArray(r)&&r.length)roster=r.filter(okPerson).map(x=>({id:x.id,name:x.name}))}catch(e){}}
     if(gs.exists){try{const g=normGame(JSON.parse(gs.data().json));if(g)game=g}catch(e){}}
     ensureRoster(game);
-    const remote=hs.docs.map(d=>({...d.data(),_doc:d.id})),seen=new Set(remote.map(g=>g.at));
+    const remote=hs.docs.map(d=>({...d.data(),_doc:d.id})).filter(okSavedGame),seen=new Set(remote.map(g=>g.at));
     const localOnly=history.filter(g=>!seen.has(g.at));localOnly.forEach(g=>store.addGame(g));
     history=remote.concat(localOnly);
     lsSet('yatzy.hist',history);lsSet('yatzy.roster',roster);lsSet('yatzy.game',game);

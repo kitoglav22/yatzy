@@ -64,6 +64,11 @@ function whoseTurn(){if(!game||over())return -1;const f=game.players.map((_,i)=>
 const anyScore=()=>game&&game.scores.some(s=>Object.keys(s).length);
 
 // also used inside attributes, so quotes are escaped too
+// a finished game from a backup or another device: anything else is skipped, so it cannot break the history
+const okSavedGame=g=>!!g&&typeof g.at==='number'&&Array.isArray(g.players)&&g.players.length>0&&g.players.every(p=>p&&typeof p.name==='string'&&p.name.length<=40&&Number.isFinite(p.total)
+  &&(p.scores==null||typeof p.scores==='object'&&Object.values(p.scores).every(v=>v===null||Number.isFinite(v))));
+// a player from a backup, the Telegram cloud or the claude.ai database: an id like uid() makes and a short name
+const okPerson=r=>!!r&&typeof r.id==='string'&&/^[a-z0-9]{1,24}$/.test(r.id)&&typeof r.name==='string'&&r.name.trim().length>0&&r.name.length<=16;
 const esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 const $=id=>document.getElementById(id);
 // a short vibration; inside Telegram its haptics are used, they also work on iPhone and iPad

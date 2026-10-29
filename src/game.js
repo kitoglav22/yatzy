@@ -218,7 +218,7 @@ function editInSetup(id){
 function drawSetup(){
   const canStart=pick.length>=2&&pick.length<=MAXP;
   sheet.open(`<h3>Кто играет</h3><p class="muted">Отметьте игроков в порядке хода, от 2 до ${MAXP}.</p>
-    <div class="roster">${roster.map(r=>{const k=pick.indexOf(r.id);return `<div class="ritem"><button class="pick${k>=0?' on':''}" data-id="${r.id}"><span class="seat">${k>=0?k+1:''}</span><span>${esc(r.name)}</span></button><button class="del" data-edit="${r.id}" aria-label="Переименовать ${esc(r.name)}">✎</button><button class="del${arm===r.id?' arm':''}" data-del="${r.id}" aria-label="Удалить ${esc(r.name)}">${arm===r.id?'Удалить?':'✕'}</button></div>`}).join('')}</div>
+    <div class="roster">${roster.map(r=>{const k=pick.indexOf(r.id);return `<div class="ritem"><button class="pick${k>=0?' on':''}" data-id="${esc(r.id)}"><span class="seat">${k>=0?k+1:''}</span><span>${esc(r.name)}</span></button><button class="del" data-edit="${esc(r.id)}" aria-label="Переименовать ${esc(r.name)}">✎</button><button class="del${arm===r.id?' arm':''}" data-del="${esc(r.id)}" aria-label="Удалить ${esc(r.name)}">${arm===r.id?'Удалить?':'✕'}</button></div>`}).join('')}</div>
     <form class="add" id="addf"><input id="newname" placeholder="Новый игрок" maxlength="16" autocomplete="off" aria-label="Имя нового игрока"><button class="btn" type="submit">Добавить</button></form>
     <div class="row"><button class="btn primary" id="go" ${canStart?'':'disabled'}>Начать игру</button><button class="btn" id="cancel">Отмена</button></div>`);
   document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{const id=b.dataset.id,k=pick.indexOf(id);arm=null;

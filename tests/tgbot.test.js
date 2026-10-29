@@ -10,7 +10,7 @@ window.__tg = {};
 window.Telegram = { WebApp: {
   platform: 'android', colorScheme: 'light', version: '8.0', isVersionAtLeast: () => true,
   initData: 'user=${id}&hash=x', initDataUnsafe: { user: { id: ${id}, first_name: 'T${id}' }, start_param: '${startParam}' },
-  onEvent() {}, ready() { __tg.ready = true; }, expand() {}, setHeaderColor() {}, setBackgroundColor() {}, setBottomBarColor() {}, disableVerticalSwipes() {},
+  onEvent(e, f) { (__tg.ev = __tg.ev || {})[e] = f; }, ready() { __tg.ready = true; }, expand() {}, setHeaderColor() {}, setBackgroundColor() {}, setBottomBarColor() {}, disableVerticalSwipes() {},
   HapticFeedback: { impactOccurred() {}, notificationOccurred() {} },
   BackButton: { show() {}, hide() {}, onClick() {} }, openTelegramLink(u) { __tg.link = u; },
   requestWriteAccess(cb) { __tg.asked = (__tg.asked || 0) + 1; cb(true); },
@@ -110,5 +110,13 @@ test('switching away tells the room this player is not in the app', async () => 
   assert.equal(env.rooms.QRSTU.on[dev], false);
   await B.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
   await w(200);
+  assert.equal(env.rooms.QRSTU.on[dev], true);
+});
+
+test('Telegram minimizing the app counts as leaving it', async () => {
+  const dev = await B.evaluate(() => DEV);
+  await B.evaluate(() => __tg.ev.deactivated()); await w(200);
+  assert.equal(env.rooms.QRSTU.on[dev], false);
+  await B.evaluate(() => __tg.ev.activated()); await w(200);
   assert.equal(env.rooms.QRSTU.on[dev], true);
 });

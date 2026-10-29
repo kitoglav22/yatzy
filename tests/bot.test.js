@@ -30,7 +30,11 @@ function fakeDb() {
     for (const k of ks.slice(0, -1)) o = o[k] = o[k] && typeof o[k] === 'object' ? o[k] : {};
     if (v == null) delete o[ks.at(-1)]; else o[ks.at(-1)] = copy(v);
   };
-  return { root, reads, set, at, get: async p => { reads.push(p); return copy(at(p) ?? null) }, update: async m => { for (const [p, v] of Object.entries(m)) set(p, v) } };
+  const db = { root, reads, set, at, fail: 0,
+    get: async p => { reads.push(p); return copy(at(p) ?? null) },
+    keys: async p => { reads.push(p + '?shallow'); const v = at(p); return v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).map(k => [k, true])) : null },
+    update: async m => { if (db.fail) { db.fail--; throw new Error('Firebase PATCH /: 400') } for (const [p, v] of Object.entries(m)) set(p, v) } };
+  return db;
 }
 const P = [{ id: 'a1', name: 'Женя', dev: 'd1' }, { id: 'b1', name: 'Лёха', dev: 'd2' }];
 const full = v => Object.fromEntries(['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'three', 'four', 'small', 'large', 'house', 'chance', 'yatzy'].map(c => [c, v]));
@@ -43,7 +47,8 @@ function setup() {
   const ask = (op, more) => db.set('req/r' + String(++n).padStart(4, '0'), JSON.stringify({ op, ...more }));
   return {
     db, sent, bot, tick: () => bot.tick(), later: ms => { t += ms },
-    room: (code, g, on = {}) => db.set('rooms/' + code, { state: JSON.stringify({ players: P, game: g }), on }),
+    room: (code, g, on = {}) => db.set('rooms/' + code, { state: JSON.stringify({ players: P, game: g, t }), on }),
+    now: () => t,
     change(code, fn) { const r = db.root.rooms[code], s = JSON.parse(r.state); fn(s.game); r.state = JSON.stringify(s) },
     on: (code, dev, v) => db.set(`rooms/${code}/on/${dev}`, v),
     hello: (id, code, pids, allow) => ask('hello', { code, pids, allow, init: signed({ id, first_name: 'T' + id }) }),
@@ -230,14 +235,67 @@ test('the worker: webhook secret, the setup link with a service account sign-in,
     assert.ok(calls.some(c => c.url.endsWith('/answerInlineQuery')));
     assert.equal((await w.fetch(new Request('https://yatzy.x.workers.dev/?setup=nope'), env, ctx)).status, 403, 'a wrong secret does nothing');
     const rep = await (await w.fetch(new Request('https://yatzy.x.workers.dev/?setup=hook'), env, ctx)).json();
-    assert.deepEqual(rep, { ok: true, telegram: '@k22_yatzy_bot', webhook: 'подключён: https://yatzy.x.workers.dev/', firebase: 'ok', tick: 'ok, изменений: 0' });
+    assert.deepEqual(rep, { ok: true, telegram: '@k22_yatzy_bot', webhook: 'подключён: https://yatzy.x.workers.dev/', firebase: 'ok', tick: 'ok, изменений: 1', queue: 'пусто', requests: 'с подписью Telegram: 0, с неверной подписью: 0', known: 'игроков: 0, комнат: 0' });
     const hook = JSON.parse(calls.find(c => c.url.endsWith('/setWebhook')).body);
     assert.deepEqual([hook.url, hook.secret_token], ['https://yatzy.x.workers.dev/', 'hook']);
     assert.deepEqual(JSON.parse(calls.find(c => c.method === 'PATCH').body), { 'pub/bot': true });
     assert.equal(calls.filter(c => c.url.includes('oauth2')).length, 1, 'the sign-in is kept between calls');
-    jobs.length = 0; await w.scheduled({}, env, ctx); await Promise.all(jobs);
-    assert.ok(calls.at(-1).url.endsWith('/srv.json') || calls.at(-1).url.endsWith('/req.json'));
+    jobs.length = 0; const n = calls.length; await w.scheduled({}, env, ctx); await Promise.all(jobs);
+    assert.ok(calls.slice(n).some(c => c.url.endsWith('/req.json')), 'the cron run reads the requests');
     const bad = await (await w.fetch(new Request('https://yatzy.x.workers.dev/?setup=hook'), { ...env, FB_SA: 'oops' }, ctx)).json();
     assert.match(bad.error, /FB_SA/);
   } finally { globalThis.fetch = real }
+});
+
+test('a broken room is skipped: the other rooms still get their messages', async () => {
+  for (const bad of [{ players: P, game: { players: 'x' } }, { players: P, game: game([{ u1: 3, u2: 2 }, {}], { started: 1.5 }) }, { players: [null], game: null }]) {
+    const x = setup();
+    x.room('ABCDE', game([{ u1: 3 }, {}])); x.room('FGHJK', game([{ u1: 3 }, {}]), { d2: true });
+    x.hello(2, 'ABCDE', ['b1']); x.hello(3, 'FGHJK', ['b1']); await x.tick();
+    x.db.set('rooms/FGHJK/state', JSON.stringify(bad));
+    x.change('ABCDE', g => { g.scores[0].u2 = 2; g.scores[1].u1 = 1 });
+    x.moved('FGHJK'); x.moved('ABCDE');
+    await x.tick();
+    assert.deepEqual(x.sent.map(m => m.chat_id), [2, 2], 'Лёха got both "your turn" in the good room');
+    assert.equal(x.db.at('srv/seats/FGHJK'), null, 'the broken room is forgotten');
+  }
+});
+
+test('a failed write sends nothing, so nothing is sent twice', async () => {
+  const x = setup();
+  x.room('ABCDE', game([{ u1: 3 }, {}]));
+  x.hello(2, 'ABCDE', ['b1']); x.db.fail = 1;
+  await assert.rejects(x.tick());
+  assert.equal(x.sent.length, 0);
+  await x.tick();
+  assert.equal(x.sent.length, 1, 'the request was still there');
+  await x.tick();
+  assert.equal(x.sent.length, 1);
+});
+
+test('rooms nobody touched for two months are removed, a few at a time in quiet minutes', async () => {
+  const x = setup();
+  x.room('AAAAA', game([{}, {}])); x.room('BBBBB', null);
+  x.later(61 * 24 * 3600e3);
+  x.room('CCCCC', game([{}, {}]));
+  x.db.set('rooms/DDDDD', { state: 'not json' });
+  await x.tick();
+  assert.deepEqual(Object.keys(x.db.root.rooms), ['CCCCC']);
+  assert.deepEqual(x.db.at('srv/clean'), { at: x.now(), after: '' });
+  x.db.reads.length = 0; x.later(60e3); await x.tick();
+  assert.ok(!x.db.reads.includes('rooms?shallow'), 'the next pass waits a day');
+});
+
+test('a refused sign-in is noted without its values; push ids tell how old a request is', async () => {
+  const x = setup();
+  x.room('ABCDE', game([{}, {}]));
+  x.db.set('req/zz', JSON.stringify({ op: 'hello', code: 'ABCDE', pids: ['a1'], init: 'user=%7B%22id%22%3A1%7D&auth_date=1&hash=00' }));
+  const t = await x.tick();
+  assert.equal(t.bad, 1); assert.equal(t.signed, 0);
+  assert.deepEqual(x.db.at('srv/diag'), { at: x.now(), op: 'hello', fields: 'auth_date, hash, user', len: 43 });
+  assert.equal(t.diag.fields, 'auth_date, hash, user');
+  // -Nabc… ids are made by Firebase from the time
+  const id = (ms => { let s = ''; for (let i = 0; i < 8; i++) { s = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'[ms % 64] + s; ms = Math.floor(ms / 64) } return s })(1761750000000) + 'abcdefghijkl';
+  x.db.set('req/' + id, JSON.stringify({ op: 'moved', code: 'ABCDE' }));
+  assert.equal((await x.tick()).oldest, 1761750000000);
 });

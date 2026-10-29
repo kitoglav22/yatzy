@@ -39,10 +39,11 @@ async function fbBackend(){
 function pickKeys(g,keys){const o={};keys.forEach(k=>{if(g[k]!==undefined)o[k]=g[k]});return o}
 const finished=g=>!!g.ended||g.players.every((_,i)=>ALL.every(c=>g.scores[i][c.id]!=null));
 const roomCode=()=>{const a=new Uint8Array(5);crypto.getRandomValues(a);return [...a].map(x=>ROOM_CHARS[x%ROOM_CHARS.length]).join('')};
-// change the room state in a transaction; fn gets the parsed state and returns the new one, or undefined to leave it
+// change the room state in a transaction; fn gets the parsed state and returns the new one, or undefined to leave it.
+// t is the time of the last change: the bot removes rooms nobody touched for two months
 async function txRoom(code,fn){
   const b=await backend();
-  const r=await b.tx(code,cur=>{if(cur==null)return null;const s=parseState(cur);if(!s)return;const n=fn(s);return n===undefined?undefined:JSON.stringify(n)});
+  const r=await b.tx(code,cur=>{if(cur==null)return null;const s=parseState(cur);if(!s)return;const n=fn(s);if(n===undefined)return;n.t=Date.now();return JSON.stringify(n)});
   return parseState(r.val)||null;
 }
 
@@ -156,7 +157,7 @@ async function enterRoom(code){
   net=makeNet(code);const me=net;render();
   try{
     const b=await backend();if(net!==me)return;
-    me.offs.push(b.connected(c=>{me.connected=c;if(c)b.setOn(code,true).catch(()=>{});if(net===me)render()}));
+    me.offs.push(b.connected(c=>{me.connected=c;if(c)b.setOn(code,inApp).catch(()=>{});if(net===me)render()}));
     me.offs.push(b.watch(code,v=>{if(net===me)me.apply(v)}));
     me.offs.push(b.watchOn(code,v=>{me.on=v;if(net===me){renderNet();if($('roomsheet'))redrawRoom()}}));
   }catch(e){if(net===me){me.error=errCode(e)||true;render()}}
@@ -167,8 +168,11 @@ const netErr=e=>e&&e.msg||'Нет связи с сервером. Проверь
 const retry=()=>{if(net&&net.error&&navigator.onLine!==false){backendP=null;enterRoom(net.code)}};
 window.addEventListener('online',retry);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')retry()});
-// a player who switched away counts as "not in the app", so the bot may write to them
-document.addEventListener('visibilitychange',()=>{const me=net;if(!me||!me.connected)return;backend().then(b=>b.setOn(me.code,document.visibilityState==='visible')).catch(()=>{})});
+// a player who switched away counts as "not in the app", so the bot may write to them;
+// inside Telegram the app also tells when it is minimized
+let inApp=true;
+function present(on){inApp=on;const me=net;if(!me||!me.connected)return;backend().then(b=>b.setOn(me.code,on)).catch(()=>{})}
+document.addEventListener('visibilitychange',()=>present(document.visibilityState==='visible'));
 async function leaveRoom(gone){
   const me=net;if(!me)return;
   const st=me.state;keepRoom(me.code,!gone&&st&&st.game&&!finished(st.game)&&st.players.some(p=>p.dev===DEV)?st:null);
@@ -253,7 +257,7 @@ function redrawRoom(){const s=net&&net.state,sig=s?JSON.stringify([s.players,s.g
 function drawPick(title,cta,onGo,taken,code,seats){
   const back=seats?[...new Set(seats.map(p=>p.dev))].map(d=>seats.filter(p=>p.dev===d)):[];
   sheet.open(`<h3>${title}</h3><p class="muted">Кто играет на этом устройстве? Можно выбрать нескольких, если вы сидите вместе.</p>
-    <div class="roster">${roster.map(r=>{const k=netPick.indexOf(r.id);return `<div class="ritem"><button class="pick${k>=0?' on':''}" data-id="${r.id}"><span class="seat">${k>=0?'✓':''}</span><span>${esc(r.name)}</span></button></div>`}).join('')}</div>
+    <div class="roster">${roster.map(r=>{const k=netPick.indexOf(r.id);return `<div class="ritem"><button class="pick${k>=0?' on':''}" data-id="${esc(r.id)}"><span class="seat">${k>=0?'✓':''}</span><span>${esc(r.name)}</span></button></div>`}).join('')}</div>
     <form class="add" id="naddf"><input id="nname" placeholder="Новый игрок" maxlength="16" autocomplete="off" aria-label="Имя нового игрока"><button class="btn" type="submit">Добавить</button></form>
     <p class="muted" id="nmsg"></p>
     <div class="row"><button class="btn primary" id="ngo" ${netPick.length?'':'disabled'}>${cta}</button><button class="btn" id="cancel">Отмена</button></div>

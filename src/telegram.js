@@ -71,13 +71,19 @@ function tgBot(tg,has){
   // asked again until the bot answers, so a bot started while the app is open is found on the next room
   let on=null;const ready=()=>on||(on=read('pub/bot').then(v=>{if(!v)on=null;return !!v},()=>{on=null;return false}));
   const mine=s=>[...new Set(s.players.concat(s.game?s.game.players:[]).filter(p=>p.dev===DEV).map(p=>p.id))];
-  // the bot learns which seats in the room are this Telegram account; Telegram asks once whether the bot may write
-  roomHook=(ev,code,s)=>{const pids=mine(s);if(pids.length)ready().then(ok=>{if(!ok)return;
-    if(lsGet('yatzy.tgAsked')||!has('6.9')||!tg.requestWriteAccess)return ask('hello',{code,pids});
-    lsSet('yatzy.tgAsked',1);
+  // the bot learns which seats in the room are this Telegram account. Telegram asks whether the bot may write:
+  // the first time, and again at most once a day while the bot says it cannot write to this player
+  roomHook=(ev,code,s)=>{const pids=mine(s);if(pids.length)ready().then(async ok=>{if(!ok)return;
+    const asked=+lsGet('yatzy.tgAsked')||0;let need=!asked;
+    if(!need&&Date.now()-asked>864e5){const v=await read('pub/tg/'+code).catch(()=>null);need=!!v&&pids.some(id=>v[id]===0)}
+    if(!need||!has('6.9')||!tg.requestWriteAccess)return ask('hello',{code,pids});
+    lsSet('yatzy.tgAsked',Date.now());
     try{tg.requestWriteAccess(ok=>ask('hello',{code,pids,allow:!!ok}))}catch(e){ask('hello',{code,pids})}})};
-  // and again each time the app comes back from the background, in case the bot missed the first time
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&net&&net.state)roomHook('back',net.code,net.state)});
+  // Telegram keeps a minimized app alive and visible, so these events say when the player left it
+  // and the room is reported again each time the app comes back, in case the bot missed the first time
+  const back=()=>{if(net&&net.state)roomHook('back',net.code,net.state)};
+  if(has('8.0')){tg.onEvent('deactivated',()=>present(false));tg.onEvent('activated',()=>{present(true);back()})}
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')back()});
   const u=tg.initDataUnsafe&&tg.initDataUnsafe.user;
   // the rating marks one's own line by a hash of the Telegram id, the same as the bot makes
   const myHash=u&&crypto.subtle?crypto.subtle.digest('SHA-256',new TextEncoder().encode('yatzy:'+u.id))
@@ -145,7 +151,7 @@ function tgCloud(tg){
     // deleted on another device
     const n=history.length;history=history.filter(g=>!gone.has(g.at));if(history.length!==n)changed=true;
     if(keys.includes('roster')){try{const r=JSON.parse(await call(cs.getItem,'roster'));
-      if(Array.isArray(r))r.forEach(x=>{if(x&&typeof x.id==='string'&&typeof x.name==='string'&&x.name.length<=16&&!roster.some(y=>y.name===x.name||y.id===x.id)){roster.push({id:x.id,name:x.name});changed=true}})}catch(e){}}
+      if(Array.isArray(r))r.forEach(x=>{if(okPerson(x)&&!roster.some(y=>y.name===x.name||y.id===x.id)){roster.push({id:x.id,name:x.name});changed=true}})}catch(e){}}
     if(changed){lsSet('yatzy.hist',history);lsSet('yatzy.roster',roster);render()}
     // what is only on this device goes up
     history.filter(g=>!inCloud.has(g.at)).forEach(g=>store.addGame(g));

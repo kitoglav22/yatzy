@@ -178,7 +178,8 @@ table.avg td.hi{color:var(--ok)}
 .die.blank i{visibility:hidden}
 .die.held{border-color:var(--accent);background:var(--accent-soft);transform:translateY(-5px);box-shadow:0 8px 0 color-mix(in srgb,var(--accent) 35%,transparent)}
 .die:disabled{cursor:default}
-.die.shaking{transition:none;box-shadow:0 8px 14px color-mix(in srgb,#000 18%,transparent)}
+/* a shaking die gets its own layer, so its rattle and face changes do not repaint the panel and the table under it */
+.die.shaking{transition:none;will-change:transform;box-shadow:0 8px 14px color-mix(in srgb,#000 18%,transparent)}
 /* landing: a squash, a bounce and a ring that fades out */
 .die.land{animation:land .42s cubic-bezier(.2,1.5,.4,1)}
 .die.land::before{content:"";position:absolute;inset:-4px;border-radius:17px;border:2px solid var(--accent);animation:ring .5s ease-out forwards;pointer-events:none}
@@ -793,7 +794,7 @@ function animateRoll(free){
       const left=(stopAt[k]-t)/stopAt[k],gap=left>.6?45:left>.3?85:150;
       if(!next[k]||now>=next[k]){
         // rattle: random offset and tilt, strong at first and calmer towards the stop
-        const a=3+9*left;d.style.transform=`translate(${j(a)}px,${j(a)-a*.6}px) rotate(${j(8+22*left)}deg) scale(${1+.06*left})`;
+        const a=3+9*left;d.style.transform=`translate3d(${j(a)}px,${j(a)-a*.6}px,0) rotate(${j(8+22*left)}deg) scale(${1+.06*left})`;
         let f=rnd6();if(f===face[k])f=f%6+1;face[k]=f;setFace(d,f);next[k]=now+gap;
       }
     });
@@ -993,7 +994,7 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had){had=true;return}if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 // the release number under the page shows whether a new version has arrived
-{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 49';$('sync').after(v)}
+{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 50';$('sync').after(v)}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 // remind about a backup every 5 finished games, unless the Telegram cloud already keeps every game
 let cloudKeeps=false;

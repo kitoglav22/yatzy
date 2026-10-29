@@ -1,0 +1,12 @@
+{
+  "name": "yatzy",
+  "private": true,
+  "description": "Блокнот Яцзы: сборка и тесты",
+  "scripts": {
+    "build": "python3 build.py",
+    "test": "python3 build.py && node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

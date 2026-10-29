@@ -1,0 +1,4 @@
+node_modules/
+dist/
+# built by build.py; the site is published to the gh-pages branch by the workflow
+index.html

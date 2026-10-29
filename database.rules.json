@@ -1,0 +1,14 @@
+{
+  "rules": {
+    "rooms": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".validate": "$code.matches(/^[A-HJ-NP-Z2-9]{5}$/) && newData.hasChildren(['state'])",
+        "state": { ".validate": "newData.isString() && newData.val().length < 100000" },
+        "on": { "$dev": { ".validate": "newData.isBoolean()" } },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}

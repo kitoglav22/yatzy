@@ -1,0 +1,50 @@
+# Every push and pull request runs the tests. A push to main that passes them builds the page
+# and publishes it to the gh-pages branch, which GitHub Pages serves; a failing push publishes nothing.
+name: Tests and publishing
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+
+  publish:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 build.py
+      - name: Publish to gh-pages
+        run: |
+          git fetch --depth=1 origin gh-pages
+          git worktree add --detach site origin/gh-pages
+          cd site
+          git rm -rq --ignore-unmatch .
+          cp ../index.html ../sw.js ../icon.png .
+          printf '# Яцзы: собранный сайт\n\nЭта ветка обновляется автоматически после тестов. Исходный код и описание в ветке [main](https://github.com/%s).\n' "$GITHUB_REPOSITORY" > README.md
+          git add -A
+          if git diff --cached --quiet; then echo "nothing to publish"; exit 0; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -qm "Publish $GITHUB_SHA"
+          git push origin HEAD:gh-pages

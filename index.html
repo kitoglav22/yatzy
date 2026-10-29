@@ -860,7 +860,8 @@ window.onAfterRender=()=>{
 render();
 // GitHub Pages version only: online play. A room in Firebase Realtime Database holds the shared game
 // as one JSON string; every device keeps its own history and achievements.
-const FB=null; // the Firebase project's web app config
+// the Firebase project's web app config; it is public by design, access is limited by the database rules (database.rules.json)
+const FB={apiKey:"AIzaSyCD5cYHREOmhXcU4_89V5TcMf4SOtNAddg",authDomain:"yatzy-654ba.firebaseapp.com",databaseURL:"https://yatzy-654ba-default-rtdb.europe-west1.firebasedatabase.app",projectId:"yatzy-654ba",appId:"1:621596129875:web:808ef98d27ba240cf5a4a6"};
 const ROOM_CHARS='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SYNC=['players','scores','started','ended','dice','roll','log'];
 const DEV=lsGet('yatzy.dev')||(()=>{const d=uid()+uid();lsSet('yatzy.dev',d);return d})();

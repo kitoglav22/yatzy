@@ -69,7 +69,7 @@ function animateRoll(free){
     const t=now-t0;
     order.forEach(k=>{
       const d=els[k];if(!d.classList.contains('shaking'))return;
-      if(t>=stopAt[k]){d.classList.remove('shaking');d.style.transform='';setFace(d,r.dice[k]);void d.offsetWidth;d.classList.add('land');try{navigator.vibrate&&navigator.vibrate(15)}catch(e){}return}
+      if(t>=stopAt[k]){d.classList.remove('shaking');d.style.transform='';setFace(d,r.dice[k]);void d.offsetWidth;d.classList.add('land');buzz('land');return}
       const left=(stopAt[k]-t)/stopAt[k],gap=left>.6?45:left>.3?85:150;
       if(!next[k]||now>=next[k]){
         // rattle: random offset and tilt, strong at first and calmer towards the stop
@@ -82,7 +82,7 @@ function animateRoll(free){
       rolling=false;
       const yz=r.dice.every(v=>v===r.dice[0]);
       render();
-      if(yz){const b=document.querySelector('.dicebar');if(b){b.classList.add('yatzy');b.querySelector('.dicehead').firstElementChild.insertAdjacentHTML('beforeend','<span class="yflash">Яцзы!</span>');try{navigator.vibrate&&navigator.vibrate([40,60,40,60,120])}catch(e){}}}
+      if(yz){const b=document.querySelector('.dicebar');if(b){b.classList.add('yatzy');b.querySelector('.dicehead').firstElementChild.insertAdjacentHTML('beforeend','<span class="yflash">Яцзы!</span>');buzz('yatzy')}}
     }
   };
   requestAnimationFrame(tick);

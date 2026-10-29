@@ -12,7 +12,7 @@ tail = "\nload();render();setView(location.hash==='#stats'?'stats':'game');\n</s
 assert tail in app and '/*JS*/' not in app and '/*STYLE*/' not in app
 
 # GitHub Pages
-s = app.replace('<!--EXTRA-->', js('backup.html')).replace(tail, tail[:-10] + js('offline.js') + js('online.js') + '</script>\n')
+s = app.replace('<!--EXTRA-->', js('backup.html')).replace(tail, tail[:-10] + js('offline.js') + js('online.js') + js('telegram.js') + '</script>\n')
 i = s.index('</style>') + len('</style>')
 head = '''<!doctype html>
 <html lang="ru"><head><meta charset="utf-8">

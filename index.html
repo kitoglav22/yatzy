@@ -319,6 +319,9 @@ const anyScore=()=>game&&game.scores.some(s=>Object.keys(s).length);
 // also used inside attributes, so quotes are escaped too
 const esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 const $=id=>document.getElementById(id);
+// a short vibration; inside Telegram its haptics are used, they also work on iPhone and iPad
+let haptic=null;
+function buzz(kind){try{if(haptic)return haptic(kind);navigator.vibrate&&navigator.vibrate(kind==='yatzy'?[40,60,40,60,120]:15)}catch(e){}}
 
 // the score table, entering scores, players, past games and the two tabs
 function render(){
@@ -644,7 +647,7 @@ function animateRoll(free){
     const t=now-t0;
     order.forEach(k=>{
       const d=els[k];if(!d.classList.contains('shaking'))return;
-      if(t>=stopAt[k]){d.classList.remove('shaking');d.style.transform='';setFace(d,r.dice[k]);void d.offsetWidth;d.classList.add('land');try{navigator.vibrate&&navigator.vibrate(15)}catch(e){}return}
+      if(t>=stopAt[k]){d.classList.remove('shaking');d.style.transform='';setFace(d,r.dice[k]);void d.offsetWidth;d.classList.add('land');buzz('land');return}
       const left=(stopAt[k]-t)/stopAt[k],gap=left>.6?45:left>.3?85:150;
       if(!next[k]||now>=next[k]){
         // rattle: random offset and tilt, strong at first and calmer towards the stop
@@ -657,7 +660,7 @@ function animateRoll(free){
       rolling=false;
       const yz=r.dice.every(v=>v===r.dice[0]);
       render();
-      if(yz){const b=document.querySelector('.dicebar');if(b){b.classList.add('yatzy');b.querySelector('.dicehead').firstElementChild.insertAdjacentHTML('beforeend','<span class="yflash">Яцзы!</span>');try{navigator.vibrate&&navigator.vibrate([40,60,40,60,120])}catch(e){}}}
+      if(yz){const b=document.querySelector('.dicebar');if(b){b.classList.add('yatzy');b.querySelector('.dicehead').firstElementChild.insertAdjacentHTML('beforeend','<span class="yflash">Яцзы!</span>');buzz('yatzy')}}
     }
   };
   requestAnimationFrame(tick);
@@ -1039,8 +1042,10 @@ window.onAfterRender=()=>{prevAfter&&prevAfter();renderNet()};
 
 // sheets
 let netPick=[];
+let inviteVia=null; // set inside Telegram
 function shareRoom(code){
   const url=location.origin+location.pathname+'#room='+code,text=`Сыграем в Яцзы? Комната ${code}`;
+  if(inviteVia)return inviteVia(code,text);
   if(navigator.share)navigator.share({title:'Яцзы',text,url}).catch(()=>{});
   else navigator.clipboard&&navigator.clipboard.writeText(text+': '+url).then(()=>{$('nmsg')&&($('nmsg').textContent='Ссылка скопирована')}).catch(()=>{});
 }
@@ -1153,6 +1158,53 @@ else{
     window.history.replaceState(null,'',location.pathname+location.search);if(!net||net.code!==m[1].toUpperCase())window.openOnline(m[1].toUpperCase())};
   window.addEventListener('hashchange',fromLink);fromLink();
   render();
+}
+// GitHub Pages version only: the same page opened as a Telegram Mini App from the bot.
+// Telegram's script is loaded only there; it gives the theme, the back button, haptics, the user's name and room invitations.
+const TG_APP=null; // direct link of the Mini App, https://t.me/<bot>/<app>
+(()=>{
+  let inTg=/tgWebApp(Data|Platform|Version)=/.test(location.hash);
+  try{if(inTg)sessionStorage.setItem('yatzy.tg','1');else inTg=sessionStorage.getItem('yatzy.tg')==='1'}catch(e){}
+  if(!inTg)return;
+  const s=document.createElement('script');
+  s.src='https://telegram.org/js/telegram-web-app.js';
+  s.onload=()=>{const tg=window.Telegram&&window.Telegram.WebApp;if(tg&&tg.platform&&tg.platform!=='unknown')tgSetup(tg)};
+  document.head.appendChild(s);
+})();
+function tgSetup(tg){
+  const has=v=>tg.isVersionAtLeast&&tg.isVersionAtLeast(v);
+  document.documentElement.classList.add('tg');
+  // follow Telegram's light or dark theme, and paint its header and background to match the page
+  const theme=()=>{
+    document.documentElement.dataset.theme=tg.colorScheme==='dark'?'dark':'light';
+    const bg=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    try{if(has('6.1')){tg.setHeaderColor(bg);tg.setBackgroundColor(bg)}if(has('7.10'))tg.setBottomBarColor(bg)}catch(e){}
+  };
+  theme();tg.onEvent('themeChanged',theme);
+  tg.ready();tg.expand();
+  // scrolling the long table must not pull the app down and close it
+  try{if(has('7.7'))tg.disableVerticalSwipes()}catch(e){}
+  if(has('6.1'))haptic=k=>k==='yatzy'?tg.HapticFeedback.notificationOccurred('success'):tg.HapticFeedback.impactOccurred('medium');
+  // Telegram's back button closes an open sheet, then leaves the statistics
+  if(has('6.1')){
+    const bb=tg.BackButton,sync=()=>{if($('sheet').firstChild||!$('vstats').hidden)bb.show();else bb.hide()};
+    bb.onClick(()=>{if($('sheet').firstChild)sheet.close();else if(!$('vstats').hidden)$('tgame').click()});
+    new MutationObserver(sync).observe($('sheet'),{childList:true});
+    new MutationObserver(sync).observe($('vstats'),{attributes:true,attributeFilter:['hidden']});
+    sync();
+  }
+  // the Telegram name is offered for a new player until it is in the list
+  const u=tg.initDataUnsafe&&tg.initDataUnsafe.user,me=u&&[u.first_name,u.last_name].filter(Boolean).join(' ').trim().slice(0,16);
+  if(me)new MutationObserver(()=>{const i=$('nname')||$('newname');
+    if(i&&!i.value&&!i.dataset.tg&&!roster.some(r=>r.name.toLowerCase()===me.toLowerCase())){i.value=me;i.dataset.tg='1'}}).observe($('sheet'),{childList:true,subtree:true});
+  // invitations open the bot's Mini App right in the room
+  if(TG_APP)inviteVia=(code,text)=>tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(TG_APP+'?startapp='+code)+'&text='+encodeURIComponent(text));
+  const sp=String(tg.initDataUnsafe&&tg.initDataUnsafe.start_param||'').toUpperCase();
+  let seen='';try{seen=sessionStorage.getItem('yatzy.tgStart')||''}catch(e){}
+  if(/^[A-Z2-9]{5}$/.test(sp)&&sp!==seen&&window.openOnline){
+    try{sessionStorage.setItem('yatzy.tgStart',sp)}catch(e){}
+    if(!net||net.code!==sp)window.openOnline(sp);
+  }
 }
 </script>
 </body></html>

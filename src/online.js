@@ -171,8 +171,10 @@ window.onAfterRender=()=>{prevAfter&&prevAfter();renderNet()};
 
 // sheets
 let netPick=[];
+let inviteVia=null; // set inside Telegram
 function shareRoom(code){
   const url=location.origin+location.pathname+'#room='+code,text=`Сыграем в Яцзы? Комната ${code}`;
+  if(inviteVia)return inviteVia(code,text);
   if(navigator.share)navigator.share({title:'Яцзы',text,url}).catch(()=>{});
   else navigator.clipboard&&navigator.clipboard.writeText(text+': '+url).then(()=>{$('nmsg')&&($('nmsg').textContent='Ссылка скопирована')}).catch(()=>{});
 }

@@ -25,7 +25,7 @@ async function start() {
     [c, rooms[c] ? rooms[c].state : null, rooms[c] ? rooms[c].on : {}]).catch(() => {}));
 
   // a page in its own context, i.e. a separate device; init runs once with empty storage
-  async function device(name, init, { online = false, viewport = { width: 820, height: 1180 } } = {}) {
+  async function device(name, init, { online = false, viewport = { width: 820, height: 1180 }, hash = '', setup } = {}) {
     const ctx = await browser.newContext({ viewport, reducedMotion: 'reduce', acceptDownloads: true });
     // keep the real Firebase and Google Fonts out of the tests
     await ctx.route(/^https:\/\/(www\.gstatic|fonts\.googleapis|fonts\.gstatic)\.com\//, r => r.abort());
@@ -44,12 +44,15 @@ async function start() {
       await ctx.exposeFunction('__netRemove', c => { delete rooms[c]; push(c); });
       await ctx.addInitScript(fakeNet);
     }
+    if (setup) await setup(ctx);
     const page = await ctx.newPage();
     page.on('pageerror', e => errors.push(`${name}: ${e.message}`));
     pages.push(page);
-    await page.goto(url);
+    await page.goto(url + hash);
     await page.evaluate(init || (() => localStorage.clear()));
     await page.reload();
+    // a page that does not even load fails at once instead of timing out test by test
+    if (errors.length) throw new Error('the page failed to load: ' + errors.join('; '));
     return page;
   }
   return {

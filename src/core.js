@@ -59,3 +59,6 @@ const anyScore=()=>game&&game.scores.some(s=>Object.keys(s).length);
 // also used inside attributes, so quotes are escaped too
 const esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 const $=id=>document.getElementById(id);
+// a short vibration; inside Telegram its haptics are used, they also work on iPhone and iPad
+let haptic=null;
+function buzz(kind){try{if(haptic)return haptic(kind);navigator.vibrate&&navigator.vibrate(kind==='yatzy'?[40,60,40,60,120]:15)}catch(e){}}

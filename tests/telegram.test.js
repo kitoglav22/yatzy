@@ -84,6 +84,7 @@ test('opens full screen and keeps the page clear of Telegram\'s buttons', async 
   assert.equal(await p.evaluate(() => getComputedStyle(document.querySelector('.wrap')).paddingTop), '113px');
   assert.equal(await p.evaluate(() => getComputedStyle($('dice')).top), '93px', 'the dice stick below Telegram\'s buttons');
   assert.equal(await p.evaluate(() => getComputedStyle(document.body, '::before').height), '93px');
+  assert.ok(await p.evaluate(() => { const c = getComputedStyle($('dice')); return c.backgroundColor === getComputedStyle(document.body).backgroundColor && c.boxShadow.includes('-12px'); }), 'nothing shows through the panel corners');
 });
 
 test('history and players come from the Telegram cloud, damaged and deleted games are skipped', async () => {

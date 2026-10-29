@@ -93,10 +93,11 @@ test('on a phone the dice and the roll button share one row', async () => {
   await p.setViewportSize({ width: 375, height: 700 });
   const r = await p.evaluate(() => {
     const b = e => e.getBoundingClientRect(), dies = [...document.querySelectorAll('.die')].map(b), btn = b(document.getElementById('roll'));
-    return { tops: dies.map(d => Math.round(d.top)), right: Math.max(...dies.map(d => d.right)), btn, bar: b(document.querySelector('.dicebar')).height };
+    return { tops: dies.map(d => Math.round(d.top)), right: Math.max(...dies.map(d => d.right)), dw: dies[0].width, btn, bar: b(document.querySelector('.dicebar')).height };
   });
   assert.equal(new Set(r.tops.map(t => Math.abs(t - r.tops[0]) < 8)).size, 1, 'dice on one line');
-  assert.ok(r.right <= r.btn.left && r.btn.top < r.tops[0] + 40, 'button to the right of the dice');
+  assert.ok(r.right <= r.btn.left && r.btn.top < r.tops[0] + 40, 'the button to the right of the dice');
   assert.ok(r.bar < 160, `panel height ${r.bar}`);
+  assert.ok(Math.abs(r.btn.width - r.dw) < 1 && Math.abs(r.btn.height - r.dw) < 1, `the button is the size of a die: ${r.btn.width} vs ${r.dw}`);
   await p.setViewportSize({ width: 820, height: 1180 });
 });

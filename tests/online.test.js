@@ -130,10 +130,16 @@ test('damaged or hostile room data is ignored', async () => {
   assert.equal(await A.evaluate(() => window.pwned), undefined);
 });
 
-test('a new device takes over a seat', async () => {
+test('a new device takes over a seat, but only one whose device is away', async () => {
   C = await env.device('C', () => localStorage.clear(), { online: true });
-  await C.click('#onl0'); await C.fill('#ncode', code); await C.click('#njoin button'); await w(300);
-  await C.click('[data-seat]:nth-of-type(2)'); await w(300);
+  const join = async () => { await C.click('#onl0'); await C.fill('#ncode', code); await C.click('#njoin button'); await w(300); };
+  await join();
+  assert.equal(await C.$('[data-seat]'), null, 'both devices are in the room, so no seat is offered');
+  await C.click('#cancel');
+  env.rooms[code].on[await B.evaluate(() => DEV)] = false;
+  await join();
+  assert.equal(await C.$$eval('[data-seat]', x => x.length), 1);
+  await C.click('[data-seat]'); await w(300);
   assert.ok(await mine(C) || (await state(C)).turn === 0, 'C plays for Друг now');
   assert.ok(await C.evaluate(() => game.players[1].dev === JSON.parse(localStorage.getItem('yatzy.dev'))));
   // C misses the end of the game, the next one starts, C still gets the finished game
@@ -145,6 +151,11 @@ test('a new device takes over a seat', async () => {
   assert.deepEqual((await state(A)).names, ['Друг', 'Вова'], 'the next game starts with the next player');
   await C.reload(); await w(500);
   assert.equal((await state(C)).hist, 1);
+});
+
+test('a seat of another Telegram account is never offered, the same account always is', async () => {
+  const r = await A.evaluate(() => { myAcct = 'aaa'; const t = (h, on) => canTake([{ dev: 'x', h }], on); const out = [t('bbb', {}), t('aaa', { x: true }), t(undefined, { x: true }), t(undefined, {})]; myAcct = ''; return out; });
+  assert.deepEqual(r, [false, true, false, true]);
 });
 
 test('leaving brings the local game back', async () => {
@@ -190,4 +201,16 @@ test('a room game ends early only when every device agrees', async () => {
     assert.ok(await P.evaluate(() => history[history.length - 1].early), 'and goes to the history as finished early');
   }
   assert.equal(await C.evaluate(() => history.length), before + 1);
+});
+
+test('a seat remembers the Telegram account that sits in it and cannot be taken by another', async () => {
+  const room = await C.evaluate(() => net && net.code);
+  assert.ok(room);
+  await C.evaluate(() => { myAcct = 'acct1'; stampSeat(net.code); }); await w(300);
+  const st = JSON.parse(env.rooms[room].state), bdev = await C.evaluate(() => DEV);
+  assert.ok(st.players.filter(p => p.dev === bdev).every(p => p.h === 'acct1'));
+  const pid = st.players.find(p => p.dev === bdev).id;
+  const err = await A.evaluate(([c, pid]) => reclaimSeat(c, pid).then(() => '', e => e.message), [room, pid]);
+  assert.match(err, /другим аккаунтом/);
+  await C.evaluate(() => { myAcct = ''; });
 });

@@ -12,6 +12,13 @@ let roomHook=null;
 // it is told through the database, because not every player can reach the bot's server
 const botNote=code=>backend().then(b=>b.send(JSON.stringify({op:'moved',code}))).catch(()=>{});
 const DEV=lsGet('yatzy.dev')||(()=>{const d=uid()+uid();lsSet('yatzy.dev',d);return d})();
+// in Telegram a seat remembers a hash of the account that took it (set by telegram.js), so another account cannot take it over
+let myAcct='';
+const seatOf=p=>myAcct?{...p,h:myAcct}:(({h,...x})=>x)(p);
+// a seat can be continued from another device by the same Telegram account at any time; a seat taken outside Telegram
+// only while its device is away; a seat of another Telegram account never
+const canTake=(group,on)=>group.every(p=>!p.h||p.h===myAcct)&&(group.some(p=>p.h&&p.h===myAcct)||!(on&&on[group[0].dev]));
+const onNow=code=>backend().then(b=>new Promise(res=>{let off=null,done=false;const end=v=>{if(done)return;done=true;res(v||{});setTimeout(()=>off&&off())};off=b.watchOn(code,end);setTimeout(()=>end({}),3000)})).catch(()=>({}));
 
 let backendP=null;
 function backend(){
@@ -170,8 +177,13 @@ function bindRoomList(){
   });
 }
 // joining: the local game waits on the side and comes back after leaving the room
+// a seat taken before seats remembered their Telegram account gets it on the next visit
+function stampSeat(code){
+  if(!myAcct)return;
+  txRoom(code,s=>{if(!s.players.some(p=>p.dev===DEV&&p.h!==myAcct))return;s.players=s.players.map(p=>p.dev===DEV?seatOf(p):p);s.by=DEV;s.rev=(s.rev||0)+1;return s}).catch(()=>{});
+}
 async function enterRoom(code){
-  keepRoom(code,null);
+  keepRoom(code,null);stampSeat(code);
   if(!net&&!lsGet('yatzy.online')){lsSet('yatzy.offgame',game&&!game.players.some(p=>p.dev)?game:null);game=null;lsSet('yatzy.game',null)}
   lsSet('yatzy.online',{code});
   if(net)net.offs.forEach(f=>f&&f());
@@ -297,15 +309,15 @@ function showRoom(){const s=net&&net.state;if(s&&s.game&&!finished(s.game))sheet
 let roomSig='';
 function redrawRoom(){const s=net&&net.state,sig=s?JSON.stringify([s.players,s.game&&!finished(s.game),net.on]):'';if(sig!==roomSig)drawRoom()}
 // who plays on this device: names from the roster or a new one
-function drawPick(title,cta,onGo,taken,code,seats){
-  const back=seats?[...new Set(seats.map(p=>p.dev))].map(d=>seats.filter(p=>p.dev===d)):[];
+function drawPick(title,cta,onGo,taken,code,seats,on){
+  const back=seats?[...new Set(seats.map(p=>p.dev))].map(d=>seats.filter(p=>p.dev===d)).filter(g=>canTake(g,on)):[];
   sheet.open(`<h3>${title}</h3><p class="muted">Кто играет на этом устройстве? Можно выбрать нескольких, если вы сидите вместе.</p>
     <div class="roster">${roster.map(r=>{const k=netPick.indexOf(r.id);return `<div class="ritem"><button class="pick${k>=0?' on':''}" data-id="${esc(r.id)}"><span class="seat">${k>=0?'✓':''}</span><span>${esc(r.name)}</span></button></div>`}).join('')}</div>
     <form class="add" id="naddf"><input id="nname" placeholder="Новый игрок" maxlength="16" autocomplete="off" aria-label="Имя нового игрока"><button class="btn" type="submit">Добавить</button></form>
     <p class="muted" id="nmsg"></p>
     <div class="row"><button class="btn primary" id="ngo" ${netPick.length?'':'disabled'}>${cta}</button><button class="btn" id="cancel">Отмена</button></div>
     ${back.length?`<p class="muted">Уже играли в этой комнате с другого устройства или из Safari? Продолжите за себя:</p><div class="row">${back.map(g=>`<button class="btn" data-seat="${esc(g[0].id)}">${g.map(p=>esc(p.name)).join(' и ')}</button>`).join('')}</div>`:''}`);
-  const redraw=()=>drawPick(title,cta,onGo,taken,code,seats);
+  const redraw=()=>drawPick(title,cta,onGo,taken,code,seats,on);
   document.querySelectorAll('[data-seat]').forEach(b=>b.onclick=async()=>{$('nmsg').textContent='Подключаюсь…';try{await reclaimSeat(code,b.dataset.seat)}catch(e){$('nmsg')&&($('nmsg').textContent=netErr(e))}});
   document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{const id=b.dataset.id,k=netPick.indexOf(id);if(k>=0)netPick.splice(k,1);else if(netPick.length<MAXP-1)netPick.push(id);redraw()});
   $('naddf').onsubmit=e=>{e.preventDefault();const v=$('nname').value.trim().slice(0,16);if(!v)return;
@@ -323,7 +335,7 @@ function drawPick(title,cta,onGo,taken,code,seats){
 const fail=msg=>{const e=new Error(msg);e.msg=msg;return e};
 async function createRoom(ps,fixed){
   for(let t=0;t<(fixed?1:5);t++){
-    const code=fixed||roomCode(),st={v:1,players:ps.map(p=>({id:p.id,name:p.name,dev:DEV})),game:null,by:DEV,rev:1,at:Date.now()};
+    const code=fixed||roomCode(),st={v:1,players:ps.map(p=>seatOf({id:p.id,name:p.name,dev:DEV})),game:null,by:DEV,rev:1,at:Date.now()};
     const b=await backend(),r=await b.tx(code,cur=>cur==null?JSON.stringify(st):undefined);
     if(r.ok){await enterRoom(code);drawRoom();return}
   }
@@ -350,7 +362,7 @@ async function joinRoom(code,ps){
     if(s.players.length+ps.length>MAXP){why=`В комнате уже ${s.players.length} игрока, всего можно ${MAXP}.`;return}
     const names=s.players.map(p=>p.name.toLowerCase()),dup=ps.find(p=>names.includes(p.name.toLowerCase()));
     if(dup){why=`В комнате уже есть «${dup.name}». Переименуйте игрока или выберите другого.`;return}
-    ps.forEach(p=>s.players.push({id:s.players.some(x=>x.id===p.id)?uid():p.id,name:p.name,dev:DEV}));s.by=DEV;s.rev=(s.rev||0)+1;return s;
+    ps.forEach(p=>s.players.push(seatOf({id:s.players.some(x=>x.id===p.id)?uid():p.id,name:p.name,dev:DEV})));s.by=DEV;s.rev=(s.rev||0)+1;return s;
   });
   if(!s)throw fail('Комнаты с таким кодом нет. Проверьте код.');
   if(!s.players.some(p=>p.dev===DEV))throw fail(why||'Не получилось войти, попробуйте ещё раз.');
@@ -363,14 +375,17 @@ async function startJoin(code){
   const s=await txRoom(code,s=>undefined);
   if(!s)return 'Комнаты с таким кодом нет. Проверьте код.';
   if(s.players.some(p=>p.dev===DEV)){await enterRoom(code);showRoom();return ''}
-  netPick=[];drawPick(`Вход в комнату ${code}`,'Войти',ps=>joinRoom(code,ps),s.players.map(p=>p.name),code,s.players);return '';
+  const on=await onNow(code);
+  netPick=[];drawPick(`Вход в комнату ${code}`,'Войти',ps=>joinRoom(code,ps),s.players.map(p=>p.name),code,s.players,on);return '';
 }
 // the same person on a new device, e.g. the invitation opened in Safari and the game continued from the home-screen icon
 async function reclaimSeat(code,pid){
   let why='';
   const s=await txRoom(code,s=>{
     const p=s.players.find(x=>x.id===pid);if(!p){why='Такого игрока в комнате больше нет.';return}
-    const old=p.dev;s.players.filter(x=>x.dev===old).forEach(x=>x.dev=DEV);
+    const old=p.dev,group=s.players.filter(x=>x.dev===old);
+    if(!group.every(x=>!x.h||x.h===myAcct)){why='Это место занято другим аккаунтом Telegram.';return}
+    s.players=s.players.map(x=>x.dev===old?seatOf({...x,dev:DEV}):x);
     [s.game,s.prev].forEach(g=>g&&g.players.forEach(x=>{if(x.dev===old)x.dev=DEV}));
     s.by=DEV;s.rev=(s.rev||0)+1;return s;
   });

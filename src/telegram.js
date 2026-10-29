@@ -88,6 +88,7 @@ function tgBot(tg,has){
   // the rating marks one's own line by a hash of the Telegram id, the same as the bot makes
   const myHash=u&&crypto.subtle?crypto.subtle.digest('SHA-256',new TextEncoder().encode('yatzy:'+u.id))
     .then(b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,12)).catch(()=>''):Promise.resolve('');
+  myHash.then(h=>{myAcct=h||'';if(net)stampSeat(net.code)});
   ready().then(ok=>{
     if(!ok)return;
     // a nudge goes only to a player the bot can write to, and once an hour from this device

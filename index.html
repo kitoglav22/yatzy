@@ -47,8 +47,10 @@ table{width:100%;border-collapse:collapse;table-layout:fixed;font-variant-numeri
 th,td{border-bottom:1px solid var(--rule);padding:8px 12px;text-align:left;vertical-align:middle}
 td+td,th+th{border-left:1px solid var(--rule);text-align:center}
 tbody tr:last-child td{border-bottom:0}
-thead th{padding:10px 6px;vertical-align:bottom}
-.ph{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+/* height:1px lets .ph fill the whole cell, so a one-line name centres against a two-line one and every tag sits on the bottom line */
+thead th{padding:10px 6px;vertical-align:bottom;height:1px}
+.ph{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;height:100%}
+.ph .nm{margin-block:auto}
 .ph .nm{border:0;background:transparent;padding:4px 6px;border-radius:8px;font-weight:800;font-size:1.05rem;max-width:100%;overflow-wrap:break-word;hyphens:auto;text-align:center;line-height:1.2}
 .ph .tag{font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:999px;color:transparent}
 th.active .tag{background:var(--accent);color:var(--on-accent)}

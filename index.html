@@ -108,6 +108,7 @@ section{display:flex;flex-direction:column;gap:10px}
 .records li{display:flex;justify-content:space-between;gap:6px 16px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--rule)}
 .records li:last-child{border-bottom:0}
 .records b{font-variant-numeric:tabular-nums}
+.records li.me{background:var(--accent-soft)}
 .scroll{overflow-x:auto}
 table.avg td,table.avg th{padding:8px 12px;font-size:.92rem}
 table.avg td+td{font-weight:700}
@@ -325,6 +326,8 @@ const uid=()=>Math.random().toString(36).slice(2,9);
 let roster=[], game=null, history=[], ui={confirm:false}, store=null, net=null;
 // how a finished game is shared to a chat; set by the GitHub Pages and Telegram versions
 let shareVia=null;
+// set inside Telegram when the bot is on: asks the player on turn to move
+let nudgeVia=null;
 // quick reactions in an online game; they float up on every screen in the room
 const REACTS=['👍','😂','😱','😭','🔥','🎉'];
 function showReact(name,e){const d=document.createElement('div');d.className='reactfly';d.innerHTML=`<span class="rfe">${e}</span><span class="rfn">${esc(name)}</span>`;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
@@ -718,13 +721,14 @@ function renderDice(){
   const tip=r.jokerTaken&&my?`Джокер записан. Теперь поставьте 0 в любую свободную клетку колонки «${esc(who)}».`
     :first&&my?(!r.n?'Нажмите синюю кнопку со стрелкой, потом на кубики, которые хотите оставить.':r.n<3?'Нажмите на кубики, которые оставить, и бросайте ещё, или выберите клетку.':'Выберите клетку в таблице.')
     :'';
-  el.innerHTML=`<div class="dicebar"><div class="dicehead"><span>Ходит <b>${esc(who)}</b></span><span class="dhr"><span class="muted">бросок ${r.n} из 3</span>${net&&net.react?'<button class="rbtn" id="rbtn" aria-label="Реакция" aria-expanded="'+!!ui.reacts+'">😊</button>':''}</span></div>
+  el.innerHTML=`<div class="dicebar"><div class="dicehead"><span>Ходит <b>${esc(who)}</b></span><span class="dhr"><span class="muted">бросок ${r.n} из 3</span>${!my&&net&&nudgeVia?'<button class="rbtn" id="nudge" aria-label="Поторопить">👉</button>':''}${net&&net.react?'<button class="rbtn" id="rbtn" aria-label="Реакция" aria-expanded="'+!!ui.reacts+'">😊</button>':''}</span></div>
     ${net&&net.react&&ui.reacts?`<div class="reacts">${REACTS.map((e,k)=>`<button data-react="${k}">${e}</button>`).join('')}</div>`:''}
     <div class="dicerow"><div class="dies">${r.dice.map((v,k)=>`<button class="die${showHeld&&r.held[k]?' held':''}${v?'':' blank'}" data-k="${k}" ${canHold?'':'disabled'} aria-label="${v?'Кубик '+v:'Кубик'}${showHeld&&r.held[k]?', держу':''}">${range(0,8).map(q=>`<i class="${v&&PIPS[v].includes(q)?'on':''}"></i>`).join('')}</button>`).join('')}</div>
     <button class="btn primary rollbtn" id="roll" ${!my||r.n>=3||r.jokerTaken?'disabled':''} aria-label="${r.n?'Бросить ещё':'Бросить'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20.5 3.5v5h-5"/></svg></button></div>
     ${tip?`<p class="muted">${tip}</p>`:lm?`<p class="muted dnote">Записано: <b>${esc(game.players[lm.i].name)}</b>, ${lm.c.name} ${lm.v||'вычеркнуто'}</p>`:''}</div>`;
   el.querySelectorAll('.die').forEach(b=>b.onclick=()=>{const k=+b.dataset.k;r.held[k]=!r.held[k];saveGame();renderDice()});
   $('roll').onclick=rollDice;
+  if($('nudge'))$('nudge').onclick=()=>nudgeVia(net.code,who);
   if($('rbtn')){$('rbtn').onclick=()=>{ui.reacts=!ui.reacts;renderDice()};el.querySelectorAll('[data-react]').forEach(b=>b.onclick=()=>{ui.reacts=false;net.react(+b.dataset.react);renderDice()})}
 }
 // the result is drawn and saved at once; the animation only reveals it:
@@ -988,6 +992,8 @@ const ROOM_CHARS='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SYNC=['players','scores','started','ended','dice','roll','log'];
 // the shared part of the game; undo history is cut to the last moves to keep the room small
 const synced=g=>{const o=pickKeys(g,SYNC);if(o.log)o.log=o.log.slice(-40);return o};
+// the Telegram bot listens here: 'enter' when a room is loaded, 'moved' after a move or a new game reached the room
+let roomHook=null;
 const DEV=lsGet('yatzy.dev')||(()=>{const d=uid()+uid();lsSet('yatzy.dev',d);return d})();
 
 let backendP=null;
@@ -1042,8 +1048,10 @@ function makeNet(code){
       if(!n.connected||!game||!n.state||!n.state.game||game.started!==n.state.game.started)return;
       const g=synced(game),j=JSON.stringify(g);if(j===n.last)return;n.last=j;
       // if the move does not reach the room, go back to what the room has
-      txRoom(code,s=>{if(!s.game||s.game.started!==g.started)return;s.game=g;s.by=DEV;s.rev=(s.rev||0)+1;return s})
-        .then(s=>{if(!s||!s.game||JSON.stringify(s.game)!==j)throw 0})
+      // the bot hears about written cells only, not about every roll
+      const cells=x=>x.scores.reduce((a,sc)=>a+ALL.filter(c=>sc[c.id]!=null).length,0);let wrote=false;
+      txRoom(code,s=>{if(!s.game||s.game.started!==g.started)return;wrote=cells(s.game)!==cells(g);s.game=g;s.by=DEV;s.rev=(s.rev||0)+1;return s})
+        .then(s=>{if(!s||!s.game||JSON.stringify(s.game)!==j)throw 0;if(wrote&&roomHook)roomHook('moved',code)})
         .catch(()=>{if(net!==n)return;toast({badge:'!',label:'Онлайн',name:'Ход не отправился',desc:'показываю то, что сохранено в комнате'},'Онлайн',false);n.resync()});
     },
     resync(){n.last='';if(n.state)n.apply(JSON.stringify(n.state),true)},
@@ -1057,6 +1065,7 @@ function makeNet(code){
       const s=parseState(str);if(s===undefined)return;
       if(!s){if(n.loaded)leaveRoom(true);return}
       const first=!n.loaded,was=n.state&&JSON.stringify([n.state.players,n.state.game,n.state.prev]);n.state=s;n.loaded=true;
+      if(first&&roomHook)roomHook('enter',code,s);
       const fx=s.fx,fxNew=fx&&fx.t!==n.fxT;n.fxT=fx&&fx.t;
       if(fxNew&&!first&&fx.dev!==DEV&&REACTS[fx.e]&&Number.isInteger(fx.e)){const p=s.players.find(x=>x.dev===fx.dev);if(p){showReact(p.name,REACTS[fx.e]);buzz('land')}}
       // nothing but a reaction changed: the local game may already be a move ahead of the room, so it stays as it is
@@ -1138,6 +1147,8 @@ const netErr=e=>e&&e.msg||'Нет связи с сервером. Проверь
 const retry=()=>{if(net&&net.error&&navigator.onLine!==false){backendP=null;enterRoom(net.code)}};
 window.addEventListener('online',retry);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')retry()});
+// a player who switched away counts as "not in the app", so the bot may write to them
+document.addEventListener('visibilitychange',()=>{const me=net;if(!me||!me.connected)return;backend().then(b=>b.setOn(me.code,document.visibilityState==='visible')).catch(()=>{})});
 async function leaveRoom(gone){
   const me=net;if(!me)return;
   const st=me.state;keepRoom(me.code,!gone&&st&&st.game&&!finished(st.game)&&st.players.some(p=>p.dev===DEV)?st:null);
@@ -1164,7 +1175,7 @@ async function startRoomGame(){
     if(s.game)s.prev=s.game;
     s.game={players:ps.map(p=>({id:p.id,name:p.name,dev:p.dev})),scores:ps.map(()=>({})),started:Date.now(),dice:true,roll:newRoll(),log:[]};
     s.by=DEV;s.rev=(s.rev||0)+1;return s;
-  }).catch(()=>{});
+  }).then(s=>{if(s&&s.game&&roomHook)roomHook('moved',net.code)}).catch(()=>{});
 }
 
 function renderNet(){
@@ -1240,14 +1251,27 @@ function drawPick(title,cta,onGo,taken,code,seats){
   $('cancel').onclick=sheet.close;
 }
 const fail=msg=>{const e=new Error(msg);e.msg=msg;return e};
-async function createRoom(ps){
-  for(let t=0;t<5;t++){
-    const code=roomCode(),st={v:1,players:ps.map(p=>({id:p.id,name:p.name,dev:DEV})),game:null,by:DEV,rev:1,at:Date.now()};
+async function createRoom(ps,fixed){
+  for(let t=0;t<(fixed?1:5);t++){
+    const code=fixed||roomCode(),st={v:1,players:ps.map(p=>({id:p.id,name:p.name,dev:DEV})),game:null,by:DEV,rev:1,at:Date.now()};
     const b=await backend(),r=await b.tx(code,cur=>cur==null?JSON.stringify(st):undefined);
     if(r.ok){await enterRoom(code);drawRoom();return}
   }
+  // someone opened the same invitation a moment earlier
+  if(fixed)return joinRoom(fixed,ps);
   throw fail('Не удалось создать комнату, попробуйте ещё раз.');
 }
+// an invitation sent through the bot carries a fresh code: the first one to open it creates the room
+window.openInvite=async code=>{
+  if(net&&net.code===code)return openRoom();
+  if(net)await leaveRoom();
+  try{
+    const s=await txRoom(code,s=>undefined);
+    if(s){const err=await startJoin(code);if(err){window.openOnline(code);$('nmsg').textContent=err}return}
+    netPick=game&&!game.players.some(p=>p.dev)?game.players.map(p=>p.id).filter(id=>roster.some(r=>r.id===id)).slice(0,1):[];
+    drawPick(`Новая комната ${code}`,'Создать комнату',ps=>createRoom(ps,code));
+  }catch(e){window.openOnline();$('nmsg').textContent=netErr(e)}
+};
 async function joinRoom(code,ps){
   let why='';
   const s=await txRoom(code,s=>{
@@ -1308,6 +1332,8 @@ else{
 // GitHub Pages version only: the same page opened as a Telegram Mini App from the bot.
 // Telegram's script is loaded only there; it gives the theme, the back button, haptics, the user's name and room invitations.
 const TG_APP='https://t.me/k22_yatzy_bot/play'; // direct link of the Mini App
+// the bot's server (server/index.js, a Yandex Cloud Function); while it is empty the bot features stay off
+const BOT_API=window.__yatzyBot||'';
 (()=>{
   let inTg=/tgWebApp(Data|Platform|Version)=/.test(location.hash);
   try{if(inTg)sessionStorage.setItem('yatzy.tg','1');else inTg=sessionStorage.getItem('yatzy.tg')==='1'}catch(e){}
@@ -1355,15 +1381,47 @@ function tgSetup(tg){
   shareVia=text=>tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(TG_APP||location.origin+location.pathname)+'&text='+encodeURIComponent(text+' Сыграем?'));
   if(has('6.9')&&tg.CloudStorage)tgCloud(tg);
   tgSection(tg,has);
-  render();
   // invitations open the bot's Mini App right in the room
   if(TG_APP)inviteVia=(code,text)=>tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(TG_APP+'?startapp='+code)+'&text='+encodeURIComponent(text));
+  if(BOT_API&&window.openOnline)tgBot(tg,has);
+  render();
+  // a link with a room code opens that room; NEW-<code> comes from an invitation made in a chat and creates the room
   const sp=String(tg.initDataUnsafe&&tg.initDataUnsafe.start_param||'').toUpperCase();
   let seen='';try{seen=sessionStorage.getItem('yatzy.tgStart')||''}catch(e){}
-  if(/^[A-Z2-9]{5}$/.test(sp)&&sp!==seen&&window.openOnline){
+  const m=sp.match(/^(NEW-)?([A-HJ-NP-Z2-9]{5})$/);
+  if(m&&sp!==seen&&window.openOnline){
     try{sessionStorage.setItem('yatzy.tgStart',sp)}catch(e){}
-    if(!net||net.code!==sp)window.openOnline(sp);
+    if(!net||net.code!==m[2])m[1]?window.openInvite(m[2]):window.openOnline(m[2]);
   }
+}
+
+// the bot: "your turn" messages and reminders, a nudge for the player on turn, invitations through @bot in any chat, the rating
+function tgBot(tg,has){
+  // a plain-text body keeps it a simple request: no CORS preflight, half the calls to the function
+  const call=(op,data)=>fetch(BOT_API,{method:'POST',body:JSON.stringify({op,init:tg.initData,...data})})
+    .then(r=>r.json()).catch(()=>({ok:false}));
+  const mine=s=>[...new Set(s.players.concat(s.game?s.game.players:[]).filter(p=>p.dev===DEV).map(p=>p.id))];
+  roomHook=(ev,code,s)=>{
+    if(ev==='moved')return call('moved',{code});
+    const pids=mine(s);if(!pids.length)return;
+    // Telegram asks once whether the bot may write; the answer goes to the bot with the seats
+    if(lsGet('yatzy.tgAsked')||!has('6.9')||!tg.requestWriteAccess)return call('hello',{code,pids});
+    lsSet('yatzy.tgAsked',1);
+    try{tg.requestWriteAccess(ok=>call('hello',{code,pids,allow:!!ok}))}catch(e){call('hello',{code,pids})}
+  };
+  nudgeVia=async(code,who)=>{
+    const r=await call('nudge',{code});
+    toast({badge:'👉',label:'Бот',name:r.ok?'Напомнил':'Не получилось',desc:r.ok?`повторить можно через ${r.wait} мин`:r.wait?`повторить можно через ${r.wait} мин`:esc(r.why||'нет связи с ботом')},who,false);
+  };
+  // the invitation is a card from the bot with a button straight into the room
+  if(has('6.7'))inviteVia=code=>tg.switchInlineQuery(code,['users','groups']);
+  const sec=document.createElement('section');
+  sec.innerHTML='<h2>Рейтинг друзей</h2><p class="muted">Онлайн-партии через Telegram, где все игроки зашли из Telegram. Старт 1000, победа над более сильным даёт больше очков.</p><div class="card"><ol class="records" id="tgrating"><li>Загружаю…</li></ol></div>';
+  $('vstats').appendChild(sec);
+  const load=()=>call('rating',{}).then(r=>{const el=$('tgrating');if(!el)return;
+    el.innerHTML=!r.ok?'<li>Бот сейчас недоступен</li>':!r.list.length?'<li>Пока пусто: рейтинг появится после первой такой партии</li>'
+      :r.list.map((x,k)=>`<li${x.me?' class="me"':''}><span>${k+1}. ${esc(x.name)}</span><span><b>${x.r}</b> <small class="muted">${x.g} парт., ${x.w} побед</small></span></li>`).join('')});
+  load();$('tstats').addEventListener('click',load);
 }
 
 // finished games and players also live in the user's Telegram cloud: they survive a cleared cache and show up

@@ -89,3 +89,14 @@ test('after five games without a backup a reminder shows up', async () => {
   });
   assert.match(await p.textContent('#remind'), /Сохраните копию/);
 });
+
+test('on a phone a short name lines up with a two-line one and the turn tags share a line', async () => {
+  await p.setViewportSize({ width: 390, height: 844 });
+  await p.evaluate(() => { game = newGameFor([{ id: 'a', name: 'ЛЕХА' }, { id: 'b', name: 'Константин Константинопольский' }]); game.dice = false; saveGame(); render(); });
+  const box = sel => p.$$eval(sel, x => x.map(e => { const r = e.getBoundingClientRect(); return { mid: r.top + r.height / 2, bottom: r.bottom, h: r.height }; }));
+  const [a, b] = await box('th .nm'), [ta, tb] = await box('th .tag');
+  assert.ok(b.h > a.h * 1.5, 'the long name wraps');
+  assert.ok(Math.abs(a.mid - b.mid) < 2, `names centred together: ${a.mid} vs ${b.mid}`);
+  assert.ok(Math.abs(ta.bottom - tb.bottom) < 1, 'tags on one line');
+  await p.setViewportSize({ width: 820, height: 1180 });
+});

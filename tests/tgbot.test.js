@@ -40,11 +40,11 @@ test('until the bot runs, its buttons and rating stay hidden', async () => {
 
 test('an invitation from a chat creates its room for the first one to open it', async () => {
   env.pub.bot = true;
-  env.pub.rating = [{ name: 'Лёха', r: 1016, g: 1, w: 1, h: hash(2) }, { name: 'Женя', r: 984, g: 1, w: 0, h: hash(1) }];
+  env.pub.rating = [{ name: 'Лёха', r: 1016, g: 1, w: 1, h: hash(2) }, { name: 'Вова', r: 984, g: 1, w: 0, h: hash(1) }];
   A = await device('A', 1, 'new-qrstu');
   await A.waitForSelector('#nname');
   assert.match(await A.textContent('.sheet h3'), /Новая комната QRSTU/);
-  await A.fill('#nname', 'Женя'); await A.click('#naddf button'); await A.click('#ngo'); await w(400);
+  await A.fill('#nname', 'Вова'); await A.click('#naddf button'); await A.click('#ngo'); await w(400);
   assert.equal(await A.evaluate(() => net && net.code), 'QRSTU');
   const h = ops('A', 'hello')[0];
   assert.equal(h.code, 'QRSTU'); assert.equal(h.allow, true); assert.equal(h.init, 'user=1&hash=x'); assert.equal(h.pids.length, 1);

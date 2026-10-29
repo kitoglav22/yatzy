@@ -118,8 +118,13 @@ test('with dice on, the player on turn picks only what the dice give or 0, and o
   assert.equal((await state(p)).scores[0].large, 0);
 });
 
-test('with dice on, an empty cell of a player who is not on turn cannot be tapped', async () => {
+test('an empty cell of a player who is not on turn cannot be tapped, with dice on screen or real ones', async () => {
   await p.evaluate(() => { game = newGameFor(roster); game.dice = true; game.roll = newRoll(); saveGame(); render(); });
   assert.ok(await p.$eval('button[data-p="1"][data-c="u1"]', b => b.disabled));
+  assert.ok(!(await p.$eval('button[data-p="0"][data-c="u1"]', b => b.disabled)));
+  // the same with real dice
+  await p.evaluate(() => { game.dice = false; game.roll = null; game.scores[1].u2 = 4; saveGame(); render(); });
+  assert.ok(await p.$eval('button[data-p="1"][data-c="u1"]', b => b.disabled));
+  assert.ok(!(await p.$eval('button[data-p="1"][data-c="u2"]', b => b.disabled)), 'a written cell can still be corrected');
   assert.ok(!(await p.$eval('button[data-p="0"][data-c="u1"]', b => b.disabled)));
 });

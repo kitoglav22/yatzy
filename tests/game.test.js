@@ -211,9 +211,9 @@ test('a quick double tap does not zoom the page', async () => {
 
 test('a long undo label wraps and the page never gets wider than a phone screen', async () => {
   await p.setViewportSize({ width: 375, height: 700 });
-  await p.evaluate(() => { game = newGameFor([{ id: 'a', name: 'Константин Петрович' }, { id: 'b', name: 'Евгений Румянцев' }]); game.dice = false; saveGame(); render(); });
+  await p.evaluate(() => { game = newGameFor([{ id: 'a', name: 'Константин Петрович' }, { id: 'b', name: 'Валентина Сергеевна' }]); game.dice = false; game.scores[0].u1 = 3; saveGame(); render(); });
   await p.click('button[data-c="large"][data-p="1"]'); await p.click('.vals button[data-v="0"]');
-  assert.match(await p.textContent('#undo'), /Евгений Румянцев, Большой стрит/);
+  assert.match(await p.textContent('#undo'), /Валентина Сергеевна, Большой стрит/);
   assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no sideways overflow');
   await p.setViewportSize({ width: 820, height: 1180 });
 });

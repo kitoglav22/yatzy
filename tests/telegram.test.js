@@ -7,7 +7,7 @@ const fakeTelegram = `
 window.__tg = { haptics: 0 };
 window.Telegram = { WebApp: {
   platform: 'ios', colorScheme: 'dark', version: '8.0', isVersionAtLeast: () => true,
-  initDataUnsafe: { user: { first_name: 'Женя', last_name: 'Т' }, start_param: 'k7mpx' },
+  initDataUnsafe: { user: { first_name: 'Вова', last_name: 'Т' }, start_param: 'k7mpx' },
   _ev: {}, onEvent(n, f) { this._ev[n] = f; }, ready() { __tg.ready = true; }, expand() {},
   setHeaderColor(c) { __tg.header = c; }, setBackgroundColor() {}, setBottomBarColor() {}, disableVerticalSwipes() { __tg.noSwipes = true; },
   HapticFeedback: { impactOccurred() { __tg.haptics++; }, notificationOccurred() { __tg.haptics++; } },
@@ -63,7 +63,7 @@ test('the back button closes a sheet, then leaves the statistics', async () => {
 
 test('the Telegram name is offered for a new player', async () => {
   await p.click('#start0');
-  assert.equal(await p.inputValue('#newname'), 'Женя Т');
+  assert.equal(await p.inputValue('#newname'), 'Вова Т');
   await p.evaluate(() => sheet.close());
 });
 

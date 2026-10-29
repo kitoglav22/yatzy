@@ -10,8 +10,8 @@ before(async () => {
   env = await start();
   A = await env.device('A', () => {
     localStorage.clear();
-    localStorage.setItem('yatzy.roster', JSON.stringify([{ id: 'a1', name: 'Женя' }, { id: 'a2', name: 'Аня' }]));
-    localStorage.setItem('yatzy.game', JSON.stringify({ players: [{ id: 'a1', name: 'Женя' }, { id: 'a2', name: 'Аня' }], scores: [{ u1: 3 }, {}], started: 5 }));
+    localStorage.setItem('yatzy.roster', JSON.stringify([{ id: 'a1', name: 'Вова' }, { id: 'a2', name: 'Аня' }]));
+    localStorage.setItem('yatzy.game', JSON.stringify({ players: [{ id: 'a1', name: 'Вова' }, { id: 'a2', name: 'Аня' }], scores: [{ u1: 3 }, {}], started: 5 }));
   }, { online: true });
   B = await env.device('B', () => localStorage.clear(), { online: true });
 });
@@ -30,7 +30,7 @@ test('a friend joins by link; a name already in the room is refused', async () =
   await B.goto(env.url + '#room=' + code); await w(300);
   assert.equal(await B.inputValue('#ncode'), code);
   await B.click('#njoin button'); await w(300);
-  await B.fill('#nname', 'женя'); await B.click('#naddf button'); await B.click('#ngo'); await w(200);
+  await B.fill('#nname', 'вова'); await B.click('#naddf button'); await B.click('#ngo'); await w(200);
   assert.match(await B.textContent('#nmsg'), /уже есть/);
   await B.click('.pick.on'); await B.fill('#nname', 'Друг'); await B.click('#naddf button'); await B.click('#ngo'); await w(300);
   assert.deepEqual(await A.$$eval('.roster .pick', x => x.map(e => e.textContent)), []);
@@ -41,7 +41,7 @@ test('a friend joins by link; a name already in the room is refused', async () =
 
 test('only the player on turn rolls; the other device sees the roll and the held dice', async () => {
   await A.click('#nstart'); await w(300);
-  assert.deepEqual((await state(B)).names, ['Женя', 'Друг']);
+  assert.deepEqual((await state(B)).names, ['Вова', 'Друг']);
   assert.ok(await mine(A)); assert.ok(!(await mine(B)));
   assert.ok(await B.$eval('#roll', b => b.disabled));
   await A.click('#roll'); await settle(A); await w(300); await settle(B);
@@ -58,7 +58,7 @@ test('a score travels to the other device, undo only for your own move', async (
   assert.ok(await A.$('#undo')); assert.equal(await B.$('#undo'), null);
   const cid = Object.keys(s.scores[0])[0];
   assert.ok(await B.$(`button.flash[data-p="0"][data-c="${cid}"]`), 'the new score flashes on the other device');
-  assert.match(await B.textContent('.dnote'), /Женя/);
+  assert.match(await B.textContent('.dnote'), /Вова/);
 });
 
 test('your own column comes first and carries a stripe on your device, whoever is on turn', async () => {
@@ -142,7 +142,7 @@ test('a new device takes over a seat', async () => {
   await w(300);
   assert.equal((await state(A)).hist, 1);
   await A.click('#again'); await w(300);
-  assert.deepEqual((await state(A)).names, ['Друг', 'Женя'], 'the next game starts with the next player');
+  assert.deepEqual((await state(A)).names, ['Друг', 'Вова'], 'the next game starts with the next player');
   await C.reload(); await w(500);
   assert.equal((await state(C)).hist, 1);
 });
@@ -150,18 +150,18 @@ test('a new device takes over a seat', async () => {
 test('leaving brings the local game back', async () => {
   await A.click('#nroom'); await A.click('#nleave'); await A.click('#nleave'); await w(300);
   const s = await state(A);
-  assert.deepEqual(s.names, ['Женя', 'Аня']); assert.equal(s.scores[0].u1, 3);
+  assert.deepEqual(s.names, ['Вова', 'Аня']); assert.equal(s.scores[0].u1, 3);
   assert.equal(await A.evaluate(() => net), null);
   await w(300);
-  assert.match(await B.textContent('#net'), /Женя не в сети/);
+  assert.match(await B.textContent('#net'), /Вова не в сети/);
 });
 
 test('a room left mid-game waits under "Мои комнаты" and comes back in one tap', async () => {
   await A.click('#onl');
-  assert.match(await A.textContent(`[data-room="${code}"]`), /Друг, Женя/);
+  assert.match(await A.textContent(`[data-room="${code}"]`), /Друг, Вова/);
   await A.click(`[data-room="${code}"]`); await w(400);
   assert.equal(await A.evaluate(() => net && net.code), code);
-  assert.deepEqual((await state(A)).names, ['Друг', 'Женя']);
+  assert.deepEqual((await state(A)).names, ['Друг', 'Вова']);
   assert.equal(await A.$('.sheet'), null, 'the game is on, the sheet is out of the way');
   // a room that is gone drops off the list
   await A.evaluate(c => lsSet('yatzy.rooms', [{ code: 'ZZZZZ', names: ['X'] }]), code);
@@ -169,14 +169,14 @@ test('a room left mid-game waits under "Мои комнаты" and comes back in
   assert.equal(await A.$(`[data-room="${code}"]`), null, 'the room you are in is not listed');
   await A.click('[data-room="ZZZZZ"]'); await w(400);
   assert.match(await A.textContent('#nmsg'), /нет/);
-  assert.deepEqual(await A.evaluate(() => lsGet('yatzy.rooms')), [{ code, names: ['Друг', 'Женя'] }]);
+  assert.deepEqual(await A.evaluate(() => lsGet('yatzy.rooms')), [{ code, names: ['Друг', 'Вова'] }]);
 });
 
 test('a room game ends early only when every device agrees', async () => {
   await A.click(`[data-room="${code}"]`); await w(400);
   await A.click('#nroom'); await A.click('#nstop'); await A.click('#nstop'); await w(400);
   assert.match(await A.textContent('#actions'), /Ждём: Друг/);
-  assert.match(await C.textContent('#actions'), /Женя предлагает закончить/);
+  assert.match(await C.textContent('#actions'), /Вова предлагает закончить/);
   assert.equal(await B.$('#syes'), null, 'a device without a seat in this game is not asked');
   // refusing keeps the game going for both
   await C.click('#sno'); await w(400);

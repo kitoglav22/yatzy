@@ -36,7 +36,7 @@ function fakeDb() {
     update: async m => { if (db.fail) { db.fail--; throw new Error('Firebase PATCH /: 400') } for (const [p, v] of Object.entries(m)) set(p, v) } };
   return db;
 }
-const P = [{ id: 'a1', name: 'Женя', dev: 'd1' }, { id: 'b1', name: 'Лёха', dev: 'd2' }];
+const P = [{ id: 'a1', name: 'Вова', dev: 'd1' }, { id: 'b1', name: 'Лёха', dev: 'd2' }];
 const full = v => Object.fromEntries(['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'three', 'four', 'small', 'large', 'house', 'chance', 'yatzy'].map(c => [c, v]));
 const game = (scores, more = {}) => ({ players: P, scores, started: 7, log: [], ...more });
 function setup() {
@@ -58,7 +58,7 @@ function setup() {
 }
 
 test('Telegram sign-in: a valid signature passes, a forged or stale one does not', async () => {
-  const u = { id: 42, first_name: 'Женя' };
+  const u = { id: 42, first_name: 'Вова' };
   assert.equal((await W.checkInit(signed(u), TOKEN, Date.now())).id, 42);
   assert.equal(await W.checkInit(signed(u).replace('42', '43'), TOKEN, Date.now()), null);
   assert.equal(await W.checkInit(signed(u), 'other', Date.now()), null);
@@ -85,7 +85,7 @@ test('"your turn" goes only to a player who left the app, once per turn; quiet r
   x.later(6 * 60e3); await x.tick();
   assert.equal(x.sent.length, 1);
   assert.equal(x.sent[0].chat_id, 2);
-  assert.match(x.sent[0].text, /Твой ход.*Женя: Единицы 3.*Женя 3 : Лёха 0/);
+  assert.match(x.sent[0].text, /Твой ход.*Вова: Единицы 3.*Вова 3 : Лёха 0/);
   assert.match(x.sent[0].reply_markup.inline_keyboard[0][0].url, /^https:\/\/t\.me\/k22_yatzy_bot\/play\?startapp=ABCDE$/);
   x.moved('ABCDE'); await x.tick();
   assert.equal(x.sent.length, 1, 'no repeat for the same turn');
@@ -104,7 +104,7 @@ test('a player away when the turn comes hears at once; reminders once a day, thr
   assert.equal(x.sent.length, 4, 'one "your turn" and three reminders');
   assert.match(x.sent[1].text, /ждёт твой ход уже 36 ч/);
   x.change('ABCDE', g => { g.scores[1].u1 = 2 }); x.moved('ABCDE'); await x.tick();
-  assert.equal(x.sent.length, 4, 'Женя plays without Telegram: nothing to send');
+  assert.equal(x.sent.length, 4, 'Вова plays without Telegram: nothing to send');
   assert.equal(x.db.at('srv/turn/ABCDE').pid, 'a1', 'the turn record moved on');
 });
 
@@ -124,7 +124,7 @@ test('a nudge reaches the player on turn, then waits an hour; the app sees who c
   x.hello(1, 'ABCDE', ['a1']); x.hello(2, 'ABCDE', ['b1']); await x.tick();
   assert.deepEqual(x.db.at('pub/tg/ABCDE'), { a1: 1, b1: 1 });
   x.nudge(1, 'ABCDE'); await x.tick();
-  assert.equal(x.sent.length, 1); assert.match(x.sent[0].text, /Женя ждёт твой ход/); assert.equal(x.sent[0].chat_id, 2);
+  assert.equal(x.sent.length, 1); assert.match(x.sent[0].text, /Вова ждёт твой ход/); assert.equal(x.sent[0].chat_id, 2);
   x.nudge(1, 'ABCDE'); await x.tick();
   assert.equal(x.sent.length, 1, 'too soon');
   x.later(61 * 60e3); x.nudge(1, 'ABCDE'); await x.tick();
@@ -160,11 +160,11 @@ test('a finished game moves the rating once and tells the players who are away',
   const x = setup();
   x.room('ABCDE', game([full(5), full(1)]), { d1: true });
   x.hello(1, 'ABCDE', ['a1']); x.hello(2, 'ABCDE', ['b1']); await x.tick();
-  assert.deepEqual(x.db.at('srv/elo/1'), { name: 'Женя', r: 1016, g: 1, w: 1 });
+  assert.deepEqual(x.db.at('srv/elo/1'), { name: 'Вова', r: 1016, g: 1, w: 1 });
   assert.deepEqual(x.db.at('srv/elo/2'), { name: 'Лёха', r: 984, g: 1, w: 0 });
   assert.deepEqual(x.sent.map(m => m.chat_id), [2], 'only Лёха was away');
-  assert.match(x.sent[0].text, /Партия окончена.*\n.*Женя \+16, Лёха -16/s);
-  assert.deepEqual(x.db.at('pub/rating'), [{ name: 'Женя', r: 1016, g: 1, w: 1, h: await W.tgHash(1) }, { name: 'Лёха', r: 984, g: 1, w: 0, h: await W.tgHash(2) }]);
+  assert.match(x.sent[0].text, /Партия окончена.*\n.*Вова \+16, Лёха -16/s);
+  assert.deepEqual(x.db.at('pub/rating'), [{ name: 'Вова', r: 1016, g: 1, w: 1, h: await W.tgHash(1) }, { name: 'Лёха', r: 984, g: 1, w: 0, h: await W.tgHash(2) }]);
   assert.match(await W.tgHash(1), /^[0-9a-f]{12}$/);
   x.moved('ABCDE'); await x.tick();
   assert.equal(x.db.at('srv/elo/1').g, 1, 'counted once');

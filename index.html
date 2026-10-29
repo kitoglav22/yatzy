@@ -445,6 +445,7 @@ function computeStats(){
       s.games++;s.sum+=p.total;s.best=Math.max(s.best,p.total);s.worst=Math.min(s.worst,p.total);s.last.push(won);
       if(up>=63)s.bonus++;if(sc.yatzy===50)s.yatzy++;if(sc.joker===100)s.joker++;
       ALL.forEach(c=>{if(sc[c.id]==null)return;(s.cat[c.id]=s.cat[c.id]||[]).push(sc[c.id]);if(sc[c.id]===0)s.zeros[c.id]=(s.zeros[c.id]||0)+1});
+      (s.cat.joker=s.cat.joker||[]).push(sc.joker||0);
       if(won){s.wins++;s.streak++;s.bestStreak=Math.max(s.bestStreak,s.streak);s.lossRun=0}else{s.streak=0;if(g.winner)s.lossRun++}
       s.run200=p.total>=200?s.run200+1:0;
       const dk=new Date(g.at).toDateString();s.days[dk]=(s.days[dk]||0)+1;

@@ -23,8 +23,8 @@ if(navigator.share)shareVia=text=>navigator.share({text,url:location.origin+loca
 $('imp').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try{const d=JSON.parse(await f.text());if(!Array.isArray(d.history))throw 0;
-    const seen=new Set(history.map(g=>g.at));let n=0;
-    d.history.forEach(g=>{if(okSavedGame(g)&&!seen.has(g.at)){seen.add(g.at);history.push(g);n++}});
+    const seen=new Set(history.map(g=>g.at)),same=new Set(history.map(gameKey));let n=0;
+    d.history.forEach(g=>{if(okSavedGame(g)&&!seen.has(g.at)&&!same.has(gameKey(g))){seen.add(g.at);same.add(gameKey(g));history.push(g);keep('addGame',g);n++}});
     (Array.isArray(d.roster)?d.roster:[]).forEach(r=>{if(okPerson(r)&&!roster.some(x=>x.name===r.name||x.id===r.id))roster.push({id:r.id,name:r.name})});
     lsSet('yatzy.hist',history);saveRoster();render();
     $('bmsg').textContent='Добавлено партий: '+n+'. Всего в истории: '+history.length;

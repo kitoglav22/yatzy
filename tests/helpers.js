@@ -23,6 +23,9 @@ async function start() {
   const ctl = { failNext: null, writes: 0 };
   // requests the pages leave for the bot, and what the bot publishes for them
   const reqs = [], pub = {};
+  // everything else in the database (the shared history), as plain data
+  const tree = { pub };
+  const pushTree = () => pages.forEach(p => p.evaluate(() => window.__treePush && window.__treePush()).catch(() => {}));
   const push = c => pages.forEach(p => p.evaluate(([c, s, o]) => window.__netPush && window.__netPush(c, s, o),
     [c, rooms[c] ? rooms[c].state : null, rooms[c] ? rooms[c].on : {}]).catch(() => {}));
 
@@ -45,7 +48,13 @@ async function start() {
       await ctx.exposeFunction('__netSetOn', (c, d, on) => { if (!rooms[c]) return; rooms[c].on[d] = on; push(c); });
       await ctx.exposeFunction('__netRemove', c => { delete rooms[c]; push(c); });
       await ctx.exposeFunction('__netSend', v => { reqs.push({ from: name, ...JSON.parse(v) }); });
-      await ctx.exposeFunction('__netRead', p => p.split('/').reduce((o, k) => o == null ? null : o[k], { pub }) ?? null);
+      await ctx.exposeFunction('__netRead', p => JSON.parse(JSON.stringify(p.split('/').reduce((o, k) => o == null ? null : o[k], tree) ?? null)));
+      await ctx.exposeFunction('__netUpdate', (p, v) => {
+        if (ctl.failTree) throw new Error('PERMISSION_DENIED');
+        const at = p.split('/').reduce((o, k) => (o[k] = o[k] || {}), tree);
+        Object.entries(v).forEach(([k, x]) => { const ks = k.split('/'), last = ks.pop(), o = ks.reduce((o, k) => (o[k] = o[k] || {}), at); if (x == null) delete o[last]; else o[last] = x; });
+        pushTree();
+      });
       await ctx.addInitScript(fakeNet);
     }
     if (setup) await setup(ctx);
@@ -60,7 +69,7 @@ async function start() {
     return page;
   }
   return {
-    url, errors, rooms, ctl, device, reqs, pub,
+    url, errors, rooms, ctl, device, reqs, pub, tree,
     // what a room server would send after its data was changed behind the app's back
     tamper(code, fn) { const s = JSON.parse(rooms[code].state); fn(s); rooms[code].state = JSON.stringify(s); push(code); },
     async stop() { await browser.close(); server.close(); },
@@ -72,6 +81,8 @@ async function start() {
 // and a room read by a transaction is handed to a new watcher at once.
 function fakeNet() {
   window.__yatzyNet = () => {
+    let W = [];
+    window.__treePush = () => W.forEach(f => f());
     const L = { st: {}, on: {}, seen: {} }, dev = () => JSON.parse(localStorage.getItem('yatzy.dev'));
     window.__netPush = (c, s, o) => { (L.st[c] || []).forEach(f => f(s)); (L.on[c] || []).forEach(f => f(o || {})); };
     const sub = (map, code, cb, first) => { (map[code] = map[code] || []).push(cb); if (map === L.st && code in L.seen) cb(L.seen[code]); first(code).then(cb); return () => { map[code] = map[code].filter(f => f !== cb); }; };
@@ -93,6 +104,8 @@ function fakeNet() {
       connected(cb) { setTimeout(() => cb(true)); return () => {}; },
       send: v => window.__netSend(v),
       read: p => window.__netRead(p),
+      watchPath(p, cb) { const f = () => window.__netRead(p).then(v => cb(v && Object.keys(v).length ? v : null)); W.push(f); f(); return () => { W = W.filter(x => x !== f); }; },
+      update: (p, v) => window.__netUpdate(p, v),
     };
   };
 }

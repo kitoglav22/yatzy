@@ -10,6 +10,17 @@
         "$other": { ".validate": false }
       }
     },
+    "hist": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".validate": "$code.matches(/^[A-HJ-NP-Z2-9]{12}$/)",
+        "g": { "$k": { ".validate": "$k.matches(/^[0-9]{1,16}$/) && newData.isString() && newData.val().length < 8000" } },
+        "d": { "$k": { ".validate": "$k.matches(/^[0-9]{1,16}$/) && newData.isNumber()" } },
+        "r": { ".validate": "newData.isString() && newData.val().length < 8000" },
+        "$other": { ".validate": false }
+      }
+    },
     "req": {
       "$id": {
         ".write": "auth != null && !data.exists()",

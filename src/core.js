@@ -18,6 +18,9 @@ const uid=()=>Math.random().toString(36).slice(2,9);
 const plural=(n,one,few,many)=>{const a=n%10,b=n%100;return a===1&&b!==11?one:a>=2&&a<=4&&(b<12||b>14)?few:many};
 
 let roster=[], game=null, history=[], ui={confirm:false}, store=null, net=null;
+// finished games and players also go to these, besides the store (the shared history on GitHub Pages)
+const keepers=[];
+const keep=(m,x)=>{store&&store[m]&&store[m](x);keepers.forEach(k=>k[m](x))};
 // how a finished game is shared to a chat; set by the GitHub Pages and Telegram versions
 let shareVia=null;
 // set inside Telegram when the bot is on: asks the player on turn to move
@@ -67,6 +70,8 @@ const anyScore=()=>game&&game.scores.some(s=>Object.keys(s).length);
 
 // also used inside attributes, so quotes are escaped too
 // a finished game from a backup or another device: anything else is skipped, so it cannot break the history
+// one finished game, whichever device saved it: every device in an online room saves its own copy, with the same start time
+const gameKey=g=>String(g.started||g.at);
 const okSavedGame=g=>!!g&&typeof g.at==='number'&&Array.isArray(g.players)&&g.players.length>0&&g.players.every(p=>p&&typeof p.name==='string'&&p.name.length<=40&&Number.isFinite(p.total)
   &&(p.scores==null||typeof p.scores==='object'&&Object.values(p.scores).every(v=>v===null||Number.isFinite(v))));
 // a player from a backup, the Telegram cloud or the claude.ai database: an id like uid() makes and a short name

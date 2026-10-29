@@ -41,6 +41,9 @@ async function fbBackend(){
     // a request for the bot, and what the bot publishes for the app
     send(v){return D.push(R('req'),v)},
     read(p){return D.get(R(p)).then(s=>s.val())},
+    // the shared history: watch a place, change several keys under it at once
+    watchPath(p,cb,bad){return D.onValue(R(p),s=>cb(s.val()),bad)},
+    update(p,v){return D.update(R(p),v)},
   };
 }
 function pickKeys(g,keys){const o={};keys.forEach(k=>{if(g[k]!==undefined)o[k]=g[k]});return o}

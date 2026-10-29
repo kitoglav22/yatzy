@@ -56,6 +56,8 @@ function tgSetup(tg){
   const sp=String(tg.initDataUnsafe&&tg.initDataUnsafe.start_param||'').toUpperCase();
   let seen='';try{seen=sessionStorage.getItem('yatzy.tgStart')||''}catch(e){}
   const m=sp.match(/^(NEW-)?([A-HJ-NP-Z2-9]{5})$/);
+  // H-<code> comes from a shared history's code sent to a chat
+  if(/^H-/.test(sp)&&sp!==seen&&window.openFamily){try{sessionStorage.setItem('yatzy.tgStart',sp)}catch(e){}window.openFamily(sp.slice(2))}
   if(m&&sp!==seen&&window.openOnline){
     try{sessionStorage.setItem('yatzy.tgStart',sp)}catch(e){}
     if(!net||net.code!==m[2])m[1]?window.openInvite(m[2]):window.openOnline(m[2]);
@@ -159,11 +161,11 @@ function tgCloud(tg){
   (async()=>{
     const keys=await call(cs.getKeys),num=k=>+k.slice(1);
     const gone=new Set(keys.filter(k=>k[0]==='d').map(num)),inCloud=new Set(keys.filter(k=>k[0]==='g').map(num));
-    const have=new Set(history.map(g=>g.at)),want=keys.filter(k=>k[0]==='g'&&!have.has(num(k))&&!gone.has(num(k)));
+    const have=new Set(history.map(g=>g.at)),same=new Set(history.map(gameKey)),want=keys.filter(k=>k[0]==='g'&&!have.has(num(k))&&!gone.has(num(k)));
     let changed=false;
     for(let i=0;i<want.length;i+=50){
       const vals=await call(cs.getItems,want.slice(i,i+50));
-      Object.values(vals||{}).forEach(v=>{try{const g=JSON.parse(v);if(okSavedGame(g)&&!have.has(g.at)){history.push(g);have.add(g.at);changed=true}}catch(e){}});
+      Object.values(vals||{}).forEach(v=>{try{const g=JSON.parse(v);if(okSavedGame(g)&&!have.has(g.at)&&!same.has(gameKey(g))){history.push(g);have.add(g.at);same.add(gameKey(g));changed=true}}catch(e){}});
     }
     // deleted on another device
     const n=history.length;history=history.filter(g=>!gone.has(g.at));if(history.length!==n)changed=true;

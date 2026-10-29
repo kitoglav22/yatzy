@@ -245,7 +245,7 @@ function renamePlayer(id,name){
   r.name=name;if(gp)gp.name=name;
   history.forEach(g=>{let hit=false;
     g.players.forEach(p=>{if(p.id===id||p.name===old){p.name=name;p.id=id;hit=true}});
-    if(hit){if(g.winner===old)g.winner=name;store&&store.updateGame&&store.updateGame(g)}});
+    if(hit){if(g.winner===old)g.winner=name;keep('updateGame',g)}});
   if(statFilter===old)statFilter=name;
   lsSet('yatzy.hist',history);saveRoster();if(game)saveGame();render();
   return null;
@@ -331,7 +331,7 @@ function archive(){
   // several at once make one card instead of a stack over the result
   if(pend.length===1)toastLater(pend[0].a,pend[0].name,true);
   else if(pend.length)toastLater({badge:'+'+pend.length,label:'Новые ачивки',name:`${pend.length} ${plural(pend.length,'новая ачивка','новые ачивки','новых ачивок')}`,desc:'список под итогом партии'},[...new Set(pend.map(x=>x.name))].join(', '),true);
-  store&&store.addGame(g);renderHist();
+  keep('addGame',g);renderHist();
 }
 function unarchive(){
   if(game.savedAt)deleteGame(game.savedAt);
@@ -340,7 +340,7 @@ function unarchive(){
 function deleteGame(at){
   const g=history.find(x=>x.at===at);if(!g)return;
   history=history.filter(x=>x!==g);lsSet('yatzy.hist',history);
-  store&&store.deleteGame&&store.deleteGame(g);
+  keep('deleteGame',g);
   // the current game stays marked as handled so it is not archived again
   if(game&&game.savedAt===at){game.savedAt=null;game.newAch=null;saveGame()}
   renderHist();
@@ -372,7 +372,7 @@ function resultText(){
   return `Яцзы, ${head}.`+(fresh.length?` Новые ачивки: ${fresh.join(', ')}.`:'')+(game.ended&&!done()?' Партия закончена досрочно.':'');
 }
 function saveGame(){lsSet('yatzy.game',game);store&&store.saveGame(game);net&&net.push()}
-function saveRoster(){lsSet('yatzy.roster',roster);store&&store.saveRoster(roster)}
+function saveRoster(){lsSet('yatzy.roster',roster);keep('saveRoster',roster)}
 
 function setView(v){
   const st=v==='stats';

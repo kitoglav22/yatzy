@@ -313,6 +313,8 @@ function saveRoster(){lsSet('yatzy.roster',roster);store&&store.saveRoster(roste
 function setView(v){
   const st=v==='stats';
   $('vgame').hidden=st;$('vstats').hidden=!st;
+  // the total bar belongs to the game tab; coming back, the observer shows it again if the table's total is below the screen
+  if(st&&$('totbar'))$('totbar').hidden=true;
   $('tgame').setAttribute('aria-selected',!st);$('tstats').setAttribute('aria-selected',st);
   if(st)renderStats();
 }

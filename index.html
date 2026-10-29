@@ -77,7 +77,7 @@ tr.total td{font-family:var(--display);font-size:1.2rem;background:var(--accent-
 /* a copy of the total row fixed to the bottom of the screen while the table's own row is below it (see drawTotbar);
    a sticky table row shook and slipped on iPhones on a fast flick */
 #totbar{position:fixed;bottom:0;z-index:4;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px));background:var(--bg)}
-#totbar .card{box-shadow:0 -4px 14px color-mix(in srgb,#000 10%,transparent)}
+#totbar .card{box-shadow:0 -4px 14px rgba(0,0,0,calc(.1*var(--fade,1)))}
 html.tgfull #totbar{padding-bottom:calc(6px + var(--tg-bottom,0px))}
 tr.total td.lead{color:var(--win)}
 tr.section td{padding:10px 12px 6px;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:800;background:var(--paper)}
@@ -672,20 +672,29 @@ function drawSetup(){
 $('players').onclick=()=>{if(net)return net.openRoom();if(game&&anyScore()&&!over()){ui.confirm=true;render();$('actions').scrollIntoView({behavior:'smooth',block:'center'})}else openSetup()};
 
 // the total row, copied into a bar fixed to the bottom of the screen while the table's own total row is further down;
-// the copy keeps the table's column widths, so its numbers stand under their columns
-let totObs=null;
+// the copy keeps the table's column widths, so its numbers stand under their columns.
+// The bar goes away only when the real row has come up to exactly where the copy stands, so one replaces the other
+// without a jump; its shadow fades out over the last stretch before that
+let totGap=0,totRaf=0;
 function drawTotbar(){
   let bar=$('totbar');if(!bar){bar=document.createElement('div');bar.id='totbar';bar.hidden=true;document.body.appendChild(bar)}
-  if(totObs){totObs.disconnect();totObs=null}
   const row=document.querySelector('#table tr.total');if(!row){bar.hidden=true;return}
   bar.innerHTML=`<div class="card"><table>${$('table').querySelector('colgroup').outerHTML}<tbody>${row.outerHTML}</tbody></table></div>`;
-  placeTotbar();
-  if(!window.IntersectionObserver)return;
-  totObs=new IntersectionObserver(([e])=>{const r=e.boundingClientRect;bar.hidden=$('vgame').hidden||e.isIntersecting||r.height===0||r.top<0;if(!bar.hidden)placeTotbar()});
-  totObs.observe(row);
+  totGap=0;placeTotbar();syncTotbar();
 }
 function placeTotbar(){const bar=$('totbar'),c=$('table').parentElement.getBoundingClientRect();if(bar&&c.width){bar.style.left=c.left+'px';bar.style.width=c.width+'px'}}
-window.addEventListener('resize',placeTotbar);
+function syncTotbar(){
+  totRaf=0;const bar=$('totbar'),row=document.querySelector('#table tr.total');if(!bar)return;
+  if(!row||$('vgame').hidden||!row.offsetHeight){bar.hidden=true;return}
+  // how far the copy's row ends above the bottom of the screen (bottoms, as the real row's top edge runs through the line above it), measured once while the bar is shown
+  if(!totGap){const was=bar.hidden;bar.style.visibility='hidden';bar.hidden=false;totGap=innerHeight-bar.querySelector('tr').getBoundingClientRect().bottom;bar.hidden=was;bar.style.visibility=''}
+  const d=row.getBoundingClientRect().bottom-(innerHeight-totGap);
+  bar.hidden=d<=.5;
+  if(!bar.hidden)bar.style.setProperty('--fade',Math.min(1,d/48).toFixed(2));
+}
+const queueTotbar=()=>{if(!totRaf)totRaf=requestAnimationFrame(syncTotbar)};
+addEventListener('scroll',queueTotbar,{passive:true});
+addEventListener('resize',()=>{totGap=0;placeTotbar();queueTotbar()});
 
 function archive(){
   const T=game.players.map((_,i)=>totals(i)),best=Math.max(...T.map(t=>t.total)),w=T.filter(t=>t.total===best);
@@ -748,8 +757,7 @@ function saveRoster(){lsSet('yatzy.roster',roster);store&&store.saveRoster(roste
 function setView(v){
   const st=v==='stats';
   $('vgame').hidden=st;$('vstats').hidden=!st;
-  // the total bar belongs to the game tab: hidden at once on the statistics, set up afresh on the way back
-  // (an observer reports only changes, and the table's total stays out of view through both switches)
+  // the total bar belongs to the game tab
   if(st){if($('totbar'))$('totbar').hidden=true}else drawTotbar();
   $('tgame').setAttribute('aria-selected',!st);$('tstats').setAttribute('aria-selected',st);
   if(st)renderStats();
@@ -1040,7 +1048,7 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had){had=true;return}if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 // the release number under the page shows whether a new version has arrived
-{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 57';$('sync').after(v)}
+{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 58';$('sync').after(v)}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 // remind about a backup every 5 finished games, unless the Telegram cloud already keeps every game
 let cloudKeeps=false;

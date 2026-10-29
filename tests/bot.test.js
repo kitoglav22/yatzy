@@ -183,4 +183,9 @@ test('the function: CORS, Telegram sign-in required, webhook secret checked', as
   assert.equal((await call({ inline_query: { id: 'q', query: '' } }, { 'X-Telegram-Bot-Api-Secret-Token': 'hook' })).statusCode, 200);
   assert.equal(x.sent.at(-1).m, 'answerInlineQuery');
   assert.equal((await S.handler({ messages: [{}] }, {})).statusCode, 200, 'timer');
+  S.use({ ...x.bot, token: TOKEN, db: x.db, tg: async (m, b) => (x.sent.push({ m, ...b }), { ok: true }) });
+  const set = JSON.parse((await S.handler({ httpMethod: 'GET', headers: {}, queryStringParameters: { setup: 'hook' } }, { functionName: 'f1' })).body);
+  assert.deepEqual(set, { webhook: { ok: true }, url: 'https://functions.yandexcloud.net/f1', firebase: 'ok' });
+  assert.equal(x.sent.find(m => m.m === 'setWebhook').secret_token, 'hook');
+  assert.equal((await S.handler({ httpMethod: 'GET', headers: {}, queryStringParameters: { setup: 'nope' } }, {})).statusCode, 403, 'a wrong secret does nothing');
 });

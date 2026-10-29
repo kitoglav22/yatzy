@@ -5,6 +5,11 @@
 // Environment: BOT_TOKEN (from BotFather), FB_SA (the service account key JSON), HOOK_SECRET (any long random string).
 // Optional: FB_URL, APP_LINK, APP_ORIGIN, SELF_URL.
 const crypto = require('crypto');
+// the function's network has no IPv6 route: an IPv6 address first makes every call hang until the timeout
+require('dns').setDefaultResultOrder('ipv4first');
+try { require('net').setDefaultAutoSelectFamily(true) } catch (e) {}
+// an outside call that hangs fails after 8 s instead of eating the function's whole time
+const get = (url, opt = {}) => fetch(url, { ...opt, signal: AbortSignal.timeout(8000) });
 
 const CELLS = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'three', 'four', 'small', 'large', 'house', 'chance', 'yatzy'];
 const NAMES = { u1: 'Единицы', u2: 'Двойки', u3: 'Тройки', u4: 'Четвёрки', u5: 'Пятёрки', u6: 'Шестёрки', three: 'Тройка', four: 'Каре', small: 'Малый стрит', large: 'Большой стрит', house: 'Фулл-хаус', chance: 'Шанс', yatzy: 'Яцзы', joker: 'Джокер' };
@@ -183,14 +188,14 @@ function firebase(sa, url) {
     const body = b64({ alg: 'RS256', typ: 'JWT' }) + '.' + b64({ iss: sa.client_email, aud: 'https://oauth2.googleapis.com/token', iat, exp: iat + 3600,
       scope: 'https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email' });
     const jwt = body + '.' + crypto.createSign('RSA-SHA256').update(body).sign(sa.private_key, 'base64url');
-    const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    const r = await get('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: 'grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=' + jwt }).then(r => r.json());
     if (!r.access_token) throw new Error('Firebase sign-in failed');
     tok = { v: r.access_token, exp: Date.now() + r.expires_in * 1000 };
     return tok.v;
   }
   const req = async (method, path, val, headers = {}) => {
-    const r = await fetch(`${url}/${path}.json?access_token=${await token()}`, { method, headers, body: val === undefined ? undefined : JSON.stringify(val) });
+    const r = await get(`${url}/${path}.json?access_token=${await token()}`, { method, headers, body: val === undefined ? undefined : JSON.stringify(val) });
     if (!r.ok && r.status !== 412) throw new Error(`Firebase ${method} ${path}: ${r.status}`);
     return r;
   };
@@ -213,9 +218,9 @@ function setup() {
   if (bot) return bot;
   const env = process.env, token = env.BOT_TOKEN, sa = JSON.parse(env.FB_SA);
   const db = firebase(sa, env.FB_URL || 'https://yatzy-654ba-default-rtdb.europe-west1.firebasedatabase.app');
-  const tg = (method, body) => fetch(`https://api.telegram.org/bot${token}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()).catch(() => null);
+  const tg = (method, body) => get(`https://api.telegram.org/bot${token}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()).catch(e => ({ ok: false, description: String(e && (e.cause || e.message) || e) }));
   const roomState = async code => { const v = await db.get(`rooms/${code}/state`); try { return typeof v === 'string' ? JSON.parse(v) : null } catch (e) { return null } };
-  bot = { ...makeBot({ db, tg, token, roomState, appLink: env.APP_LINK || 'https://t.me/k22_yatzy_bot/play' }), tg, token };
+  bot = { ...makeBot({ db, tg, token, roomState, appLink: env.APP_LINK || 'https://t.me/k22_yatzy_bot/play' }), tg, token, db };
   return bot;
 }
 
@@ -233,7 +238,10 @@ async function handler(event, context) {
     const self = env.SELF_URL || 'https://functions.yandexcloud.net/' + context.functionName;
     const hook = await b.tg('setWebhook', { url: self, secret_token: env.HOOK_SECRET, allowed_updates: ['message', 'inline_query'] });
     await b.tg('setMyCommands', { commands: [{ command: 'start', description: 'Открыть Яцзы' }] });
-    return out(200, { webhook: hook, url: self });
+    // the same check for the database, so one look at this page tells what works
+    let firebase = 'ok';
+    try { await b.db.get('srv/ping') } catch (e) { firebase = String(e && e.message || e) }
+    return out(200, { webhook: hook, url: self, firebase });
   }
   let body = {};
   try { body = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body || '', 'base64').toString() : event.body || '{}') } catch (e) { return out(400, { ok: false }) }

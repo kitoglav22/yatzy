@@ -167,8 +167,9 @@ table.avg td.hi{color:var(--ok)}
 .die.blank i{visibility:hidden}
 .die.held{border-color:var(--accent);background:var(--accent-soft);transform:translateY(-5px);box-shadow:0 8px 0 color-mix(in srgb,var(--accent) 35%,transparent)}
 .die:disabled{cursor:default}
-/* a shaking die gets its own layer, so its rattle and face changes do not repaint the panel and the table under it */
-.die.shaking{transition:none;will-change:transform;box-shadow:0 8px 14px color-mix(in srgb,#000 18%,transparent)}
+/* a shaking die gets its own layer, so its rattle and face changes do not repaint the panel and the table under it;
+   it glides from one jolt to the next over the time until the next one (set per jolt in animateRoll) */
+.die.shaking{transition:transform 45ms ease-in-out;will-change:transform;box-shadow:0 8px 14px color-mix(in srgb,#000 18%,transparent)}
 /* landing: a squash, a bounce and a ring that fades out */
 .die.land{animation:land .42s cubic-bezier(.2,1.5,.4,1)}
 .die.land::before{content:"";position:absolute;inset:-4px;border-radius:17px;border:2px solid var(--accent);animation:ring .5s ease-out forwards;pointer-events:none}

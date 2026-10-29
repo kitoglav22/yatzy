@@ -75,11 +75,11 @@ function animateRoll(free){
     const t=now-t0;
     order.forEach(k=>{
       const d=els[k];if(!d.classList.contains('shaking'))return;
-      if(t>=stopAt[k]){d.classList.remove('shaking');d.style.transform='';setFace(d,r.dice[k]);void d.offsetWidth;d.classList.add('land');buzz('land');return}
+      if(t>=stopAt[k]){d.classList.remove('shaking');d.style.transitionDuration='';d.style.transform='';setFace(d,r.dice[k]);void d.offsetWidth;d.classList.add('land');buzz('land');return}
       const left=(stopAt[k]-t)/stopAt[k],gap=left>.6?45:left>.3?85:150;
       if(!next[k]||now>=next[k]){
         // rattle: random offset and tilt, strong at first and calmer towards the stop
-        const a=3+9*left;d.style.transform=`translate3d(${j(a)}px,${j(a)-a*.6}px,0) rotate(${j(8+22*left)}deg) scale(${1+.06*left})`;
+        const a=3+9*left;d.style.transitionDuration=gap+'ms';d.style.transform=`translate3d(${j(a)}px,${j(a)-a*.6}px,0) rotate(${j(8+22*left)}deg) scale(${1+.06*left})`;
         let f=rnd6();if(f===face[k])f=f%6+1;face[k]=f;setFace(d,f);next[k]=now+gap;
       }
     });

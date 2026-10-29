@@ -75,8 +75,10 @@ tr.sum td.v{font-size:1.1rem}
 .v .need{display:block;font-size:.72rem;font-weight:600;color:var(--muted);margin-top:2px}
 .v.got{color:var(--ok)}
 tr.total td{font-family:var(--display);font-size:1.2rem;background:var(--accent-soft);padding-block:12px}
-/* the total stays on screen at the bottom while the sheet scrolls; the page colour fills the strip under it down to the screen edge */
-tr.total td{--sb:env(safe-area-inset-bottom,0px);position:sticky;bottom:var(--sb);z-index:2;box-shadow:0 -1px 0 var(--rule),0 var(--sb) 0 var(--bg)}
+/* the total stays on screen at the bottom while the sheet scrolls; the page colour fills the strip under it down to the screen edge
+   (a pseudo-element, since iPhones skip box-shadow on table cells; the card clips it once the row is back in its place) */
+tr.total td{--sb:env(safe-area-inset-bottom,0px);position:sticky;bottom:var(--sb);z-index:2;box-shadow:0 -1px 0 var(--rule)}
+tr.total td::after{content:"";position:absolute;left:-1px;right:-1px;top:100%;height:var(--sb);background:var(--bg)}
 tr.total td.lead{color:var(--win)}
 tr.section td{padding:10px 12px 6px;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:800;background:var(--paper)}
 
@@ -638,9 +640,8 @@ function archive(){
   const after=computeStats();
   game.newAch=after.players.filter(p=>g.players.some(x=>x.name===p.name)).map(p=>{const b=before.players.find(x=>x.name===p.name);
     return {name:p.name,list:ACH.filter(a=>p.ach[a.id]&&(!b||!b.ach[a.id]||b.ach[a.id].n<p.ach[a.id].n)).map(a=>({id:a.id,name:a.name,first:!b||!b.ach[a.id]}))}});
-  // pop up what was not shown during the game, new ones first, at most five; the rest are listed under the result
-  const pend=[];game.newAch.forEach(x=>x.list.forEach(a=>{if(!((game.shown||{})[x.name]||[]).includes(a.id))pend.push({a:ACH.find(z=>z.id===a.id),name:x.name,first:a.first})}));
-  pend.sort((x,y)=>y.first-x.first);
+  // pop up first-time ones not shown during the game, at most five; all of the game's achievements are listed under the result
+  const pend=[];game.newAch.forEach(x=>x.list.forEach(a=>{if(a.first&&!((game.shown||{})[x.name]||[]).includes(a.id))pend.push({a:ACH.find(z=>z.id===a.id),name:x.name,first:true})}));
   pend.slice(0,5).forEach(x=>toastLater(x.a,x.name,x.first));
   if(pend.length>5)toastLater({badge:'+'+(pend.length-5),name:'И ещё '+(pend.length-5),desc:'список под итогом партии'},'Ачивки',false);
   store&&store.addGame(g);renderHist();
@@ -793,8 +794,8 @@ function animateRoll(free){
 }
 
 // achievements: pop-ups during the game, statistics and the achievement grid
-// achievement pop-ups: ones that depend only on a player's own cells show up as soon as they are earned,
-// the rest (wins, streaks, records) when the game ends
+// achievement pop-ups, only for a player's first time (repeats are still counted in the statistics and listed under the result):
+// ones that depend only on a player's own cells show up as soon as they are earned, the rest (wins, streaks, records) when the game ends
 const LIVE=['yatzy','joker','bonus','upper80','sixes','ladder','chance','ones','chance30','nochance','low150','fullset','solid'];
 function toast(a,name,first){
   const box=$('toasts');if(!box)return;
@@ -812,7 +813,7 @@ function checkLive(i,beforeSc){
   const sc=game.scores[i],name=game.players[i].name,shown=(game.shown=game.shown||{})[name]=(game.shown[name]||[]);
   ACH.filter(a=>LIVE.includes(a.id)).forEach(a=>{
     if(shown.includes(a.id))return;
-    if(a.t(liveCtx(sc))&&!a.t(liveCtx(beforeSc))){shown.push(a.id);toastLater(a,name,!hadBefore(name,a.id))}
+    if(a.t(liveCtx(sc))&&!a.t(liveCtx(beforeSc))){shown.push(a.id);if(!hadBefore(name,a.id))toastLater(a,name,true)}
   });
 }
 
@@ -977,9 +978,10 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had){had=true;return}if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 // the release number under the page shows whether a new version has arrived
-{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 45';$('sync').after(v)}
+{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 46';$('sync').after(v)}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
-// remind about a backup every 5 finished games
+// remind about a backup every 5 finished games, unless the Telegram cloud already keeps every game
+let cloudKeeps=false;
 function lastBackupText(since){
   const t=lsGet('yatzy.backupTime');
   if(!t)return 'Резервную копию ещё не сохраняли.';
@@ -990,7 +992,7 @@ window.onAfterRender=()=>{
   const since=history.length-(lsGet('yatzy.backupAt')||0);
   if($('blast'))$('blast').textContent=lastBackupText(since);
   const el=$('remind');if(!el)return;
-  if(since>=5&&(!game||!anyScore()||over())){
+  if(since>=5&&!cloudKeeps&&(!game||!anyScore()||over())){
     el.innerHTML=`<div class="remind"><span>${lastBackupText(since)} Сохраните копию, чтобы история не потерялась.</span><button class="btn small" id="rexp">Сохранить копию</button></div>`;
     $('rexp').onclick=exportBackup;
   } else el.innerHTML='';
@@ -1487,7 +1489,9 @@ function tgBot(tg,has){
 let tgCloudInfo='';
 function tgCloud(tg){
   const cs=tg.CloudStorage,call=(fn,...a)=>new Promise((ok,bad)=>fn.call(cs,...a,(e,v)=>e?bad(e):ok(v)));
-  const put=(k,v)=>{const j=JSON.stringify(v);return j.length>4096?Promise.resolve():call(cs.setItem,k,j).catch(()=>{})};
+  // a game that did not reach the cloud brings the backup reminder back
+  const lost=()=>{if(cloudKeeps){cloudKeeps=false;render()}};
+  const put=(k,v)=>{const j=JSON.stringify(v);if(j.length>4096){lost();return Promise.resolve()}return call(cs.setItem,k,j).catch(lost)};
   const plain=g=>{const {_doc,...x}=g;return x};
   store={
     saveGame(){},
@@ -1513,6 +1517,7 @@ function tgCloud(tg){
       if(Array.isArray(r))r.forEach(x=>{if(okPerson(x)&&!roster.some(y=>y.name===x.name||y.id===x.id)){roster.push({id:x.id,name:x.name});changed=true}})}catch(e){}}
     if(changed){lsSet('yatzy.hist',history);lsSet('yatzy.roster',roster);render()}
     // what is only on this device goes up
+    cloudKeeps=true;render();
     history.filter(g=>!inCloud.has(g.at)).forEach(g=>store.addGame(g));
     store.saveRoster(roster);
     show(`Партии и игроки сохраняются в облаке Telegram и видны на всех ваших устройствах с этим аккаунтом. Сейчас там партий: ${history.length}.`);

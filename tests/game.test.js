@@ -19,6 +19,16 @@ test('on one device the stripe follows the player on turn', async () => {
   assert.deepEqual(await striped(), [false, true]);
 });
 
+test('on a phone the total row stays at the bottom of the screen while the sheet scrolls', async () => {
+  const ph = await env.device('phone', twoPlayers, { viewport: { width: 390, height: 700 } });
+  await ph.evaluate(() => { game = newGameFor(roster); game.dice = false; saveGame(); render(); window.scrollTo(0, 0); });
+  const bottom = () => ph.$eval('tr.total td', e => Math.round(e.getBoundingClientRect().bottom));
+  assert.equal(await bottom(), 700);
+  await ph.evaluate(() => window.scrollTo(0, 300));
+  assert.equal(await bottom(), 700);
+  await ph.close();
+});
+
 test('the last cell ends the game, undo reopens it and takes it out of the history', async () => {
   await fresh();
   await p.evaluate(() => {

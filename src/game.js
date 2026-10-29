@@ -32,8 +32,9 @@ function render(){
     const msg=leaders>1?`Ничья, ${order.map(o=>o.t).join(' : ')}`:`Победа: ${esc(order[0].name)}, ${order.map(o=>o.t).join(' : ')}`;
     const na=(game.newAch||[]).filter(x=>x.list.length);
     const achHtml=na.length?`<p class="newach">Ачивки за партию: ${na.map(x=>`${esc(x.name)}: ${x.list.map(a=>a.first?`<b>${a.name}</b>`:a.name).join(', ')}`).join('; ')}${na.some(x=>x.list.some(a=>a.first))?'. Новые выделены.':''}</p>`:'';
-    bn.innerHTML=`<div class="banner"><div><strong>${msg}</strong>${game.ended&&!done()?'<p class="muted" style="margin-top:4px">Партия закончена досрочно.</p>':''}${achHtml}</div><button class="btn primary" id="again">${net?'Ещё партию':'Новая игра'}</button></div>`;
+    bn.innerHTML=`<div class="banner"><div><strong>${msg}</strong>${game.ended&&!done()?'<p class="muted" style="margin-top:4px">Партия закончена досрочно.</p>':''}${achHtml}</div><div class="row">${shareVia?'<button class="btn" id="shareres">Поделиться</button>':''}<button class="btn primary" id="again">${net?'Ещё партию':'Новая игра'}</button></div></div>`;
     $('again').onclick=net?net.again:openSetup;
+    if($('shareres'))$('shareres').onclick=()=>shareVia(resultText());
   } else bn.innerHTML='';
 
   const ac=$('actions');
@@ -238,6 +239,13 @@ function openGame(at){
 }
 $('hist').addEventListener('click',e=>{const li=e.target.closest('li[data-at]');if(li)openGame(+li.dataset.at)});
 $('hist').addEventListener('keydown',e=>{const li=e.target.closest('li[data-at]');if(li&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openGame(+li.dataset.at)}});
+// a finished game as one line for a chat
+function resultText(){
+  const T=game.players.map((p,i)=>({name:p.name,t:totals(i).total})).sort((a,b)=>b.t-a.t),score=T.map(x=>x.t).join(' : ');
+  const head=T.length>1&&T[0].t===T[1].t?`ничья, ${score}`:`победа: ${T[0].name}, ${score}`;
+  const fresh=(game.newAch||[]).flatMap(x=>x.list.filter(a=>a.first).map(a=>`${x.name} «${a.name}»`));
+  return `Яцзы, ${head}.`+(fresh.length?` Новые ачивки: ${fresh.join(', ')}.`:'')+(game.ended&&!done()?' Партия закончена досрочно.':'');
+}
 function saveGame(){lsSet('yatzy.game',game);store&&store.saveGame(game);net&&net.push()}
 function saveRoster(){lsSet('yatzy.roster',roster);store&&store.saveRoster(roster)}
 

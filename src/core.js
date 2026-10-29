@@ -16,6 +16,8 @@ const MAXP=4;
 const uid=()=>Math.random().toString(36).slice(2,9);
 
 let roster=[], game=null, history=[], ui={confirm:false}, store=null, net=null;
+// how a finished game is shared to a chat; set by the GitHub Pages and Telegram versions
+let shareVia=null;
 // in an online room a device acts only for its own players
 const mine=i=>!net||net.mine(i);
 

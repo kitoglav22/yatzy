@@ -1,7 +1,7 @@
 // The page opened as a Telegram Mini App, with Telegram's script replaced by a stand-in
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { start, twoPlayers } = require('./helpers');
+const { start } = require('./helpers');
 
 const fakeTelegram = `
 window.__tg = { haptics: 0 };
@@ -13,6 +13,19 @@ window.Telegram = { WebApp: {
   HapticFeedback: { impactOccurred() { __tg.haptics++; }, notificationOccurred() { __tg.haptics++; } },
   BackButton: { isVisible: false, show() { this.isVisible = true; }, hide() { this.isVisible = false; }, onClick(f) { this.click = f; } },
   openTelegramLink(u) { __tg.link = u; },
+  isFullscreen: false, safeAreaInset: { top: 47, bottom: 34 }, contentSafeAreaInset: { top: 46, bottom: 0 },
+  requestFullscreen() { this.isFullscreen = true; (this._ev.fullscreenChanged || (() => {}))(); },
+  checkHomeScreenStatus(cb) { cb('missed'); }, addToHomeScreen() { __tg.home = true; },
+  CloudStorage: {
+    data: { g1000: JSON.stringify({ at: 1000, players: [{ name: 'Облако', total: 200, scores: { u1: 3 } }, { name: 'Миша', total: 150, scores: {} }], winner: 'Облако' }),
+      g2000: '{"broken"', d3000: '1', g3000: JSON.stringify({ at: 3000, players: [{ name: 'Удалённая', total: 1 }] }),
+      roster: JSON.stringify([{ id: 'cl', name: 'Облако' }]) },
+    getKeys(cb) { setTimeout(() => cb(null, Object.keys(this.data))); },
+    getItem(k, cb) { setTimeout(() => cb(null, this.data[k] ?? '')); },
+    getItems(ks, cb) { setTimeout(() => cb(null, Object.fromEntries(ks.map(k => [k, this.data[k] ?? ''])))); },
+    setItem(k, v, cb) { this.data[k] = v; setTimeout(() => cb && cb(null, true)); },
+    removeItem(k, cb) { delete this.data[k]; setTimeout(() => cb && cb(null, true)); },
+  },
 } };`;
 
 let env, p;
@@ -54,8 +67,7 @@ test('the Telegram name is offered for a new player', async () => {
 });
 
 test('dice use Telegram haptics', async () => {
-  await p.evaluate(twoPlayers);
-  await p.evaluate(() => { roster = JSON.parse(localStorage.getItem('yatzy.roster')); game = newGameFor(roster); game.dice = true; game.roll = newRoll(); saveGame(); render(); });
+  await p.evaluate(() => { game = newGameFor([{ id: 'a', name: 'Аня' }, { id: 'b', name: 'Миша' }]); game.dice = true; game.roll = newRoll(); saveGame(); render(); });
   await p.click('#roll'); await p.waitForFunction(() => !rolling);
   assert.ok(await p.evaluate(() => __tg.haptics) >= 1);
 });
@@ -65,4 +77,41 @@ test('an invitation is shared as a link to the bot that opens the room', async (
   const link = new URL(await p.evaluate(() => __tg.link));
   assert.equal(link.origin + link.pathname, 'https://t.me/share/url');
   assert.equal(link.searchParams.get('url'), 'https://t.me/k22_yatzy_bot/play?startapp=K7MPX');
+});
+
+test('opens full screen and keeps the page clear of Telegram\'s buttons', async () => {
+  assert.ok(await p.evaluate(() => document.documentElement.classList.contains('tgfull')));
+  assert.equal(await p.evaluate(() => getComputedStyle(document.querySelector('.wrap')).paddingTop), '113px');
+});
+
+test('history and players come from the Telegram cloud, damaged and deleted games are skipped', async () => {
+  await p.waitForFunction(() => /в облаке Telegram/.test(tgCloudInfo));
+  const h = await p.evaluate(() => history.map(g => g.at));
+  assert.ok(h.includes(1000)); assert.ok(!h.includes(3000));
+  assert.ok(await p.evaluate(() => roster.some(r => r.name === 'Облако')));
+});
+
+test('a finished game goes up to the cloud, a deleted one leaves a marker', async () => {
+  const at = await p.evaluate(() => {
+    game = newGameFor([{ id: 'a', name: 'Аня' }, { id: 'b', name: 'Миша' }]); game.dice = false;
+    ALL.forEach(c => { game.scores[0][c.id] = c.vals[1]; game.scores[1][c.id] = c.vals[0]; });
+    changed(); return game.savedAt;
+  });
+  await p.waitForFunction(at => !!Telegram.WebApp.CloudStorage.data['g' + at], at);
+  await p.evaluate(at => deleteGame(at), at);
+  await p.waitForFunction(at => !Telegram.WebApp.CloudStorage.data['g' + at] && Telegram.WebApp.CloudStorage.data['d' + at], at);
+});
+
+test('the result of a game is shared to a chat with a link to the bot', async () => {
+  await p.click('#shareres');
+  const link = new URL(await p.evaluate(() => __tg.link));
+  assert.equal(link.searchParams.get('url'), 'https://t.me/k22_yatzy_bot/play');
+  assert.match(link.searchParams.get('text'), /^Яцзы, победа: .+, \d+ : \d+\..* Сыграем\?$/);
+});
+
+test('an icon on the home screen can be added from the statistics tab', async () => {
+  await p.click('#tstats');
+  await p.click('#tgadd');
+  assert.ok(await p.evaluate(() => __tg.home));
+  await p.click('#tgame');
 });

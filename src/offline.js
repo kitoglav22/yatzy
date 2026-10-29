@@ -19,13 +19,15 @@ function exportBackup(){
   } else download();
 }
 $('exp').onclick=exportBackup;
+// a finished game from a backup or another device: anything else is skipped, so it cannot break the history
+const okSavedGame=g=>!!g&&typeof g.at==='number'&&Array.isArray(g.players)&&g.players.length>0&&g.players.every(p=>p&&typeof p.name==='string'&&p.name.length<=40&&Number.isFinite(p.total)
+  &&(p.scores==null||typeof p.scores==='object'&&Object.values(p.scores).every(v=>v===null||Number.isFinite(v))));
+if(navigator.share)shareVia=text=>navigator.share({text,url:location.origin+location.pathname}).catch(()=>{});
 $('imp').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try{const d=JSON.parse(await f.text());if(!Array.isArray(d.history))throw 0;
     const seen=new Set(history.map(g=>g.at));let n=0;
-    // skip anything that does not look like a finished game, so a damaged file cannot break the history
-    const ok=g=>g&&typeof g.at==='number'&&Array.isArray(g.players)&&g.players.length&&g.players.every(p=>p&&typeof p.name==='string'&&Number.isFinite(p.total)&&(p.scores==null||typeof p.scores==='object'&&Object.values(p.scores).every(v=>v===null||Number.isFinite(v))));
-    d.history.forEach(g=>{if(ok(g)&&!seen.has(g.at)){seen.add(g.at);history.push(g);n++}});
+    d.history.forEach(g=>{if(okSavedGame(g)&&!seen.has(g.at)){seen.add(g.at);history.push(g);n++}});
     (Array.isArray(d.roster)?d.roster:[]).forEach(r=>{if(r&&r.id&&typeof r.name==='string'&&!roster.some(x=>x.name===r.name||x.id===r.id))roster.push({id:r.id,name:r.name})});
     lsSet('yatzy.hist',history);saveRoster();render();
     $('bmsg').textContent='Добавлено партий: '+n+'. Всего в истории: '+history.length;

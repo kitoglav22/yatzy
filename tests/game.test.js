@@ -55,7 +55,7 @@ test('the last cell ends the game, undo reopens it and takes it out of the histo
 test('a game finished early goes to the history without achievements', async () => {
   await p.click('#again'); await p.click('#go');
   await p.click('button[data-c="u1"][data-p="0"]'); await p.click('.vals button[data-v="3"]');
-  await p.click('#fin'); await p.click('#fyes');
+  await p.click('#more'); await p.click('#fin'); await p.click('#fyes');
   assert.match(await p.textContent('#banner'), /досрочно/);
   const early = await p.evaluate(() => history.find(g => g.early));
   assert.ok(early);

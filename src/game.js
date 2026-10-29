@@ -15,10 +15,12 @@ function render(){
   // a score that has just come in flashes once
   const lm=lastMove(),L=(game.log||[]).length,fresh=seen.game===game.started&&L>seen.n?lm:null;seen.game=game.started;seen.n=L;
   const cell=(i,c)=>{const v=game.scores[i][c.id];
-    if(v==null&&i===turn&&sug&&sug[c.id]!=null&&mine(i)){const x=sug[c.id];
+    // only cells that score get a suggestion; a cell worth 0 stays a plain empty cell and a tap opens the picker,
+    // except right after the joker, when a 0 in any free cell is exactly what is due
+    if(v==null&&i===turn&&sug&&sug[c.id]!=null&&(sug[c.id]>0||game.roll&&game.roll.jokerTaken)&&mine(i)){const x=sug[c.id];
       return `<td class="cell${me(i)}"><button class="sug${x===0?' z':''}${x>0&&x===topSug?' best':''}" data-p="${i}" data-c="${c.id}" data-s="${x}" aria-label="${esc(game.players[i].name)}: ${c.name}, записать ${x}">${x}</button></td>`}
     const cls=(v==null?'empty':v===0?'zero':'')+(fresh&&fresh.i===i&&fresh.c.id===c.id?' flash':'');
-    return `<td class="cell${me(i)}"><button class="${cls}" data-p="${i}" data-c="${c.id}" ${net?'disabled':''} aria-label="${esc(game.players[i].name)}: ${c.name}">${v==null?'—':v}</button></td>`};
+    return `<td class="cell${me(i)}"><button class="${cls}" data-p="${i}" data-c="${c.id}" ${net?'disabled':''} aria-label="${esc(game.players[i].name)}: ${c.name}${v===0?', вычеркнуто':''}">${v==null?'—':v===0?'✕':v}</button></td>`};
   const row=c=>`<tr><td><button class="cat" data-help="${c.id}"><b>${c.name}</b><small>${c.hint}</small></button></td>${game.players.map((_,i)=>cell(i,c)).join('')}</tr>`;
   const need=t=>{if(t.bonus||!t.upFilled)return '';return t.par>=0?`<span class="need">с запасом +${t.par}</span>`:`<span class="need">отстаёт на ${-t.par}</span>`};
   const sec=t=>`<tr class="section"><td colspan="${n+1}">${t}</td></tr>`;
@@ -29,14 +31,14 @@ function render(){
   const best=Math.max(...T.map(t=>t.total)),leaders=T.filter(t=>t.total===best).length;
   h+=`<tr class="total"><td>Итого</td>${T.map((t,i)=>`<td class="${t.total===best&&best>0&&leaders===1?'lead':''}${me(i)}">${t.total}</td>`).join('')}</tr></tbody>`;
   tb.innerHTML=h;drawTotbar();
-  $('legend').innerHTML=over()?'':`${game.dice?'<span><i class="lg sug">16</i>можно записать</span><span><i class="lg best">25</i>лучший вариант</span>':''}<span>Нажмите на название, чтобы увидеть правило</span>`;
+  $('legend').innerHTML=over()||history.length>=5?'':`${game.dice?'<span><i class="lg sug">16</i>можно записать</span><span><i class="lg best">25</i>лучший вариант</span>':''}<span>Нажмите на название, чтобы увидеть правило</span>`;
 
   const bn=$('banner');
   if(over()){
     const order=T.map((t,i)=>({t:t.total,name:game.players[i].name})).sort((a,b)=>b.t-a.t);
     const msg=leaders>1?`Ничья, ${order.map(o=>o.t).join(' : ')}`:`Победа: ${esc(order[0].name)}, ${order.map(o=>o.t).join(' : ')}`;
     const na=(game.newAch||[]).filter(x=>x.list.length);
-    const achHtml=na.length?`<p class="newach">Ачивки за партию: ${na.map(x=>`${esc(x.name)}: ${x.list.map(a=>a.first?`<b>${a.name}</b>`:a.name).join(', ')}`).join('; ')}${na.some(x=>x.list.some(a=>a.first))?'. Новые выделены.':''}</p>`:'';
+    const achHtml=na.length?`<div class="newach">${na.map(x=>`<p><span class="who">${esc(x.name)}</span>${x.list.map(a=>`<span class="achip${a.first?' new':''}">${a.name}</span>`).join('')}</p>`).join('')}${na.some(x=>x.list.some(a=>a.first))?'<p class="muted">Закрашены новые ачивки</p>':''}</div>`:'';
     bn.innerHTML=`<div class="banner"><div><strong>${msg}</strong>${game.ended&&!done()?'<p class="muted" style="margin-top:4px">Партия закончена досрочно.</p>':''}${achHtml}</div><div class="row">${shareVia?'<button class="btn" id="shareres">Поделиться</button>':''}<button class="btn primary" id="again">${net?'Ещё партию':'Новая игра'}</button></div></div>`;
     $('again').onclick=net?net.again:openSetup;
     if($('shareres'))$('shareres').onclick=()=>shareVia(resultText());
@@ -56,17 +58,28 @@ function render(){
     // reordering in the middle of a dice turn would hand the roll to another player
     const midTurn=game.dice&&game.roll&&(game.roll.n>0||game.roll.jokerTaken);
     const last=(game.log||[]).slice(-1)[0],lp=last&&game.players.find(p=>p.id===last.pid),lc=last&&[...ALL,JK].find(c=>c.id===last.cid);
-    ac.innerHTML=`<div class="row">${lp&&lc?`<button class="btn" id="undo">↶ Отменить: ${esc(lp.name)}, ${lc.name}</button>`:''}<button class="btn" id="ng">Новая игра</button>${over()||midTurn?'':`<button class="btn" id="sw">${n===2?'Поменять местами':'Сдвинуть порядок'}</button>`}${!over()&&anyScore()?'<button class="btn" id="fin">Закончить досрочно</button>':''}${over()?'':`<button class="btn" id="dmode">${game.dice?'Ввод вручную':'Кубики на экране'}</button>`}${window.openOnline?'<button class="btn" id="onl">Играть онлайн</button>':''}</div>`;
+    // on screen: undo, online and «Ещё»; the rest waits in the «Ещё» sheet, so ending a game early takes a deliberate tap
+    ac.innerHTML=`<div class="row">${lp&&lc?`<button class="btn" id="undo">↶ Отменить: ${esc(lp.name)}, ${lc.name}</button>`:''}${window.openOnline?'<button class="btn" id="onl">Играть онлайн</button>':''}${over()?'':'<button class="btn" id="more">Ещё</button>'}</div>`;
     if($('onl'))$('onl').onclick=window.openOnline;
-    if($('dmode'))$('dmode').onclick=()=>{game.dice=!game.dice;if(game.dice&&!game.roll)game.roll=newRoll();lsSet('yatzy.dice',game.dice);saveGame();render()};
     if($('undo'))$('undo').onclick=undo;
-    if($('fin'))$('fin').onclick=()=>{ui.finish=true;render()};
-    // first player moves to the end; each column keeps its scores
-    if($('sw'))$('sw').onclick=()=>{game.players.push(game.players.shift());game.scores.push(game.scores.shift());saveGame();render()};
-    $('ng').onclick=()=>{if(over()||!anyScore())openSetup();else{ui.confirm=true;render()}};
+    if($('more'))$('more').onclick=()=>openMore(n,midTurn);
   }
   renderDice();renderHist();keepAwake();
   window.onAfterRender&&window.onAfterRender();
+}
+
+// the «Ещё» sheet: new game, order, dice or manual entry, and ending the game early
+function openMore(n,midTurn){
+  sheet.open(`<h3>Партия</h3><div class="more">
+    <button class="btn" id="ng">Новая игра</button>
+    ${midTurn?'':`<button class="btn" id="sw">${n===2?'Поменять местами':'Сдвинуть порядок'}</button>`}
+    <button class="btn" id="dmode">${game.dice?'Ввод вручную':'Кубики на экране'}</button>
+    ${anyScore()?'<button class="btn danger" id="fin">Закончить досрочно</button>':''}</div>`);
+  const then=f=>()=>{sheet.close();f();render();if(ui.confirm||ui.finish)$('actions').scrollIntoView({behavior:'smooth',block:'center'})};
+  $('ng').onclick=then(()=>{if(!anyScore())openSetup();else ui.confirm=true});
+  if($('sw'))$('sw').onclick=then(()=>{game.players.push(game.players.shift());game.scores.push(game.scores.shift());saveGame()});
+  $('dmode').onclick=then(()=>{game.dice=!game.dice;if(game.dice&&!game.roll)game.roll=newRoll();lsSet('yatzy.dice',game.dice);saveGame()});
+  if($('fin'))$('fin').onclick=then(()=>{ui.finish=true});
 }
 
 // keep the iPad screen on while a game is in progress
@@ -115,8 +128,8 @@ function renderHist(){
 }
 
 const sheet={el:null,
-  open(html){$('sheet').innerHTML=`<div class="sheet-bg" id="bg"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
-    $('bg').onclick=e=>{if(e.target.id==='bg')sheet.close()};},
+  open(html){$('sheet').innerHTML=`<div class="sheet-bg" id="bg"><div class="sheet" role="dialog" aria-modal="true"><button class="sheetx" id="sheetx" type="button" aria-label="Закрыть">✕</button>${html}</div></div>`;
+    $('bg').onclick=e=>{if(e.target.id==='bg')sheet.close()};$('sheetx').onclick=sheet.close;},
   close(){$('sheet').innerHTML=''}};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')sheet.close()});
 
@@ -263,10 +276,11 @@ function archive(){
   const after=computeStats();
   game.newAch=after.players.filter(p=>g.players.some(x=>x.name===p.name)).map(p=>{const b=before.players.find(x=>x.name===p.name);
     return {name:p.name,list:ACH.filter(a=>p.ach[a.id]&&(!b||!b.ach[a.id]||b.ach[a.id].n<p.ach[a.id].n)).map(a=>({id:a.id,name:a.name,first:!b||!b.ach[a.id]}))}});
-  // pop up first-time ones not shown during the game, at most five; all of the game's achievements are listed under the result
+  // pop up first-time ones not shown during the game; all of the game's achievements are listed under the result
   const pend=[];game.newAch.forEach(x=>x.list.forEach(a=>{if(a.first&&!((game.shown||{})[x.name]||[]).includes(a.id))pend.push({a:ACH.find(z=>z.id===a.id),name:x.name,first:true})}));
-  pend.slice(0,5).forEach(x=>toastLater(x.a,x.name,x.first));
-  if(pend.length>5)toastLater({badge:'+'+(pend.length-5),name:'И ещё '+(pend.length-5),desc:'список под итогом партии'},'Ачивки',false);
+  // several at once make one card instead of a stack over the result
+  if(pend.length===1)toastLater(pend[0].a,pend[0].name,true);
+  else if(pend.length)toastLater({badge:'+'+pend.length,label:'Новые ачивки',name:`${pend.length} ${plural(pend.length,'новая ачивка','новые ачивки','новых ачивок')}`,desc:'список под итогом партии'},[...new Set(pend.map(x=>x.name))].join(', '),true);
   store&&store.addGame(g);renderHist();
 }
 function unarchive(){

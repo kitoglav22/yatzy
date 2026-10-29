@@ -124,6 +124,19 @@ table.avg td.hi{color:var(--ok)}
 .note{margin:0;padding:10px 12px;border-radius:12px;background:var(--win-soft);font-size:.9rem}
 .sheet table.avg td,.sheet table.avg th{padding:6px 10px}
 .sheet table.avg tr.t td{font-weight:800;background:var(--accent-soft)}
+.toasts{position:fixed;left:0;right:0;top:0;z-index:30;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;padding:calc(12px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px))}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:12px;width:min(420px,100%);padding:12px 14px;border-radius:16px;background:var(--paper);border:1px solid var(--rule);box-shadow:0 10px 30px color-mix(in srgb,#000 22%,transparent);cursor:pointer}
+.toast .badge{flex:none;display:grid;place-items:center;width:52px;height:44px;border-radius:12px;background:var(--accent);color:var(--on-accent);font-family:var(--display);font-weight:800;font-size:.72rem;line-height:1;text-align:center}
+.toast small{display:block;color:var(--muted);font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.toast b{display:block}
+.toast span.who{font-size:.85rem;color:var(--muted)}
+.toast.first .badge{background:var(--win)}
+@media (prefers-reduced-motion:no-preference){
+  .toast{animation:tin .35s cubic-bezier(.2,.9,.3,1.3) both}
+  .toast.out{animation:tout .25s ease-in both}
+  @keyframes tin{from{opacity:0;transform:translateY(-16px) scale(.96)}}
+  @keyframes tout{to{opacity:0;transform:translateY(-12px)}}
+}
 .sheet-bg{position:fixed;inset:0;background:color-mix(in srgb,#000 45%,transparent);display:flex;align-items:flex-end;justify-content:center;z-index:20;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .sheet{background:var(--paper);color:var(--ink);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px;max-height:88%;overflow:auto}
 @media (min-width:700px){.sheet-bg{align-items:center}.sheet{border-radius:20px;max-height:80%}}
@@ -184,6 +197,7 @@ table.avg td.hi{color:var(--ok)}
   <p class="muted" id="sync"></p>
 </div>
 <div id="sheet"></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script>
 const range=(a,b,s=1)=>{const r=[];for(let x=a;x<=b;x+=s)r.push(x);return r};
@@ -308,10 +322,34 @@ async function keepAwake(){
 }
 document.addEventListener('visibilitychange',keepAwake);
 
+// achievement pop-ups: ones that depend only on a player's own cells show up as soon as they are earned,
+// the rest (wins, streaks, records) when the game ends
+const LIVE=['yatzy','joker','bonus','upper80','sixes','ladder','chance','ones','chance30','nochance','low150','fullset','solid'];
+function toast(a,name,first){
+  const box=$('toasts');if(!box)return;
+  const t=document.createElement('div');t.className='toast'+(first?' first':'');
+  t.innerHTML=`<span class="badge">${a.badge}</span><div style="min-width:0"><small>${first?'Новая ачивка':'Ачивка'}</small><b>${a.name}</b><span class="who">${esc(name)} · ${a.desc}</span></div>`;
+  const kill=()=>{if(t.classList.contains('out'))return;t.classList.add('out');setTimeout(()=>t.remove(),260)};
+  t.onclick=kill;box.appendChild(t);setTimeout(kill,4200);
+  while(box.children.length>4)box.firstChild.remove();
+}
+let toastQ=Promise.resolve();
+function toastLater(a,name,first){toastQ=toastQ.then(()=>new Promise(r=>{toast(a,name,first);setTimeout(r,600)}))}
+function liveCtx(sc){const up=UP.reduce((a,c)=>a+(sc[c.id]||0),0),low=LOW.reduce((a,c)=>a+(sc[c.id]||0),0);return {sc,up,low,p:{total:0},s:{}}}
+function hadBefore(name,id){return history.some(g=>!g.early&&g.players.some(p=>p.name===name&&ACH.find(a=>a.id===id).t(liveCtx(p.scores||{}))))}
+function checkLive(i,beforeSc){
+  const sc=game.scores[i],name=game.players[i].name,shown=(game.shown=game.shown||{})[name]=(game.shown[name]||[]);
+  ACH.filter(a=>LIVE.includes(a.id)).forEach(a=>{
+    if(shown.includes(a.id))return;
+    if(a.t(liveCtx(sc))&&!a.t(liveCtx(beforeSc))){shown.push(a.id);toastLater(a,name,!hadBefore(name,a.id))}
+  });
+}
 function setScore(i,cid,v){
+  const beforeSc={...game.scores[i]};
   (game.log=game.log||[]).push({pid:game.players[i].id,cid,prev:game.scores[i][cid]});
   if(game.log.length>200)game.log.shift();
   if(v==null)delete game.scores[i][cid];else game.scores[i][cid]=v;
+  if(v!=null)checkLive(i,beforeSc);
   changed();
 }
 function undo(){
@@ -422,7 +460,12 @@ function archive(){
   game.saved=true;game.savedAt=g.at;history.push(g);lsSet('yatzy.hist',history);
   const after=computeStats();
   game.newAch=after.players.filter(p=>g.players.some(x=>x.name===p.name)).map(p=>{const b=before.players.find(x=>x.name===p.name);
-    return {name:p.name,list:ACH.filter(a=>p.ach[a.id]&&(!b||!b.ach[a.id]||b.ach[a.id].n<p.ach[a.id].n)).map(a=>({name:a.name,first:!b||!b.ach[a.id]}))}});
+    return {name:p.name,list:ACH.filter(a=>p.ach[a.id]&&(!b||!b.ach[a.id]||b.ach[a.id].n<p.ach[a.id].n)).map(a=>({id:a.id,name:a.name,first:!b||!b.ach[a.id]}))}});
+  // pop up what was not shown during the game, new ones first, at most five; the rest are listed under the result
+  const pend=[];game.newAch.forEach(x=>x.list.forEach(a=>{if(!((game.shown||{})[x.name]||[]).includes(a.id))pend.push({a:ACH.find(z=>z.id===a.id),name:x.name,first:a.first})}));
+  pend.sort((x,y)=>y.first-x.first);
+  pend.slice(0,5).forEach(x=>toastLater(x.a,x.name,x.first));
+  if(pend.length>5)toastLater({badge:'+'+(pend.length-5),name:'И ещё '+(pend.length-5),desc:'список под итогом партии'},'Ачивки',false);
   store&&store.addGame(g);renderHist();
 }
 function unarchive(){

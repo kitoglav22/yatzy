@@ -110,7 +110,7 @@ table.avg td.hi{color:var(--ok)}
 .ach{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:14px;background:var(--paper);border:1px solid var(--rule);min-width:0}
 .ach .badge{flex:none;display:grid;place-items:center;width:52px;height:44px;padding:0 4px;border-radius:12px;letter-spacing:-.02em;background:var(--accent);color:var(--on-accent);font-family:var(--display);font-weight:800;font-size:.72rem;text-align:center;line-height:1}
 #stats{display:flex;flex-direction:column;gap:24px}
-#banner:empty,#actions:empty{display:none}
+#banner:empty,#actions:empty,#remind:empty{display:none}
 .ach.off{background:transparent;border-style:dashed}
 .ach.off b{color:var(--muted);font-weight:600}
 .ach.off .badge{background:transparent;color:var(--muted);border:1.5px solid var(--rule)}
@@ -122,6 +122,16 @@ table.avg td.hi{color:var(--ok)}
 .seg{display:flex;gap:6px;flex-wrap:wrap}
 .seg button{min-height:40px;padding:0 14px;border-radius:999px;border:1.5px solid var(--rule);background:var(--paper);font-weight:700}
 .seg button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.newach{margin:8px 0 0;font-size:.9rem}
+.newach b{color:var(--win)}
+.banner>div{min-width:0;flex:1 1 260px}
+.remind{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 14px;border-radius:14px;background:var(--accent-soft)}
+.hist li{cursor:pointer}
+.hist li:hover{background:var(--bg)}
+.hist .early{font-size:.72rem;font-weight:700;color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:1px 8px;margin-left:6px}
+.note{margin:0;padding:10px 12px;border-radius:12px;background:var(--win-soft);font-size:.9rem}
+.sheet table.avg td,.sheet table.avg th{padding:6px 10px}
+.sheet table.avg tr.t td{font-weight:800;background:var(--accent-soft)}
 .sheet-bg{position:fixed;inset:0;background:color-mix(in srgb,#000 45%,transparent);display:flex;align-items:flex-end;justify-content:center;z-index:20;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .sheet{background:var(--paper);color:var(--ink);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px;max-height:88%;overflow:auto}
 @media (min-width:700px){.sheet-bg{align-items:center}.sheet{border-radius:20px;max-height:80%}}
@@ -166,6 +176,7 @@ table.avg td.hi{color:var(--ok)}
   </nav>
 
   <div id="vgame" class="view">
+    <div id="remind"></div>
     <div id="banner"></div>
     <div class="card"><table id="table"></table></div>
     <div id="actions"></div>
@@ -241,7 +252,8 @@ function totals(i){
   return {up,bonus,low,jk,total:up+bonus+low+jk,par,upFilled,filled:ALL.filter(c=>s[c.id]!=null).length};
 }
 const done=()=>game&&game.players.every((_,i)=>totals(i).filled===ALL.length);
-function whoseTurn(){if(!game||done())return -1;const f=game.players.map((_,i)=>totals(i).filled);const m=Math.min(...f);return f.indexOf(m)}
+const over=()=>game&&(done()||!!game.ended);
+function whoseTurn(){if(!game||over())return -1;const f=game.players.map((_,i)=>totals(i).filled);const m=Math.min(...f);return f.indexOf(m)}
 const anyScore=()=>game&&game.scores.some(s=>Object.keys(s).length);
 
 function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML}
@@ -271,10 +283,12 @@ function render(){
   tb.innerHTML=h;
 
   const bn=$('banner');
-  if(done()){
+  if(over()){
     const order=T.map((t,i)=>({t:t.total,name:game.players[i].name})).sort((a,b)=>b.t-a.t);
     const msg=leaders>1?`Ничья, ${order.map(o=>o.t).join(' : ')}`:`Победа: ${esc(order[0].name)}, ${order.map(o=>o.t).join(' : ')}`;
-    bn.innerHTML=`<div class="banner"><strong>${msg}</strong><button class="btn primary" id="again">Новая игра</button></div>`;
+    const na=(game.newAch||[]).filter(x=>x.list.length);
+    const achHtml=na.length?`<p class="newach">Ачивки за партию: ${na.map(x=>`${esc(x.name)}: ${x.list.map(a=>a.first?`<b>${a.name}</b>`:a.name).join(', ')}`).join('; ')}${na.some(x=>x.list.some(a=>a.first))?'. Новые выделены.':''}</p>`:'';
+    bn.innerHTML=`<div class="banner"><div><strong>${msg}</strong>${game.ended&&!done()?'<p class="muted" style="margin-top:4px">Партия закончена досрочно.</p>':''}${achHtml}</div><button class="btn primary" id="again">Новая игра</button></div>`;
     $('again').onclick=openSetup;
   } else bn.innerHTML='';
 
@@ -283,13 +297,45 @@ function render(){
     ac.innerHTML=`<div class="confirm"><span>Игра не закончена. Начать заново? Текущий счёт не попадёт в историю.</span><button class="btn danger" id="yes">Да, новая игра</button><button class="btn" id="no">Отмена</button></div>`;
     $('yes').onclick=()=>{ui.confirm=false;render();openSetup()};
     $('no').onclick=()=>{ui.confirm=false;render()};
+  } else if(ui.finish){
+    ac.innerHTML=`<div class="confirm"><span>Закончить партию сейчас? Она попадёт в историю с текущим счётом, пустые клетки не считаются. Ачивки за неё не начисляются.</span><button class="btn danger" id="fyes">Закончить</button><button class="btn" id="fno">Отмена</button></div>`;
+    $('fyes').onclick=()=>{ui.finish=false;game.ended=true;archive();saveGame();render()};
+    $('fno').onclick=()=>{ui.finish=false;render()};
   } else {
-    ac.innerHTML=`<div class="row"><button class="btn" id="ng">Новая игра</button><button class="btn" id="sw">${n===2?'Поменять местами':'Сдвинуть порядок'}</button></div>`;
+    const last=(game.log||[]).slice(-1)[0],lp=last&&game.players.find(p=>p.id===last.pid),lc=last&&[...ALL,JK].find(c=>c.id===last.cid);
+    ac.innerHTML=`<div class="row">${lp&&lc?`<button class="btn" id="undo">↶ Отменить: ${esc(lp.name)}, ${lc.name}</button>`:''}<button class="btn" id="ng">Новая игра</button>${over()?'':`<button class="btn" id="sw">${n===2?'Поменять местами':'Сдвинуть порядок'}</button>`}${!over()&&anyScore()?'<button class="btn" id="fin">Закончить досрочно</button>':''}</div>`;
+    if($('undo'))$('undo').onclick=undo;
+    if($('fin'))$('fin').onclick=()=>{ui.finish=true;render()};
     // first player moves to the end; each column keeps its scores
-    $('sw').onclick=()=>{game.players.push(game.players.shift());game.scores.push(game.scores.shift());saveGame();render()};
-    $('ng').onclick=()=>{if(done()||!anyScore())openSetup();else{ui.confirm=true;render()}};
+    if($('sw'))$('sw').onclick=()=>{game.players.push(game.players.shift());game.scores.push(game.scores.shift());saveGame();render()};
+    $('ng').onclick=()=>{if(over()||!anyScore())openSetup();else{ui.confirm=true;render()}};
   }
-  renderHist();
+  renderHist();keepAwake();
+  window.onAfterRender&&window.onAfterRender();
+}
+
+// keep the iPad screen on while a game is in progress
+let wl=null;
+async function keepAwake(){
+  try{
+    if(game&&!over()&&document.visibilityState==='visible'){if(!wl&&navigator.wakeLock){wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',()=>{wl=null})}}
+    else if(wl){await wl.release();wl=null}
+  }catch(e){wl=null}
+}
+document.addEventListener('visibilitychange',keepAwake);
+
+function setScore(i,cid,v){
+  (game.log=game.log||[]).push({pid:game.players[i].id,cid,prev:game.scores[i][cid]});
+  if(game.log.length>200)game.log.shift();
+  if(v==null)delete game.scores[i][cid];else game.scores[i][cid]=v;
+  changed();
+}
+function undo(){
+  const e=(game.log||[]).pop();if(!e)return;
+  const i=game.players.findIndex(p=>p.id===e.pid);
+  if(i>=0){if(e.prev==null)delete game.scores[i][e.cid];else game.scores[i][e.cid]=e.prev}
+  if(game.saved)unarchive();
+  saveGame();render();
 }
 
 function renderHist(){
@@ -301,7 +347,7 @@ function renderHist(){
   $('hist').innerHTML=list.length?list.slice(0,100).map(g=>{
     const d=new Date(g.at).toLocaleString('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});
     const r=g.players.map(p=>p.name===g.winner?`<b>${esc(p.name)} ${p.total}</b>`:`${esc(p.name)} ${p.total}`).join(' · ');
-    return `<li><span class="res">${r}</span><span class="date">${d}</span></li>`}).join(''):'<li><span class="muted">Здесь появятся сыгранные партии с датой и счётом.</span></li>';
+    return `<li data-at="${g.at}" tabindex="0" role="button"><span class="res">${r}${g.early?'<span class="early">досрочно</span>':''}</span><span class="date">${d}</span></li>`}).join(''):'<li><span class="muted">Здесь появятся сыгранные партии с датой и счётом.</span></li>';
 }
 
 const sheet={el:null,
@@ -312,15 +358,16 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')sheet.close()});
 
 function openCell(i,cid){
   const c=[...ALL,JK].find(x=>x.id===cid),cur=game.scores[i][cid];
-  sheet.open(`<h3>${esc(game.players[i].name)} · ${c.name}</h3><p class="muted">${c.hint}. 0 — вычеркнуть.</p>
-    <div class="vals">${c.vals.map(v=>`<button data-v="${v}" class="${v===cur?'sel':''}${v===0?' z':''}">${v}</button>`).join('')}</div>
+  const noJoker=cid==='joker'&&game.scores[i].yatzy!==50;
+  sheet.open(`<h3>${esc(game.players[i].name)} · ${c.name}</h3><p class="muted">${c.hint}${cid==='joker'?'':'. 0 — вычеркнуть'}.</p>
+    ${noJoker?'<p class="note">Джокер можно поставить только после Яцзы: сначала впишите 50 в клетку «Яцзы».</p>':`<div class="vals">${c.vals.map(v=>`<button data-v="${v}" class="${v===cur?'sel':''}${v===0?' z':''}">${v}</button>`).join('')}</div>`}
     <div class="row">${cur!=null?'<button class="btn" id="clr">Стереть</button>':''}<button class="btn" id="cancel">Отмена</button></div>`);
   $('cancel').onclick=sheet.close;
-  const clr=$('clr');if(clr)clr.onclick=()=>{delete game.scores[i][cid];changed()};
-  document.querySelectorAll('.vals button').forEach(b=>b.onclick=()=>{game.scores[i][cid]=+b.dataset.v;changed()});
+  const clr=$('clr');if(clr)clr.onclick=()=>setScore(i,cid,null);
+  document.querySelectorAll('.vals button').forEach(b=>b.onclick=()=>setScore(i,cid,+b.dataset.v));
   const f=document.querySelector('.vals .sel')||document.querySelector('.vals button');f&&f.focus();
 }
-function changed(){sheet.close();if(done()&&!game.saved)archive();saveGame();render()}
+function changed(){sheet.close();if(done()&&!game.saved)archive();else if(game.saved&&!over())unarchive();saveGame();render()}
 $('table').addEventListener('click',e=>{const b=e.target.closest('button[data-c]');if(b)return openCell(+b.dataset.p,b.dataset.c);
   const n=e.target.closest('button[data-ren]');if(n)openRename(game.players[+n.dataset.ren].id)});
 
@@ -377,18 +424,54 @@ function drawSetup(){
     let r=roster.find(x=>x.name.toLowerCase()===v.toLowerCase());
     if(!r){r={id:uid(),name:v};roster.push(r);saveRoster()}
     if(!pick.includes(r.id)&&pick.length<MAXP)pick.push(r.id);drawSetup();$('newname').focus()};
-  $('go').onclick=()=>{if(done()&&!game.saved)archive();game=newGameFor(pick.map(id=>roster.find(r=>r.id===id)));ui.confirm=false;saveGame();sheet.close();render();window.scrollTo({top:0,behavior:'smooth'})};
+  $('go').onclick=()=>{if(over()&&!game.saved)archive();game=newGameFor(pick.map(id=>roster.find(r=>r.id===id)));ui.confirm=false;saveGame();sheet.close();render();window.scrollTo({top:0,behavior:'smooth'})};
   $('cancel').onclick=sheet.close;
 }
-$('players').onclick=()=>{if(game&&anyScore()&&!done()){ui.confirm=true;render();$('actions').scrollIntoView({behavior:'smooth',block:'center'})}else openSetup()};
+$('players').onclick=()=>{if(game&&anyScore()&&!over()){ui.confirm=true;render();$('actions').scrollIntoView({behavior:'smooth',block:'center'})}else openSetup()};
 
 function archive(){
   const T=game.players.map((_,i)=>totals(i)),best=Math.max(...T.map(t=>t.total)),w=T.filter(t=>t.total===best);
-  const g={at:Date.now(),started:game.started,players:game.players.map((p,i)=>({id:p.id,name:p.name,total:T[i].total,scores:game.scores[i]})),
+  const g={at:Date.now(),started:game.started,players:game.players.map((p,i)=>({id:p.id,name:p.name,total:T[i].total,scores:{...game.scores[i]}})),
     winner:w.length>1?null:game.players[T.findIndex(t=>t.total===best)].name};
-  game.saved=true;history.push(g);lsSet('yatzy.hist',history);
+  if(game.ended&&!done())g.early=true;
+  const before=computeStats();
+  game.saved=true;game.savedAt=g.at;history.push(g);lsSet('yatzy.hist',history);
+  const after=computeStats();
+  game.newAch=after.players.filter(p=>g.players.some(x=>x.name===p.name)).map(p=>{const b=before.players.find(x=>x.name===p.name);
+    return {name:p.name,list:ACH.filter(a=>p.ach[a.id]&&(!b||!b.ach[a.id]||b.ach[a.id].n<p.ach[a.id].n)).map(a=>({name:a.name,first:!b||!b.ach[a.id]}))}});
   store&&store.addGame(g);renderHist();
 }
+function unarchive(){
+  if(game.savedAt)deleteGame(game.savedAt);
+  game.saved=false;game.savedAt=null;game.newAch=null;game.ended=false;
+}
+function deleteGame(at){
+  const g=history.find(x=>x.at===at);if(!g)return;
+  history=history.filter(x=>x!==g);lsSet('yatzy.hist',history);
+  store&&store.deleteGame&&store.deleteGame(g);
+  // the current game stays marked as handled so it is not archived again
+  if(game&&game.savedAt===at){game.savedAt=null;game.newAch=null;saveGame()}
+  renderHist();
+}
+function openGame(at){
+  const g=history.find(x=>x.at===at);if(!g)return;
+  const d=new Date(g.at).toLocaleString('ru-RU',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const up=p=>UP.reduce((a,c)=>a+(p.scores[c.id]||0),0);
+  const cellv=v=>v==null?'—':v;
+  let armed=false;
+  const draw=()=>{sheet.open(`<h3>${g.winner?'Победа: '+esc(g.winner):'Ничья'}</h3><p class="muted">${d}${g.early?' · закончена досрочно':''}</p>
+    <div class="card scroll"><table class="avg"><thead><tr><th style="width:40%"></th>${g.players.map(p=>`<th>${esc(p.name)}</th>`).join('')}</tr></thead><tbody>
+    ${UP.map(c=>`<tr><td>${c.name}</td>${g.players.map(p=>`<td>${cellv(p.scores[c.id])}</td>`).join('')}</tr>`).join('')}
+    <tr class="t"><td>Бонус</td>${g.players.map(p=>`<td>${up(p)>=63?'+50':'0'}</td>`).join('')}</tr>
+    ${[...LOW,JK].map(c=>`<tr><td>${c.name}</td>${g.players.map(p=>`<td>${cellv(p.scores[c.id])}</td>`).join('')}</tr>`).join('')}
+    <tr class="t"><td>Итого</td>${g.players.map(p=>`<td>${p.total}</td>`).join('')}</tr></tbody></table></div>
+    <div class="row"><button class="btn${armed?' danger':''}" id="gdel">${armed?'Точно удалить?':'Удалить партию'}</button><button class="btn" id="cancel">Закрыть</button></div>`);
+    $('cancel').onclick=sheet.close;
+    $('gdel').onclick=()=>{if(armed){deleteGame(at);sheet.close()}else{armed=true;draw()}};};
+  draw();
+}
+$('hist').addEventListener('click',e=>{const li=e.target.closest('li[data-at]');if(li)openGame(+li.dataset.at)});
+$('hist').addEventListener('keydown',e=>{const li=e.target.closest('li[data-at]');if(li&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openGame(+li.dataset.at)}});
 function saveGame(){lsSet('yatzy.game',game);store&&store.saveGame(game)}
 function saveRoster(){lsSet('yatzy.roster',roster);store&&store.saveRoster(roster)}
 
@@ -453,7 +536,7 @@ function computeStats(){
       if(!rec.worst||p.total<rec.worst.v)rec.worst={v:p.total,who:p.name,at:g.at};
       const low=LOW.reduce((a,c)=>a+(sc[c.id]||0),0),top=sorted[0].total;
       const c={p,sc,up,low,won,margin,zeros,s,prevBest,lossRun,top,behind:top-p.total,draw:!g.winner&&g.players.length>1,hour:new Date(g.at).getHours(),dayN:s.days[dk]};
-      ACH.forEach(a=>{if(a.t(c)){const r=s.ach[a.id]||(s.ach[a.id]={n:0,first:g.at});r.n++}});
+      if(!g.early)ACH.forEach(a=>{if(a.t(c)){const r=s.ach[a.id]||(s.ach[a.id]={n:0,first:g.at});r.n++}});
     });
   });
   return {players:Object.values(P).sort((a,b)=>b.wins-a.wins||b.games-a.games),rec,count:games.length};
@@ -520,13 +603,15 @@ window.addEventListener('hashchange',()=>setView(location.hash==='#stats'?'stats
 load();render();setView(location.hash==='#stats'?'stats':'game');
 // GitHub Pages version only: file backup and offline cache
 $('sync').textContent='Всё хранится на этом устройстве';
-$('exp').onclick=()=>{
+function exportBackup(){
   const blob=new Blob([JSON.stringify({app:'yatzy',v:2,saved:Date.now(),roster,history,game},null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='yatzy-'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);
   $('bmsg').textContent='В копии партий: '+history.length+', игроков: '+roster.length;
-};
+  lsSet('yatzy.backupAt',history.length);render();
+}
+$('exp').onclick=exportBackup;
 $('imp').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try{const d=JSON.parse(await f.text());if(!Array.isArray(d.history))throw 0;
@@ -547,5 +632,15 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+// remind about a backup every 5 finished games
+window.onAfterRender=()=>{
+  const el=$('remind');if(!el)return;
+  const since=history.length-(lsGet('yatzy.backupAt')||0);
+  if(since>=5&&(!game||!anyScore()||over())){
+    el.innerHTML=`<div class="remind"><span>С последней резервной копии сыграно партий: ${since}. Сохраните копию, чтобы история не потерялась.</span><button class="btn small" id="rexp">Сохранить копию</button></div>`;
+    $('rexp').onclick=exportBackup;
+  } else el.innerHTML='';
+};
+render();
 </script>
 </body></html>

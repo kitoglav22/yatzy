@@ -8,6 +8,7 @@
     saveGame(g){clearTimeout(tm);tm=setTimeout(()=>db.doc('current/game').set({json:JSON.stringify(g),at:Date.now()}).then(()=>sync('Сохранено в облаке')).catch(()=>sync('Сохранено только на этом устройстве')),400)},
     saveRoster(r){db.doc('current/roster').set({json:JSON.stringify(r)}).catch(()=>{})},
     addGame(g){db.collection('games').add(g).then(ref=>{g._doc=ref.id;lsSet('yatzy.hist',history)}).catch(()=>sync('Не удалось сохранить партию в облако'))},
+    deleteGame(g){if(g._doc)db.doc('games/'+g._doc).delete().catch(()=>{})},
     updateGame(g){if(!g._doc)return;const {_doc,...data}=g;db.doc('games/'+_doc).set(data).catch(()=>{})}
   };
   try{

@@ -1,12 +1,14 @@
 // GitHub Pages version only: file backup and offline cache
 $('sync').textContent='Всё хранится на этом устройстве';
-$('exp').onclick=()=>{
+function exportBackup(){
   const blob=new Blob([JSON.stringify({app:'yatzy',v:2,saved:Date.now(),roster,history,game},null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='yatzy-'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);
   $('bmsg').textContent='В копии партий: '+history.length+', игроков: '+roster.length;
-};
+  lsSet('yatzy.backupAt',history.length);render();
+}
+$('exp').onclick=exportBackup;
 $('imp').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try{const d=JSON.parse(await f.text());if(!Array.isArray(d.history))throw 0;
@@ -27,3 +29,13 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+// remind about a backup every 5 finished games
+window.onAfterRender=()=>{
+  const el=$('remind');if(!el)return;
+  const since=history.length-(lsGet('yatzy.backupAt')||0);
+  if(since>=5&&(!game||!anyScore()||over())){
+    el.innerHTML=`<div class="remind"><span>С последней резервной копии сыграно партий: ${since}. Сохраните копию, чтобы история не потерялась.</span><button class="btn small" id="rexp">Сохранить копию</button></div>`;
+    $('rexp').onclick=exportBackup;
+  } else el.innerHTML='';
+};
+render();

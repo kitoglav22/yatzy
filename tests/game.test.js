@@ -127,6 +127,38 @@ test('an achievement earned before is counted again but does not pop up', async 
   assert.match(await p.textContent('#banner'), /Пять шестёрок/, 'and listed under the result');
 });
 
+test('the picker on the statistics shows one player\'s card and achievements', async () => {
+  await p.click('#tstats');
+  const cards = () => p.$$eval('.pcard h3', x => x.map(e => e.textContent));
+  assert.deepEqual(await cards(), ['Аня', 'Миша']);
+  await p.click('.statseg button[data-n="Миша"]');
+  assert.deepEqual(await cards(), ['Миша']);
+  assert.equal(await p.$$eval('.seg', x => x.length), 1, 'one picker for the card and the achievements');
+  assert.ok(await p.$('table.avg th:nth-child(3)'), 'the averages still compare everyone');
+  await p.click('.statseg button[data-n=""]');
+  assert.deepEqual(await cards(), ['Аня', 'Миша']);
+  await p.click('#tgame');
+});
+
+test('a sheet on a phone closes when pulled down far enough and springs back otherwise', async () => {
+  const ph = await env.device('phone2', twoPlayers, { viewport: { width: 390, height: 700 } });
+  const pull = (dy) => ph.evaluate(dy => {
+    const el = document.querySelector('.sheet'), r = el.getBoundingClientRect(), x = r.left + 100, y = r.top + 30;
+    const t = y => [new Touch({ identifier: 1, target: el, clientX: x, clientY: y })];
+    el.dispatchEvent(new TouchEvent('touchstart', { touches: t(y), bubbles: true, cancelable: true }));
+    for (let k = 1; k <= 5; k++) el.dispatchEvent(new TouchEvent('touchmove', { touches: t(y + dy * k / 5), bubbles: true, cancelable: true }));
+    el.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: t(y + dy), bubbles: true, cancelable: true }));
+  }, dy);
+  await ph.evaluate(() => sheet.open('<h3>Проба</h3><p>Текст</p><p>Ещё</p>'));
+  const h = await ph.evaluate(() => document.querySelector('.sheet').offsetHeight);
+  await pull(20); await ph.waitForTimeout(300);
+  assert.ok(await ph.$('.sheet'), 'a short pull springs back');
+  assert.equal(await ph.evaluate(() => document.querySelector('.sheet').style.transform), '');
+  await pull(Math.round(h / 2)); await ph.waitForTimeout(300);
+  assert.equal(await ph.$('.sheet'), null, 'a long pull closes it');
+  await ph.close();
+});
+
 test('names with quotes and tags are shown as text', async () => {
   await p.evaluate(() => { roster = [{ id: 'q', name: 'Ко"т <b>' }, { id: 'w', name: "О'Нил" }]; saveRoster(); game = newGameFor(roster); game.dice = false; saveGame(); render(); });
   const labels = await p.$$eval('[aria-label^="Переименовать"]', x => x.map(e => e.getAttribute('aria-label')));

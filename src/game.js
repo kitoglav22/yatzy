@@ -134,9 +134,28 @@ function renderHist(){
 
 const sheet={el:null,
   open(html){$('sheet').innerHTML=`<div class="sheet-bg" id="bg"><div class="sheet" role="dialog" aria-modal="true"><button class="sheetx" id="sheetx" type="button" aria-label="Закрыть">✕</button>${html}</div></div>`;
-    $('bg').onclick=e=>{if(e.target.id==='bg')sheet.close()};$('sheetx').onclick=sheet.close;},
+    $('bg').onclick=e=>{if(e.target.id==='bg')sheet.close()};$('sheetx').onclick=sheet.close;pullDown($('bg').firstElementChild)},
   close(){$('sheet').innerHTML=''}};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')sheet.close()});
+// a sheet at the bottom of a phone can be pulled down to close: it follows the finger while its content is scrolled to the top,
+// and closes past a third of its height or on a quick flick, otherwise springs back
+function pullDown(el){
+  let y0=null,dy=0,t0=0;
+  const back=()=>{el.style.transition='transform .2s ease';el.style.transform=''};
+  el.addEventListener('touchstart',e=>{y0=e.touches.length===1&&el.scrollTop<=0&&!matchMedia('(min-width:700px)').matches?e.touches[0].clientY:null;dy=0;t0=performance.now()},{passive:true});
+  el.addEventListener('touchmove',e=>{
+    if(y0==null)return;dy=e.touches[0].clientY-y0;
+    if(dy<=0){if(!el.style.transform)y0=null;else el.style.transform='';return}
+    if(e.cancelable)e.preventDefault();
+    el.style.transition='none';el.style.transform=`translateY(${dy}px)`;
+  },{passive:false});
+  el.addEventListener('touchend',()=>{
+    if(y0==null)return;y0=null;if(dy<=0)return back();
+    if(dy>el.offsetHeight/3||dy>40&&dy/(performance.now()-t0)>.6){el.style.transition='transform .18s ease-in';el.style.transform='translateY(100%)';setTimeout(()=>{if($('sheet').contains(el))sheet.close()},180)}
+    else back();
+  });
+  el.addEventListener('touchcancel',()=>{if(y0!=null){y0=null;back()}});
+}
 
 function openCell(i,cid){
   const c=[...ALL,JK].find(x=>x.id===cid),cur=game.scores[i][cid];

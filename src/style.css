@@ -123,6 +123,7 @@ table.avg td.hi{color:var(--ok)}
 .ach .who span{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--accent-soft)}
 .ach .who span.no{display:none}
 .seg{display:flex;gap:6px;flex-wrap:wrap}
+.statseg{margin-bottom:12px}
 .seg button{min-height:40px;padding:0 14px;border-radius:999px;border:1.5px solid var(--rule);background:var(--paper);font-weight:700}
 .seg button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .newach{display:flex;flex-direction:column;gap:6px;margin-top:10px}
@@ -230,6 +231,8 @@ td.cell button.flash{animation:flash 1.8s ease-out}
 @media (min-width:700px){.sheet-bg{align-items:center}.sheet{border-radius:20px;max-height:80%}}
 .sheet h3{margin:0;font-family:var(--display);font-size:1.1rem;font-weight:600;padding-right:40px}
 .sheet{position:relative}
+/* the grabber hints that a bottom sheet can be pulled down (see pullDown) */
+@media (max-width:699px){.sheet::before{content:'';position:absolute;top:7px;left:50%;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:var(--rule)}}
 .more{display:flex;flex-direction:column;gap:10px}
 .more .btn{justify-content:flex-start}
 .sheetx{position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;border:0;background:var(--bg);color:var(--muted);font-size:1rem;line-height:1;display:grid;place-items:center}

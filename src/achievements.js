@@ -102,7 +102,10 @@ function renderStats(){
     el.innerHTML=`<div class="card" style="padding:20px"><p style="margin:0 0 6px;font-weight:700">Статистика появится после первой законченной партии</p><p class="muted">Здесь будут победы, средний счёт, рекорды и средние очки по каждой клетке. Ниже все ачивки, которые можно открыть.</p></div>`+achGrid(st);
     return;
   }
-  let h=`<div class="pcards">${st.players.map(p=>{
+  // one picker on top shows one player's card and achievements; records and the averages table stay shared
+  const sel=st.players.find(p=>p.name===statFilter);
+  const seg=st.players.length>1?`<div class="seg statseg"><button class="${sel?'':'on'}" data-n="">Все</button>${st.players.map(p=>`<button class="${sel===p?'on':''}" data-n="${esc(p.name)}">${esc(p.name)}</button>`).join('')}</div>`:'';
+  let h=seg+`<div class="pcards">${(sel?[sel]:st.players).map(p=>{
     const z=Object.entries(p.zeros).sort((a,b)=>b[1]-a[1])[0];
     const zc=z?[...ALL].find(c=>c.id===z[0]).name:'—';
     return `<div class="pcard"><h3>${esc(p.name)}</h3>
@@ -128,10 +131,9 @@ function renderStats(){
 
 function achGrid(st){
   const ps=st.players,sel=ps.find(p=>p.name===statFilter);
-  const seg=ps.length>1?`<div class="seg"><button class="${sel?'':'on'}" data-n="">Все</button>${ps.map(p=>`<button class="${sel===p?'on':''}" data-n="${esc(p.name)}">${esc(p.name)}</button>`).join('')}</div>`:'';
   const pool=sel?[sel]:ps,cmp=!sel&&ps.length>1;
   const score=ps.length?`<div class="tally">${ps.map(p=>`<span class="chip">${esc(p.name)}: ${ACH.filter(a=>p.ach[a.id]).length} из ${ACH.length}</span>`).join('')}</div>`:'';
-  return `<section><h2>Ачивки</h2>${score}${seg}<div class="achs">${ACH.map(a=>{
+  return `<section><h2>Ачивки</h2>${score}<div class="achs">${ACH.map(a=>{
     const who=pool.filter(p=>p.ach[a.id]);
     const pills=cmp?pool.map(p=>p.ach[a.id]?`<span>${esc(p.name)}${p.ach[a.id].n>1?' ×'+p.ach[a.id].n:''}</span>`:`<span class="no">${esc(p.name)}</span>`).join('')
       :who.map(p=>`<span>${p.ach[a.id].n>1?'×'+p.ach[a.id].n:'есть'}</span>`).join('');

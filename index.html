@@ -178,8 +178,9 @@ table.avg td.hi{color:var(--ok)}
 .die.blank i{visibility:hidden}
 .die.held{border-color:var(--accent);background:var(--accent-soft);transform:translateY(-5px);box-shadow:0 8px 0 color-mix(in srgb,var(--accent) 35%,transparent)}
 .die:disabled{cursor:default}
-/* a shaking die gets its own layer, so its rattle and face changes do not repaint the panel and the table under it */
-.die.shaking{transition:none;will-change:transform;box-shadow:0 8px 14px color-mix(in srgb,#000 18%,transparent)}
+/* a shaking die gets its own layer, so its rattle and face changes do not repaint the panel and the table under it;
+   it glides from one jolt to the next over the time until the next one (set per jolt in animateRoll) */
+.die.shaking{transition:transform 45ms ease-in-out;will-change:transform;box-shadow:0 8px 14px color-mix(in srgb,#000 18%,transparent)}
 /* landing: a squash, a bounce and a ring that fades out */
 .die.land{animation:land .42s cubic-bezier(.2,1.5,.4,1)}
 .die.land::before{content:"";position:absolute;inset:-4px;border-radius:17px;border:2px solid var(--accent);animation:ring .5s ease-out forwards;pointer-events:none}
@@ -706,6 +707,8 @@ function saveRoster(){lsSet('yatzy.roster',roster);store&&store.saveRoster(roste
 function setView(v){
   const st=v==='stats';
   $('vgame').hidden=st;$('vstats').hidden=!st;
+  // the total bar belongs to the game tab; coming back, the observer shows it again if the table's total is below the screen
+  if(st&&$('totbar'))$('totbar').hidden=true;
   $('tgame').setAttribute('aria-selected',!st);$('tstats').setAttribute('aria-selected',st);
   if(st)renderStats();
 }
@@ -790,11 +793,11 @@ function animateRoll(free){
     const t=now-t0;
     order.forEach(k=>{
       const d=els[k];if(!d.classList.contains('shaking'))return;
-      if(t>=stopAt[k]){d.classList.remove('shaking');d.style.transform='';setFace(d,r.dice[k]);void d.offsetWidth;d.classList.add('land');buzz('land');return}
+      if(t>=stopAt[k]){d.classList.remove('shaking');d.style.transitionDuration='';d.style.transform='';setFace(d,r.dice[k]);void d.offsetWidth;d.classList.add('land');buzz('land');return}
       const left=(stopAt[k]-t)/stopAt[k],gap=left>.6?45:left>.3?85:150;
       if(!next[k]||now>=next[k]){
         // rattle: random offset and tilt, strong at first and calmer towards the stop
-        const a=3+9*left;d.style.transform=`translate3d(${j(a)}px,${j(a)-a*.6}px,0) rotate(${j(8+22*left)}deg) scale(${1+.06*left})`;
+        const a=3+9*left;d.style.transitionDuration=gap+'ms';d.style.transform=`translate3d(${j(a)}px,${j(a)-a*.6}px,0) rotate(${j(8+22*left)}deg) scale(${1+.06*left})`;
         let f=rnd6();if(f===face[k])f=f%6+1;face[k]=f;setFace(d,f);next[k]=now+gap;
       }
     });
@@ -994,7 +997,7 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had){had=true;return}if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 // the release number under the page shows whether a new version has arrived
-{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 50';$('sync').after(v)}
+{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 52';$('sync').after(v)}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 // remind about a backup every 5 finished games, unless the Telegram cloud already keeps every game
 let cloudKeeps=false;

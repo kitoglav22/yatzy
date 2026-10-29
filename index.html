@@ -117,6 +117,7 @@ table.avg td.hi{color:var(--ok)}
 .ach small{display:block;color:var(--muted);font-size:.78rem;margin-top:2px}
 .ach .who{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
 .ach .who span{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--accent-soft)}
+.ach .who span.no{background:transparent;color:var(--muted);font-weight:600;text-decoration:line-through;border:1px dashed var(--rule)}
 .seg{display:flex;gap:6px;flex-wrap:wrap}
 .seg button{min-height:40px;padding:0 14px;border-radius:999px;border:1.5px solid var(--rule);background:var(--paper);font-weight:700}
 .seg button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
@@ -476,10 +477,13 @@ function renderStats(){
 function achGrid(st){
   const ps=st.players,sel=ps.find(p=>p.name===statFilter);
   const seg=ps.length>1?`<div class="seg"><button class="${sel?'':'on'}" data-n="">Все</button>${ps.map(p=>`<button class="${sel===p?'on':''}" data-n="${esc(p.name)}">${esc(p.name)}</button>`).join('')}</div>`:'';
-  const pool=sel?[sel]:ps,got=ACH.filter(a=>pool.some(p=>p.ach[a.id])).length;
-  return `<section><h2>Ачивки · ${got} из ${ACH.length}</h2>${seg}<div class="achs">${ACH.map(a=>{
+  const pool=sel?[sel]:ps,cmp=!sel&&ps.length>1;
+  const score=ps.length?`<div class="tally">${ps.map(p=>`<span class="chip">${esc(p.name)}: ${ACH.filter(a=>p.ach[a.id]).length} из ${ACH.length}</span>`).join('')}</div>`:'';
+  return `<section><h2>Ачивки</h2>${score}${seg}<div class="achs">${ACH.map(a=>{
     const who=pool.filter(p=>p.ach[a.id]);
-    return `<div class="ach${who.length?'':' off'}"><span class="badge">${a.badge}</span><div style="min-width:0"><b>${a.name}</b><small>${a.desc}</small>${who.length?`<div class="who">${who.map(p=>`<span>${esc(p.name)}${p.ach[a.id].n>1?' ×'+p.ach[a.id].n:''}</span>`).join('')}</div>`:''}</div></div>`}).join('')}</div></section>`;
+    const pills=cmp?pool.map(p=>p.ach[a.id]?`<span>${esc(p.name)}${p.ach[a.id].n>1?' ×'+p.ach[a.id].n:''}</span>`:`<span class="no">${esc(p.name)}</span>`).join('')
+      :who.map(p=>`<span>${p.ach[a.id].n>1?'×'+p.ach[a.id].n:'есть'}</span>`).join('');
+    return `<div class="ach${who.length?'':' off'}"><span class="badge">${a.badge}</span><div style="min-width:0"><b>${a.name}</b><small>${a.desc}</small>${pills&&(who.length||cmp)?`<div class="who">${pills}</div>`:''}</div></div>`}).join('')}</div></section>`;
 }
 
 function setView(v){

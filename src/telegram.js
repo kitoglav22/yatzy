@@ -1,8 +1,6 @@
 // GitHub Pages version only: the same page opened as a Telegram Mini App from the bot.
 // Telegram's script is loaded only there; it gives the theme, the back button, haptics, the user's name and room invitations.
 const TG_APP='https://t.me/k22_yatzy_bot/play'; // direct link of the Mini App
-// the bot's server (server/index.js, a Yandex Cloud Function); while it is empty the bot features stay off
-const BOT_API=window.__yatzyBot||'';
 (()=>{
   let inTg=/tgWebApp(Data|Platform|Version)=/.test(location.hash);
   try{if(inTg)sessionStorage.setItem('yatzy.tg','1');else inTg=sessionStorage.getItem('yatzy.tg')==='1'}catch(e){}
@@ -52,7 +50,7 @@ function tgSetup(tg){
   tgSection(tg,has);
   // invitations open the bot's Mini App right in the room
   if(TG_APP)inviteVia=(code,text)=>tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(TG_APP+'?startapp='+code)+'&text='+encodeURIComponent(text));
-  if(BOT_API&&window.openOnline)tgBot(tg,has);
+  if(window.openOnline)tgBot(tg,has);
   render();
   // a link with a room code opens that room; NEW-<code> comes from an invitation made in a chat and creates the room
   const sp=String(tg.initDataUnsafe&&tg.initDataUnsafe.start_param||'').toUpperCase();
@@ -64,33 +62,48 @@ function tgSetup(tg){
   }
 }
 
-// the bot: "your turn" messages and reminders, a nudge for the player on turn, invitations through @bot in any chat, the rating
+// the bot: "your turn" messages and reminders, a nudge for the player on turn, invitations through @bot in any chat, the rating.
+// The bot (server/worker.js) runs elsewhere and reads the app's requests from the database within a minute;
+// its features show up once it has published pub/bot.
 function tgBot(tg,has){
-  // a plain-text body keeps it a simple request: no CORS preflight, half the calls to the function
-  const call=(op,data)=>fetch(BOT_API,{method:'POST',body:JSON.stringify({op,init:tg.initData,...data})})
-    .then(r=>r.json()).catch(()=>({ok:false}));
+  const ask=(op,data)=>backend().then(b=>b.send(JSON.stringify({op,init:tg.initData,...data}))).catch(()=>{});
+  const read=p=>backend().then(b=>b.read(p));
+  let on=null;const ready=()=>on||(on=read('pub/bot').then(v=>!!v,()=>{on=null;return false}));
   const mine=s=>[...new Set(s.players.concat(s.game?s.game.players:[]).filter(p=>p.dev===DEV).map(p=>p.id))];
-  roomHook=(ev,code,s)=>{
-    if(ev==='moved')return call('moved',{code});
-    const pids=mine(s);if(!pids.length)return;
-    // Telegram asks once whether the bot may write; the answer goes to the bot with the seats
-    if(lsGet('yatzy.tgAsked')||!has('6.9')||!tg.requestWriteAccess)return call('hello',{code,pids});
+  // the bot learns which seats in the room are this Telegram account; Telegram asks once whether the bot may write
+  roomHook=(ev,code,s)=>{const pids=mine(s);if(pids.length)ready().then(ok=>{if(!ok)return;
+    if(lsGet('yatzy.tgAsked')||!has('6.9')||!tg.requestWriteAccess)return ask('hello',{code,pids});
     lsSet('yatzy.tgAsked',1);
-    try{tg.requestWriteAccess(ok=>call('hello',{code,pids,allow:!!ok}))}catch(e){call('hello',{code,pids})}
-  };
-  nudgeVia=async(code,who)=>{
-    const r=await call('nudge',{code});
-    toast({badge:'👉',label:'Бот',name:r.ok?'Напомнил':'Не получилось',desc:r.ok?`повторить можно через ${r.wait} мин`:r.wait?`повторить можно через ${r.wait} мин`:esc(r.why||'нет связи с ботом')},who,false);
-  };
-  // the invitation is a card from the bot with a button straight into the room
-  if(has('6.7'))inviteVia=code=>tg.switchInlineQuery(code,['users','groups']);
-  const sec=document.createElement('section');
-  sec.innerHTML='<h2>Рейтинг друзей</h2><p class="muted">Онлайн-партии через Telegram, где все игроки зашли из Telegram. Старт 1000, победа над более сильным даёт больше очков.</p><div class="card"><ol class="records" id="tgrating"><li>Загружаю…</li></ol></div>';
-  $('vstats').appendChild(sec);
-  const load=()=>call('rating',{}).then(r=>{const el=$('tgrating');if(!el)return;
-    el.innerHTML=!r.ok?'<li>Бот сейчас недоступен</li>':!r.list.length?'<li>Пока пусто: рейтинг появится после первой такой партии</li>'
-      :r.list.map((x,k)=>`<li${x.me?' class="me"':''}><span>${k+1}. ${esc(x.name)}</span><span><b>${x.r}</b> <small class="muted">${x.g} парт., ${x.w} побед</small></span></li>`).join('')});
-  load();$('tstats').addEventListener('click',load);
+    try{tg.requestWriteAccess(ok=>ask('hello',{code,pids,allow:!!ok}))}catch(e){ask('hello',{code,pids})}})};
+  const u=tg.initDataUnsafe&&tg.initDataUnsafe.user;
+  // the rating marks one's own line by a hash of the Telegram id, the same as the bot makes
+  const myHash=u&&crypto.subtle?crypto.subtle.digest('SHA-256',new TextEncoder().encode('yatzy:'+u.id))
+    .then(b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,12)).catch(()=>''):Promise.resolve('');
+  ready().then(ok=>{
+    if(!ok)return;
+    // a nudge goes only to a player the bot can write to, and once in half an hour from this device
+    nudgeVia=async(code,name)=>{
+      const say=(title,desc)=>toast({badge:'👉',label:'Бот',name:title,desc},name,false);
+      const key='yatzy.nudged.'+code,left=Math.ceil(((lsGet(key)||0)+30*60e3-Date.now())/60e3);
+      if(left>0)return say('Уже напомнили',`ещё раз можно через ${left} мин`);
+      const p=game&&game.players[whoseTurn()];if(!p)return;
+      const can=await read('pub/tg/'+code).then(v=>v?v[p.id]:undefined,()=>null);
+      if(can===1){ask('nudge',{code});lsSet(key,Date.now());say('Напомню','бот напишет в течение минуты')}
+      else say('Не получится',can===0?'не разрешил боту писать':can===null?'нет связи':'играет не из Telegram');
+    };
+    // the invitation is a card from the bot with a button straight into the room
+    if(has('6.7'))inviteVia=code=>tg.switchInlineQuery(code,['users','groups']);
+    const sec=document.createElement('section');
+    sec.innerHTML='<h2>Рейтинг друзей</h2><p class="muted">Онлайн-партии через Telegram, где хотя бы двое зашли из Telegram. Старт 1000, победа над более сильным даёт больше очков.</p><div class="card"><ol class="records" id="tgrating"><li>Загружаю…</li></ol></div>';
+    $('vstats').appendChild(sec);
+    const load=()=>Promise.all([read('pub/rating'),myHash]).then(([r,h])=>{const el=$('tgrating');if(!el)return;
+      const list=Array.isArray(r)?r.filter(Boolean):[];
+      el.innerHTML=!list.length?'<li>Пока пусто: рейтинг появится после первой такой партии</li>'
+        :list.map((x,k)=>`<li${h&&x.h===h?' class="me"':''}><span>${k+1}. ${esc(x.name)}</span><span><b>${x.r}</b> <small class="muted">${x.g} парт., ${x.w} побед</small></span></li>`).join('')},
+      ()=>{const el=$('tgrating');if(el)el.innerHTML='<li>Рейтинг сейчас недоступен</li>'});
+    load();$('tstats').addEventListener('click',load);
+    render();
+  });
 }
 
 // finished games and players also live in the user's Telegram cloud: they survive a cleared cache and show up

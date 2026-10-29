@@ -9,6 +9,13 @@
         "on": { "$dev": { ".validate": "newData.isBoolean()" } },
         "$other": { ".validate": false }
       }
-    }
+    },
+    "req": {
+      "$id": {
+        ".write": "auth != null && !data.exists()",
+        ".validate": "newData.isString() && newData.val().length < 4000"
+      }
+    },
+    "pub": { ".read": "auth != null" }
   }
 }

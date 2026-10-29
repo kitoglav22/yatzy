@@ -21,6 +21,8 @@ async function start() {
   const errors = [];
   const rooms = {}, pages = [];
   const ctl = { failNext: null, writes: 0 };
+  // requests the pages leave for the bot, and what the bot publishes for them
+  const reqs = [], pub = {};
   const push = c => pages.forEach(p => p.evaluate(([c, s, o]) => window.__netPush && window.__netPush(c, s, o),
     [c, rooms[c] ? rooms[c].state : null, rooms[c] ? rooms[c].on : {}]).catch(() => {}));
 
@@ -42,6 +44,8 @@ async function start() {
       });
       await ctx.exposeFunction('__netSetOn', (c, d, on) => { if (!rooms[c]) return; rooms[c].on[d] = on; push(c); });
       await ctx.exposeFunction('__netRemove', c => { delete rooms[c]; push(c); });
+      await ctx.exposeFunction('__netSend', v => { reqs.push({ from: name, ...JSON.parse(v) }); });
+      await ctx.exposeFunction('__netRead', p => p.split('/').reduce((o, k) => o == null ? null : o[k], { pub }) ?? null);
       await ctx.addInitScript(fakeNet);
     }
     if (setup) await setup(ctx);
@@ -56,7 +60,7 @@ async function start() {
     return page;
   }
   return {
-    url, errors, rooms, ctl, device,
+    url, errors, rooms, ctl, device, reqs, pub,
     // what a room server would send after its data was changed behind the app's back
     tamper(code, fn) { const s = JSON.parse(rooms[code].state); fn(s); rooms[code].state = JSON.stringify(s); push(code); },
     async stop() { await browser.close(); server.close(); },
@@ -86,6 +90,8 @@ function fakeNet() {
       setOn: (code, on) => window.__netSetOn(code, dev(), on),
       remove: code => window.__netRemove(code),
       connected(cb) { setTimeout(() => cb(true)); return () => {}; },
+      send: v => window.__netSend(v),
+      read: p => window.__netRead(p),
     };
   };
 }

@@ -1,8 +1,17 @@
-// The bot server (server/index.js) with an in-memory database and a fake Telegram
-const { test } = require('node:test');
+// The bot (server/worker.js) with an in-memory database and a fake Telegram: the app's requests wait in req/,
+// every run of the worker handles them and the turns that wait for a message
+const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const S = require('../server/index.js');
+const fs = require('node:fs');
+const path = require('node:path');
+
+// the worker is one ES module with only a default export; the tests also reach its inner functions
+let W;
+before(async () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'server', 'worker.js'), 'utf8');
+  W = await import('data:text/javascript,' + encodeURIComponent(src + '\nexport { makeBot, checkInit, elo, total, finished, turnOf, tgHash };'));
+});
 
 const TOKEN = '123:abc';
 function signed(user, at = Math.floor(Date.now() / 1000)) {
@@ -13,147 +22,174 @@ function signed(user, at = Math.floor(Date.now() / 1000)) {
   return p.toString();
 }
 function fakeDb() {
-  const root = {};
-  const walk = (p, make) => { let o = root; const ks = p.split('/'); for (const k of ks.slice(0, -1)) { if (o[k] == null) { if (!make) return [null]; o[k] = {} } o = o[k] } return [o, ks.at(-1)] };
-  const copy = v => v === undefined ? null : JSON.parse(JSON.stringify(v));
-  return {
-    root,
-    get: async p => { const [o, k] = walk(p); return o ? copy(o[k]) : null },
-    put: async (p, v) => { const [o, k] = walk(p, true); o[k] = copy(v) },
-    patch: async (p, v) => { const [o, k] = walk(p, true); o[k] = { ...(o[k] || {}), ...copy(v) } },
-    del: async p => { const [o, k] = walk(p); if (o) delete o[k] },
-    claim: async p => { const [o, k] = walk(p, true); if (o[k] != null) return false; o[k] = true; return true },
+  const root = {}, reads = [];
+  const copy = v => v == null ? null : JSON.parse(JSON.stringify(v));
+  const at = p => p.split('/').filter(Boolean).reduce((o, k) => o == null ? null : o[k], root) ?? null;
+  const set = (p, v) => {
+    const ks = p.split('/'); let o = root;
+    for (const k of ks.slice(0, -1)) o = o[k] = o[k] && typeof o[k] === 'object' ? o[k] : {};
+    if (v == null) delete o[ks.at(-1)]; else o[ks.at(-1)] = copy(v);
   };
+  return { root, reads, set, at, get: async p => { reads.push(p); return copy(at(p) ?? null) }, update: async m => { for (const [p, v] of Object.entries(m)) set(p, v) } };
 }
 const P = [{ id: 'a1', name: 'Женя', dev: 'd1' }, { id: 'b1', name: 'Лёха', dev: 'd2' }];
 const full = v => Object.fromEntries(['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'three', 'four', 'small', 'large', 'house', 'chance', 'yatzy'].map(c => [c, v]));
-function setup() {
-  let t = 1e12;
-  const db = fakeDb(), sent = [], rooms = {};
-  const tg = async (m, b) => { sent.push({ m, ...b }); return b.chat_id === 666 ? { ok: false, error_code: 403 } : { ok: true } };
-  const bot = S.makeBot({ db, tg, now: () => t, token: TOKEN, appLink: 'https://t.me/k22_yatzy_bot/play', roomState: async c => rooms[c] || null });
-  const room = (code, game) => { rooms[code] = { players: P, game }; };
-  return { db, sent, rooms, bot, room, later: ms => { t += ms } };
-}
 const game = (scores, more = {}) => ({ players: P, scores, started: 7, log: [], ...more });
+function setup() {
+  let t = 1e12, n = 0;
+  const db = fakeDb(), sent = [];
+  const tg = async (m, b) => { sent.push({ m, ...b }); return b.chat_id === 666 ? { ok: false, error_code: 403 } : { ok: true } };
+  const bot = W.makeBot({ db, tg, now: () => t, token: TOKEN });
+  const ask = (op, more) => db.set('req/r' + String(++n).padStart(4, '0'), JSON.stringify({ op, ...more }));
+  return {
+    db, sent, bot, tick: () => bot.tick(), later: ms => { t += ms },
+    room: (code, g, on = {}) => db.set('rooms/' + code, { state: JSON.stringify({ players: P, game: g }), on }),
+    change(code, fn) { const r = db.root.rooms[code], s = JSON.parse(r.state); fn(s.game); r.state = JSON.stringify(s) },
+    on: (code, dev, v) => db.set(`rooms/${code}/on/${dev}`, v),
+    hello: (id, code, pids, allow) => ask('hello', { code, pids, allow, init: signed({ id, first_name: 'T' + id }) }),
+    nudge: (id, code) => ask('nudge', { code, init: signed({ id }) }),
+    moved: code => ask('moved', { code }),
+  };
+}
 
-test('Telegram sign-in: a valid signature passes, a forged or stale one does not', () => {
+test('Telegram sign-in: a valid signature passes, a forged or stale one does not', async () => {
   const u = { id: 42, first_name: 'Женя' };
-  assert.equal(S.checkInit(signed(u), TOKEN, Date.now()).id, 42);
-  assert.equal(S.checkInit(signed(u).replace('42', '43'), TOKEN, Date.now()), null);
-  assert.equal(S.checkInit(signed(u), 'other', Date.now()), null);
-  assert.equal(S.checkInit(signed(u, 1000), TOKEN, Date.now()), null);
-  assert.equal(S.checkInit('', TOKEN, Date.now()), null);
+  assert.equal((await W.checkInit(signed(u), TOKEN, Date.now())).id, 42);
+  assert.equal(await W.checkInit(signed(u).replace('42', '43'), TOKEN, Date.now()), null);
+  assert.equal(await W.checkInit(signed(u), 'other', Date.now()), null);
+  assert.equal(await W.checkInit(signed(u, 1000), TOKEN, Date.now()), null);
+  assert.equal(await W.checkInit('', TOKEN, Date.now()), null);
 });
 
 test('rules on the server match the app: turn, totals with bonus, finished', () => {
   const g = game([{ u1: 3 }, {}]);
-  assert.equal(S.turnOf(g), 1);
-  assert.equal(S.total({ u4: 16, u5: 20, u6: 30, chance: 20, joker: 100 }), 236);
-  assert.equal(S.finished(game([full(0), full(0)])), true);
-  assert.equal(S.finished(game([{}, {}], { ended: true })), true);
+  assert.equal(W.turnOf(g), 1);
+  assert.equal(W.total({ u4: 16, u5: 20, u6: 30, chance: 20, joker: 100 }), 236);
+  assert.equal(W.finished(game([full(0), full(0)])), true);
+  assert.equal(W.finished(game([{}, {}], { ended: true })), true);
 });
 
-test('"your turn" goes only to a player who is away, once per turn', async () => {
+test('"your turn" goes only to a player who left the app, once per turn; quiet runs read almost nothing', async () => {
   const x = setup();
-  x.room('ABCDE', game([{ u1: 3 }, {}], { log: [{ pid: 'a1', cid: 'u1' }] }));
-  await x.bot.api.hello({ user: { id: 2, first_name: 'Лёха' }, code: 'ABCDE', pids: ['b1'] });
-  await x.db.put('rooms/ABCDE/on/d2', true);
-  await x.bot.api.moved({ code: 'ABCDE' });
+  x.room('ABCDE', game([{ u1: 3 }, {}], { log: [{ pid: 'a1', cid: 'u1' }] }), { d2: true });
+  x.hello(2, 'ABCDE', ['b1']); x.moved('ABCDE'); await x.tick();
   assert.equal(x.sent.length, 0, 'Лёха is in the app');
-  await x.db.put('rooms/ABCDE/on/d2', false);
-  await x.bot.tick();
+  assert.equal(x.db.root.req && Object.keys(x.db.root.req).length, 0, 'the requests are gone');
+  x.on('ABCDE', 'd2', false); await x.tick();
   assert.equal(x.sent.length, 0, 'not before five minutes');
-  x.later(6 * 60e3); await x.bot.tick();
+  x.later(6 * 60e3); await x.tick();
   assert.equal(x.sent.length, 1);
   assert.equal(x.sent[0].chat_id, 2);
   assert.match(x.sent[0].text, /Твой ход.*Женя: Единицы 3.*Женя 3 : Лёха 0/);
-  assert.match(x.sent[0].reply_markup.inline_keyboard[0][0].url, /startapp=ABCDE$/);
-  await x.bot.api.moved({ code: 'ABCDE' }); await x.bot.tick();
+  assert.match(x.sent[0].reply_markup.inline_keyboard[0][0].url, /^https:\/\/t\.me\/k22_yatzy_bot\/play\?startapp=ABCDE$/);
+  x.moved('ABCDE'); await x.tick();
   assert.equal(x.sent.length, 1, 'no repeat for the same turn');
+  x.db.reads.length = 0; x.later(60e3); await x.tick();
+  assert.deepEqual(x.db.reads.sort(), ['req', 'srv'], 'nothing is due: the rooms are not read');
 });
 
-test('reminders: once a day, three at most, and they stop when the turn is taken', async () => {
+test('a player away when the turn comes hears at once; reminders once a day, three at most', async () => {
   const x = setup();
   x.room('ABCDE', game([{ u1: 3 }, {}]));
-  await x.bot.api.hello({ user: { id: 2 }, code: 'ABCDE', pids: ['b1'] });
-  await x.bot.api.moved({ code: 'ABCDE' });
+  x.hello(2, 'ABCDE', ['b1']); await x.tick();
   assert.equal(x.sent.length, 1);
-  x.later(12 * 3600e3); await x.bot.tick();
+  x.later(12 * 3600e3); await x.tick();
   assert.equal(x.sent.length, 1, 'not after half a day');
-  for (let d = 0; d < 5; d++) { x.later(24 * 3600e3); await x.bot.tick() }
+  for (let d = 0; d < 5; d++) { x.later(24 * 3600e3); await x.tick() }
   assert.equal(x.sent.length, 4, 'one "your turn" and three reminders');
   assert.match(x.sent[1].text, /ждёт твой ход уже 36 ч/);
-  x.rooms.ABCDE.game.scores[1].u1 = 2; await x.bot.tick();
+  x.change('ABCDE', g => { g.scores[1].u1 = 2 }); x.moved('ABCDE'); await x.tick();
   assert.equal(x.sent.length, 4, 'Женя plays without Telegram: nothing to send');
-  assert.equal((await x.db.get('srv/turn/ABCDE')).pid, 'a1', 'the turn record moved on');
+  assert.equal(x.db.at('srv/turn/ABCDE').pid, 'a1', 'the turn record moved on');
 });
 
-test('a nudge reaches the player on turn, then waits half an hour', async () => {
+test('a reminder is not sent for a game that ended without a word to the bot', async () => {
   const x = setup();
   x.room('ABCDE', game([{ u1: 3 }, {}]));
-  await x.bot.api.hello({ user: { id: 1 }, code: 'ABCDE', pids: ['a1'] });
-  await x.bot.api.hello({ user: { id: 2 }, code: 'ABCDE', pids: ['b1'] });
-  let r = await x.bot.api.nudge({ user: { id: 1 }, code: 'ABCDE' });
-  assert.ok(r.ok); assert.match(x.sent.at(-1).text, /Женя ждёт твой ход/); assert.equal(x.sent.at(-1).chat_id, 2);
-  r = await x.bot.api.nudge({ user: { id: 1 }, code: 'ABCDE' });
-  assert.equal(r.ok, false); assert.equal(r.wait, 30);
-  x.later(31 * 60e3);
-  assert.ok((await x.bot.api.nudge({ user: { id: 1 }, code: 'ABCDE' })).ok);
-  assert.match((await x.bot.api.nudge({ user: { id: 2 }, code: 'ABCDE' })).why, /ваш ход/);
-  assert.match((await x.bot.api.nudge({ user: { id: 9 }, code: 'ABCDE' })).why, /не играете/);
+  x.hello(2, 'ABCDE', ['b1']); await x.tick();
+  x.change('ABCDE', g => { g.ended = true });
+  x.later(25 * 3600e3); await x.tick();
+  assert.equal(x.sent.length, 1);
+  assert.equal(x.db.at('srv/turn/ABCDE'), null);
+});
+
+test('a nudge reaches the player on turn, then waits half an hour; the app sees who can be nudged', async () => {
+  const x = setup();
+  x.room('ABCDE', game([{ u1: 3 }, {}]), { d2: true });
+  x.hello(1, 'ABCDE', ['a1']); x.hello(2, 'ABCDE', ['b1']); await x.tick();
+  assert.deepEqual(x.db.at('pub/tg/ABCDE'), { a1: 1, b1: 1 });
+  x.nudge(1, 'ABCDE'); await x.tick();
+  assert.equal(x.sent.length, 1); assert.match(x.sent[0].text, /Женя ждёт твой ход/); assert.equal(x.sent[0].chat_id, 2);
+  x.nudge(1, 'ABCDE'); await x.tick();
+  assert.equal(x.sent.length, 1, 'too soon');
+  x.later(31 * 60e3); x.nudge(1, 'ABCDE'); await x.tick();
+  assert.equal(x.sent.length, 2);
+  x.later(31 * 60e3); x.nudge(2, 'ABCDE'); x.nudge(9, 'ABCDE'); x.db.set('req/zz', JSON.stringify({ op: 'nudge', code: 'ABCDE', init: signed({ id: 1 }).replace('hash=', 'hash=0') }));
+  await x.tick();
+  assert.equal(x.sent.length, 2, 'not to oneself, not from a stranger, not with a forged sign-in');
 });
 
 test('a seat belongs to the first Telegram account that claims it', async () => {
   const x = setup();
-  x.room('ABCDE', game([{}, {}]));
-  await x.bot.api.hello({ user: { id: 2 }, code: 'ABCDE', pids: ['b1'] });
-  await x.bot.api.hello({ user: { id: 9 }, code: 'ABCDE', pids: ['b1', 'a1'] });
-  assert.deepEqual(await x.db.get('srv/seats/ABCDE'), { b1: 2, a1: 9 });
+  x.room('ABCDE', game([{}, {}]), { d1: true, d2: true });
+  x.hello(2, 'ABCDE', ['b1']); await x.tick();
+  x.hello(9, 'ABCDE', ['b1', 'a1']); x.hello(5, 'ABCDE', ['zz']); x.hello(5, 'QQQQQ', ['a1']); await x.tick();
+  assert.deepEqual(x.db.at('srv/seats/ABCDE'), { b1: 2, a1: 9 });
+  assert.equal(x.db.at('srv/seats/QQQQQ'), null);
 });
 
 test('a blocked bot marks the user and stops writing until they allow it again', async () => {
   const x = setup();
   x.room('ABCDE', game([{ u1: 3 }, {}]));
-  await x.bot.api.hello({ user: { id: 666 }, code: 'ABCDE', pids: ['b1'] });
-  await x.bot.api.moved({ code: 'ABCDE' });
-  assert.equal((await x.db.get('srv/users/666')).off, true);
-  x.rooms.ABCDE.game.scores = [{ u1: 3, u2: 2 }, { u1: 1 }];
-  await x.bot.api.moved({ code: 'ABCDE' });
+  x.hello(666, 'ABCDE', ['b1']); await x.tick();
+  assert.equal(x.db.at('srv/users/666').off, true);
+  assert.deepEqual(x.db.at('pub/tg/ABCDE'), { b1: 0 }, 'the app learns the bot cannot write to him');
+  x.change('ABCDE', g => { g.scores = [{ u1: 3, u2: 2 }, { u1: 1 }] }); x.moved('ABCDE'); await x.tick();
   assert.equal(x.sent.length, 1, 'skipped');
-  await x.bot.api.hello({ user: { id: 666 }, code: 'ABCDE', pids: ['b1'], allow: true });
-  assert.equal((await x.db.get('srv/users/666')).off, false);
+  x.hello(666, 'ABCDE', ['b1'], true); await x.tick();
+  assert.equal(x.db.at('srv/users/666').off, false);
+  assert.deepEqual(x.db.at('pub/tg/ABCDE'), { b1: 1 });
 });
 
 test('a finished game moves the rating once and tells the players who are away', async () => {
   const x = setup();
-  x.room('ABCDE', game([full(5), full(1)]));
-  await x.bot.api.hello({ user: { id: 1 }, code: 'ABCDE', pids: ['a1'] });
-  await x.bot.api.hello({ user: { id: 2 }, code: 'ABCDE', pids: ['b1'] });
-  await x.db.put('rooms/ABCDE/on/d1', true);
-  assert.equal((await x.bot.api.moved({ code: 'ABCDE' })).rated, true);
-  assert.equal((await x.bot.api.moved({ code: 'ABCDE' })).rated, false, 'counted once');
-  assert.deepEqual(await x.db.get('srv/elo/1'), { name: 'Женя', r: 1016, g: 1, w: 1 });
-  assert.deepEqual(await x.db.get('srv/elo/2'), { name: 'Лёха', r: 984, g: 1, w: 0 });
+  x.room('ABCDE', game([full(5), full(1)]), { d1: true });
+  x.hello(1, 'ABCDE', ['a1']); x.hello(2, 'ABCDE', ['b1']); await x.tick();
+  assert.deepEqual(x.db.at('srv/elo/1'), { name: 'Женя', r: 1016, g: 1, w: 1 });
+  assert.deepEqual(x.db.at('srv/elo/2'), { name: 'Лёха', r: 984, g: 1, w: 0 });
   assert.deepEqual(x.sent.map(m => m.chat_id), [2], 'only Лёха was away');
   assert.match(x.sent[0].text, /Партия окончена.*\n.*Женя \+16, Лёха -16/s);
-  const list = (await x.bot.api.rating({ user: { id: 2 } })).list;
-  assert.deepEqual(list.map(e => [e.name, e.r, e.me]), [['Женя', 1016, false], ['Лёха', 984, true]]);
+  assert.deepEqual(x.db.at('pub/rating'), [{ name: 'Женя', r: 1016, g: 1, w: 1, h: await W.tgHash(1) }, { name: 'Лёха', r: 984, g: 1, w: 0, h: await W.tgHash(2) }]);
+  assert.match(await W.tgHash(1), /^[0-9a-f]{12}$/);
+  x.moved('ABCDE'); await x.tick();
+  assert.equal(x.db.at('srv/elo/1').g, 1, 'counted once');
   // a game finished early or with one Telegram player is not rated
   x.room('FGHJK', game([full(5), full(1)], { started: 8, ended: true }));
-  await x.bot.api.hello({ user: { id: 1 }, code: 'FGHJK', pids: ['a1'] });
-  await x.bot.api.hello({ user: { id: 2 }, code: 'FGHJK', pids: ['b1'] });
-  assert.equal((await x.bot.api.moved({ code: 'FGHJK' })).rated, false);
+  x.hello(1, 'FGHJK', ['a1']); x.hello(2, 'FGHJK', ['b1']); await x.tick();
+  x.room('KLMNP', game([full(5), full(1)], { started: 9 }));
+  x.hello(1, 'KLMNP', ['a1']); await x.tick();
+  assert.equal(x.db.at('srv/elo/1').g, 1);
+});
+
+test('rooms that are deleted or idle for a month are forgotten; unknown rooms are not read', async () => {
+  const x = setup();
+  x.room('ABCDE', game([{ u1: 3 }, {}]), { d2: true }); x.room('FGHJK', game([{ u1: 3 }, {}]), { d2: true });
+  x.hello(2, 'ABCDE', ['b1']); x.hello(2, 'FGHJK', ['b1']); await x.tick();
+  delete x.db.root.rooms.ABCDE; x.moved('ABCDE'); await x.tick();
+  assert.equal(x.db.at('srv/seats/ABCDE'), null); assert.equal(x.db.at('pub/tg/ABCDE'), null);
+  x.later(31 * 24 * 3600e3); x.db.reads.length = 0; x.moved('ZZZZZ'); await x.tick();
+  assert.equal(x.db.at('srv/seats/FGHJK'), null); assert.equal(x.db.at('srv/turn/FGHJK'), null);
+  assert.ok(!x.db.reads.includes('rooms/ZZZZZ'));
 });
 
 test('Elo: an upset pays more, three players share the stake', () => {
-  assert.deepEqual(S.elo([1000, 1000], [200, 100]), [16, -16]);
-  const [weak] = S.elo([900, 1100], [200, 100]);
+  assert.deepEqual(W.elo([1000, 1000], [200, 100]), [16, -16]);
+  const [weak] = W.elo([900, 1100], [200, 100]);
   assert.ok(weak > 16);
-  assert.deepEqual(S.elo([1000, 1000, 1000], [300, 200, 100]), [16, 0, -16]);
+  assert.deepEqual(W.elo([1000, 1000, 1000], [300, 200, 100]), [16, 0, -16]);
 });
 
-test('inline invitations: a new game anywhere, or a call into a known room', async () => {
+test('inline invitations: a new game anywhere, or a call into a known room; /start says hello', async () => {
   const x = setup();
   await x.bot.update({ inline_query: { id: 'iq', query: '' } });
   let r = x.sent.at(-1);
@@ -164,28 +200,44 @@ test('inline invitations: a new game anywhere, or a call into a known room', asy
   assert.equal(r.results.length, 2);
   assert.match(r.results[0].reply_markup.inline_keyboard[0][0].url, /startapp=ABCDE$/);
   await x.bot.update({ message: { from: { id: 5, first_name: 'Аня' }, text: '/start' } });
-  assert.match(x.sent.at(-1).text, /напишу сюда/);
-  assert.equal((await x.db.get('srv/users/5')).off, false);
+  assert.match(x.sent.at(-1).text, /напишу сюда.*@k22_yatzy_bot/s);
+  assert.equal(x.db.at('srv/users/5').off, false);
 });
 
-test('the function: CORS, Telegram sign-in required, webhook secret checked', async () => {
-  const x = setup();
-  process.env.HOOK_SECRET = 'hook';
-  S.use({ ...x.bot, token: TOKEN, tg: async () => ({ ok: true }) });
-  const call = (body, headers = {}) => S.handler({ httpMethod: 'POST', headers, body: JSON.stringify(body) }, { functionName: 'f1' });
-  assert.equal((await S.handler({ httpMethod: 'OPTIONS', headers: {} }, {})).statusCode, 204);
-  assert.equal((await call({ op: 'rating', init: 'x' })).statusCode, 403);
-  const ok = await call({ op: 'rating', init: signed({ id: 1 }) });
-  assert.equal(ok.statusCode, 200); assert.equal(ok.headers['Access-Control-Allow-Origin'], 'https://kitoglav22.github.io');
-  assert.equal((await call({ op: 'moved', code: '<bad>', init: signed({ id: 1 }) })).statusCode, 400);
-  assert.equal((await call({ op: 'nope', code: 'ABCDE', init: signed({ id: 1 }) })).statusCode, 400);
-  assert.equal((await call({}, { 'X-Telegram-Bot-Api-Secret-Token': 'wrong' })).statusCode, 403);
-  assert.equal((await call({ inline_query: { id: 'q', query: '' } }, { 'X-Telegram-Bot-Api-Secret-Token': 'hook' })).statusCode, 200);
-  assert.equal(x.sent.at(-1).m, 'answerInlineQuery');
-  assert.equal((await S.handler({ messages: [{}] }, {})).statusCode, 200, 'timer');
-  S.use({ ...x.bot, token: TOKEN, db: x.db, tg: async (m, b) => (x.sent.push({ m, ...b }), { ok: true }) });
-  const set = JSON.parse((await S.handler({ httpMethod: 'GET', headers: {}, queryStringParameters: { setup: 'hook' } }, { functionName: 'f1' })).body);
-  assert.deepEqual([set.webhook, set.url, set.firebase], [{ ok: true }, 'https://functions.yandexcloud.net/f1', 'ok']);
-  assert.equal(x.sent.find(m => m.m === 'setWebhook').secret_token, 'hook');
-  assert.equal((await S.handler({ httpMethod: 'GET', headers: {}, queryStringParameters: { setup: 'nope' } }, {})).statusCode, 403, 'a wrong secret does nothing');
+test('the worker: webhook secret, the setup link with a service account sign-in, the cron run', async () => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
+  const env = { BOT_TOKEN: TOKEN, HOOK_SECRET: 'hook', FB_SA: JSON.stringify({ client_email: 'bot@x.iam.gserviceaccount.com', private_key: privateKey }) };
+  const calls = [], real = globalThis.fetch, json = v => new Response(JSON.stringify(v), { headers: { 'content-type': 'application/json' } });
+  globalThis.fetch = async (url, opt = {}) => {
+    const u = new URL(url), body = opt.body;
+    calls.push({ url: u.origin + u.pathname, method: opt.method || 'GET', body });
+    if (u.host === 'api.telegram.org') return json(u.pathname.endsWith('/getMe') ? { ok: true, result: { username: 'k22_yatzy_bot', supports_inline_queries: true } } : { ok: true });
+    if (u.host === 'oauth2.googleapis.com') {
+      const jwt = new URLSearchParams(body).get('assertion').split('.');
+      const ok = crypto.verify('RSA-SHA256', Buffer.from(jwt[0] + '.' + jwt[1]), publicKey, Buffer.from(jwt[2], 'base64url'));
+      return json(ok && JSON.parse(Buffer.from(jwt[1], 'base64url')).iss === 'bot@x.iam.gserviceaccount.com' ? { access_token: 'AT', expires_in: 3600 } : { error: 'invalid_grant' });
+    }
+    assert.equal(u.searchParams.get('access_token'), 'AT');
+    return json(null);
+  };
+  try {
+    const W2 = await import('data:text/javascript,' + encodeURIComponent(fs.readFileSync(path.join(__dirname, '..', 'server', 'worker.js'), 'utf8') + '\n// copy'));
+    const w = W2.default, jobs = [], ctx = { waitUntil: p => jobs.push(p) };
+    const post = h => w.fetch(new Request('https://yatzy.x.workers.dev/', { method: 'POST', headers: h, body: JSON.stringify({ inline_query: { id: 'q', query: '' } }) }), env, ctx);
+    assert.equal((await post({ 'x-telegram-bot-api-secret-token': 'wrong' })).status, 403);
+    assert.equal((await post({ 'x-telegram-bot-api-secret-token': 'hook' })).status, 200);
+    await Promise.all(jobs);
+    assert.ok(calls.some(c => c.url.endsWith('/answerInlineQuery')));
+    assert.equal((await w.fetch(new Request('https://yatzy.x.workers.dev/?setup=nope'), env, ctx)).status, 403, 'a wrong secret does nothing');
+    const rep = await (await w.fetch(new Request('https://yatzy.x.workers.dev/?setup=hook'), env, ctx)).json();
+    assert.deepEqual(rep, { ok: true, telegram: '@k22_yatzy_bot', webhook: 'подключён: https://yatzy.x.workers.dev/', firebase: 'ok', tick: 'ok, изменений: 0' });
+    const hook = JSON.parse(calls.find(c => c.url.endsWith('/setWebhook')).body);
+    assert.deepEqual([hook.url, hook.secret_token], ['https://yatzy.x.workers.dev/', 'hook']);
+    assert.deepEqual(JSON.parse(calls.find(c => c.method === 'PATCH').body), { 'pub/bot': true });
+    assert.equal(calls.filter(c => c.url.includes('oauth2')).length, 1, 'the sign-in is kept between calls');
+    jobs.length = 0; await w.scheduled({}, env, ctx); await Promise.all(jobs);
+    assert.ok(calls.at(-1).url.endsWith('/srv.json') || calls.at(-1).url.endsWith('/req.json'));
+    const bad = await (await w.fetch(new Request('https://yatzy.x.workers.dev/?setup=hook'), { ...env, FB_SA: 'oops' }, ctx)).json();
+    assert.match(bad.error, /FB_SA/);
+  } finally { globalThis.fetch = real }
 });

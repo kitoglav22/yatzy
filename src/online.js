@@ -6,8 +6,11 @@ const ROOM_CHARS='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SYNC=['players','scores','started','ended','dice','roll','log'];
 // the shared part of the game; undo history is cut to the last moves to keep the room small
 const synced=g=>{const o=pickKeys(g,SYNC);if(o.log)o.log=o.log.slice(-40);return o};
-// the Telegram bot listens here: 'enter' when a room is loaded, 'moved' after a move or a new game reached the room
+// the Telegram bot listens here: 'enter' when a room is loaded
 let roomHook=null;
+// the Telegram bot (server/worker.js) looks at a room again when it hears that a cell was written or a game started there;
+// it is told through the database, because not every player can reach the bot's server
+const botNote=code=>backend().then(b=>b.send(JSON.stringify({op:'moved',code}))).catch(()=>{});
 const DEV=lsGet('yatzy.dev')||(()=>{const d=uid()+uid();lsSet('yatzy.dev',d);return d})();
 
 let backendP=null;
@@ -28,6 +31,9 @@ async function fbBackend(){
     setOn(code,on){const r=R(`rooms/${code}/on/${DEV}`);if(on){D.onDisconnect(r).set(false);return D.set(r,true)}D.onDisconnect(r).cancel();return D.set(r,false)},
     remove(code){return D.remove(R(`rooms/${code}`))},
     connected(cb){return D.onValue(R('.info/connected'),s=>cb(!!s.val()))},
+    // a request for the bot, and what the bot publishes for the app
+    send(v){return D.push(R('req'),v)},
+    read(p){return D.get(R(p)).then(s=>s.val())},
   };
 }
 function pickKeys(g,keys){const o={};keys.forEach(k=>{if(g[k]!==undefined)o[k]=g[k]});return o}
@@ -65,7 +71,7 @@ function makeNet(code){
       // the bot hears about written cells only, not about every roll
       const cells=x=>x.scores.reduce((a,sc)=>a+ALL.filter(c=>sc[c.id]!=null).length,0);let wrote=false;
       txRoom(code,s=>{if(!s.game||s.game.started!==g.started)return;wrote=cells(s.game)!==cells(g);s.game=g;s.by=DEV;s.rev=(s.rev||0)+1;return s})
-        .then(s=>{if(!s||!s.game||JSON.stringify(s.game)!==j)throw 0;if(wrote&&roomHook)roomHook('moved',code)})
+        .then(s=>{if(!s||!s.game||JSON.stringify(s.game)!==j)throw 0;if(wrote)botNote(code)})
         .catch(()=>{if(net!==n)return;toast({badge:'!',label:'Онлайн',name:'Ход не отправился',desc:'показываю то, что сохранено в комнате'},'Онлайн',false);n.resync()});
     },
     resync(){n.last='';if(n.state)n.apply(JSON.stringify(n.state),true)},
@@ -180,7 +186,8 @@ async function leaveRoom(gone){
 }
 async function startRoomGame(){
   if(!net)return;
-  await txRoom(net.code,s=>{
+  const code=net.code;
+  await txRoom(code,s=>{
     if(s.game&&!finished(s.game))return;
     if(s.players.length<2)return;
     // each new game in the room starts with the next player
@@ -189,7 +196,7 @@ async function startRoomGame(){
     if(s.game)s.prev=s.game;
     s.game={players:ps.map(p=>({id:p.id,name:p.name,dev:p.dev})),scores:ps.map(()=>({})),started:Date.now(),dice:true,roll:newRoll(),log:[]};
     s.by=DEV;s.rev=(s.rev||0)+1;return s;
-  }).then(s=>{if(s&&s.game&&roomHook)roomHook('moved',net.code)}).catch(()=>{});
+  }).then(s=>{if(s&&s.game)botNote(code)}).catch(()=>{});
 }
 
 function renderNet(){

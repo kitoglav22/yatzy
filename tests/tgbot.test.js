@@ -1,6 +1,8 @@
-// The app talking to the bot: two Telegram devices in one online room, the bot server replaced by a recorder
+// The app talking to the bot: two Telegram devices in one online room; the bot's requests and what it publishes
+// live in the fake database
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const { start, settle } = require('./helpers');
 
 const fakeTelegram = (id, startParam) => `
@@ -17,26 +19,28 @@ window.Telegram = { WebApp: {
 } };`;
 
 let env, A, B;
-const calls = [];
 const w = ms => A.waitForTimeout(ms);
+const hash = id => crypto.createHash('sha256').update('yatzy:' + id).digest('hex').slice(0, 12);
 const device = (name, id, sp) => env.device(name, () => { localStorage.clear(); sessionStorage.clear(); }, {
   online: true, hash: '#tgWebAppData=x&tgWebAppPlatform=android&tgWebAppVersion=8.0',
-  setup: async ctx => {
-    await ctx.addInitScript(() => { window.__yatzyBot = 'https://bot.test/fn'; });
-    await ctx.route('https://telegram.org/js/telegram-web-app.js', r => r.fulfill({ contentType: 'text/javascript', body: fakeTelegram(id, sp) }));
-    await ctx.route('https://bot.test/fn', r => {
-      const b = JSON.parse(r.request().postData()); calls.push({ from: name, ...b });
-      const json = b.op === 'nudge' ? { ok: true, wait: 30 } : b.op === 'rating' ? { ok: true, list: [{ name: 'Лёха', r: 1016, g: 1, w: 1, me: name === 'B' }, { name: 'Женя', r: 984, g: 1, w: 0, me: name === 'A' }] } : { ok: true };
-      r.fulfill({ contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(json) });
-    });
-  },
+  setup: ctx => ctx.route('https://telegram.org/js/telegram-web-app.js', r => r.fulfill({ contentType: 'text/javascript', body: fakeTelegram(id, sp) })),
 });
-const ops = (who, op) => calls.filter(c => c.from === who && c.op === op);
+const ops = (who, op) => env.reqs.filter(c => c.from === who && c.op === op);
 
 before(async () => { env = await start(); });
 after(async () => { assert.deepEqual(env.errors, []); await env.stop(); });
 
+test('until the bot runs, its buttons and rating stay hidden', async () => {
+  const C = await device('C', 3, '');
+  await C.waitForTimeout(300);
+  assert.equal(await C.$('#tgrating'), null);
+  assert.equal(await C.evaluate(() => nudgeVia), null);
+  await C.close();
+});
+
 test('an invitation from a chat creates its room for the first one to open it', async () => {
+  env.pub.bot = true;
+  env.pub.rating = [{ name: 'Лёха', r: 1016, g: 1, w: 1, h: hash(2) }, { name: 'Женя', r: 984, g: 1, w: 0, h: hash(1) }];
   A = await device('A', 1, 'new-qrstu');
   await A.waitForSelector('#nname');
   assert.match(await A.textContent('.sheet h3'), /Новая комната QRSTU/);
@@ -56,19 +60,30 @@ test('the same invitation lets the friend join that room', async () => {
   assert.equal(ops('B', 'hello')[0].code, 'QRSTU');
 });
 
-test('a new game and every move are reported to the bot', async () => {
+test('a new game and every written cell are reported; a nudge goes only to a player the bot can reach', async () => {
   await B.evaluate(() => sheet.close()); await A.evaluate(() => sheet.close());
   await A.click('#nroom'); await A.click('#nstart'); await w(400);
   assert.equal(ops('A', 'moved').length, 1, 'the game started');
-  const first = await A.evaluate(() => mine(whoseTurn())) ? A : B, other = first === A ? B : A;
-  await first.click('#roll'); await settle(first); await first.click('button.sug'); await w(400);
-  assert.equal(calls.filter(c => c.op === 'moved').length, 2);
-  assert.equal(calls.filter(c => c.op === 'moved').at(-1).from, first === A ? 'A' : 'B');
+  const first = await A.evaluate(() => mine(whoseTurn())) ? A : B, other = first === A ? B : A, fn = first === A ? 'A' : 'B';
+  await first.click('#roll'); await settle(first); await w(300);
+  assert.equal(env.reqs.filter(c => c.op === 'moved').length, 1, 'a roll is not reported');
+  await first.click('button.sug'); await w(400);
+  assert.equal(env.reqs.filter(c => c.op === 'moved').length, 2);
+  assert.equal(env.reqs.filter(c => c.op === 'moved').at(-1).from, fn);
+  assert.deepEqual(Object.keys(env.reqs.at(-1)).sort(), ['code', 'from', 'op'], 'no sign-in needed to say a cell was written');
   // the one who waits can nudge; the one on turn cannot
   assert.equal(await other.$('#nudge'), null);
+  const pid = await first.evaluate(() => game.players[whoseTurn()].id);
+  env.pub.tg = { QRSTU: {} };
   await first.click('#nudge'); await w(300);
-  assert.equal(ops(first === A ? 'A' : 'B', 'nudge')[0].code, 'QRSTU');
-  assert.match(await first.textContent('#toasts'), /Напомнил/);
+  assert.match(await first.textContent('#toasts'), /Не получится.*не из Telegram/);
+  env.pub.tg.QRSTU[pid] = 1;
+  await first.click('#nudge'); await w(300);
+  assert.match(await first.textContent('#toasts'), /Напомню/);
+  await first.click('#nudge'); await w(300);
+  assert.match(await first.textContent('#toasts'), /Уже напомнили.*через 30 мин/);
+  assert.equal(ops(fn, 'nudge').length, 1);
+  assert.equal(ops(fn, 'nudge')[0].code, 'QRSTU'); assert.match(ops(fn, 'nudge')[0].init, /^user=/);
 });
 
 test('the invite button sends the bot\'s card with the room code; the rating shows on the stats tab', async () => {

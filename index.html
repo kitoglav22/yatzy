@@ -49,7 +49,7 @@ td+td,th+th{border-left:1px solid var(--rule);text-align:center}
 tbody tr:last-child td{border-bottom:0}
 thead th{padding:10px 6px;vertical-align:bottom}
 .ph{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
-.ph .nm{font-weight:800;font-size:1.05rem;max-width:100%;overflow-wrap:break-word;hyphens:auto;text-align:center;line-height:1.2}
+.ph .nm{border:0;background:transparent;padding:4px 6px;border-radius:8px;font-weight:800;font-size:1.05rem;max-width:100%;overflow-wrap:break-word;hyphens:auto;text-align:center;line-height:1.2}
 .ph .tag{font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:999px;color:transparent}
 th.active .tag{background:var(--accent);color:var(--on-accent)}
 th.active,td.colact{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
@@ -253,7 +253,7 @@ function render(){
   const n=game.players.length,T=game.players.map((_,i)=>totals(i)),turn=whoseTurn();
   const catW=n>=4?'30%':n===3?'34%':'40%';
   let h=`<colgroup><col style="width:${catW}">${game.players.map(()=>'<col>').join('')}</colgroup><thead><tr><th></th>`;
-  h+=game.players.map((p,i)=>`<th class="${turn===i?'active':''}"><div class="ph"><span class="nm">${esc(p.name)}</span><span class="tag">ходит</span></div></th>`).join('')+'</tr></thead><tbody>';
+  h+=game.players.map((p,i)=>`<th class="${turn===i?'active':''}"><div class="ph"><button class="nm" data-ren="${i}" aria-label="Переименовать ${esc(p.name)}">${esc(p.name)}</button><span class="tag">ходит</span></div></th>`).join('')+'</tr></thead><tbody>';
   const cell=(i,c)=>{const v=game.scores[i][c.id];const cls=v==null?'empty':v===0?'zero':'';
     return `<td class="cell${turn===i?' colact':''}"><button class="${cls}" data-p="${i}" data-c="${c.id}" aria-label="${esc(game.players[i].name)}: ${c.name}">${v==null?'—':v}</button></td>`};
   const row=c=>`<tr><td><div class="cat"><b>${c.name}</b><small>${c.hint}</small></div></td>${game.players.map((_,i)=>cell(i,c)).join('')}</tr>`;
@@ -281,7 +281,9 @@ function render(){
     $('yes').onclick=()=>{ui.confirm=false;render();openSetup()};
     $('no').onclick=()=>{ui.confirm=false;render()};
   } else {
-    ac.innerHTML=`<div class="row"><button class="btn" id="ng">Новая игра</button></div>`;
+    ac.innerHTML=`<div class="row"><button class="btn" id="ng">Новая игра</button><button class="btn" id="sw">${n===2?'Поменять местами':'Сдвинуть порядок'}</button></div>`;
+    // first player moves to the end; each column keeps its scores
+    $('sw').onclick=()=>{game.players.push(game.players.shift());game.scores.push(game.scores.shift());saveGame();render()};
     $('ng').onclick=()=>{if(done()||!anyScore())openSetup();else{ui.confirm=true;render()}};
   }
   renderHist();
@@ -316,21 +318,57 @@ function openCell(i,cid){
   const f=document.querySelector('.vals .sel')||document.querySelector('.vals button');f&&f.focus();
 }
 function changed(){sheet.close();if(done()&&!game.saved)archive();saveGame();render()}
-$('table').addEventListener('click',e=>{const b=e.target.closest('button[data-c]');if(b)openCell(+b.dataset.p,b.dataset.c)});
+$('table').addEventListener('click',e=>{const b=e.target.closest('button[data-c]');if(b)return openCell(+b.dataset.p,b.dataset.c);
+  const n=e.target.closest('button[data-ren]');if(n)openRename(game.players[+n.dataset.ren].id)});
+
+function renamePlayer(id,name){
+  name=name.trim().slice(0,16);
+  if(!name)return 'Введите имя';
+  if(roster.some(r=>r.id!==id&&r.name.toLowerCase()===name.toLowerCase()))return 'Игрок с таким именем уже есть';
+  let r=roster.find(x=>x.id===id);
+  const gp=game&&game.players.find(x=>x.id===id);
+  if(!r&&gp){r={id,name:gp.name};roster.push(r)}
+  if(!r)return 'Игрок не найден';
+  const old=r.name;if(old===name)return null;
+  r.name=name;if(gp)gp.name=name;
+  history.forEach(g=>{let hit=false;
+    g.players.forEach(p=>{if(p.id===id||(!p.id&&p.name===old)){p.name=name;p.id=id;hit=true}});
+    if(hit){if(g.winner===old)g.winner=name;store&&store.updateGame&&store.updateGame(g)}});
+  if(statFilter===old)statFilter=name;
+  lsSet('yatzy.hist',history);saveRoster();if(game)saveGame();render();
+  return null;
+}
+function openRename(id){
+  const r=roster.find(x=>x.id===id)||(game&&game.players.find(x=>x.id===id));if(!r)return;
+  sheet.open(`<h3>Имя игрока</h3><p class="muted">Имя поменяется и в текущей партии, и в истории.</p>
+    <form class="add" id="renf"><input id="renin" maxlength="16" autocomplete="off" aria-label="Новое имя" value="${esc(r.name)}"><button class="btn primary" type="submit">Сохранить</button></form>
+    <p class="muted" id="renmsg"></p><div class="row"><button class="btn" id="cancel">Отмена</button></div>`);
+  const inp=$('renin');inp.focus();inp.select();
+  $('cancel').onclick=sheet.close;
+  $('renf').onsubmit=e=>{e.preventDefault();const err=renamePlayer(id,inp.value);if(err)$('renmsg').textContent=err;else sheet.close()};
+}
 
 let pick=[],arm=null;
 function openSetup(){
   pick=game?game.players.map(p=>p.id).filter(id=>roster.some(r=>r.id===id)):[];arm=null;drawSetup();
 }
+function editInSetup(id){
+  const r=roster.find(x=>x.id===id);if(!r)return;
+  const row=document.querySelector(`.del[data-edit="${id}"]`).parentElement;
+  row.innerHTML=`<form class="add" style="flex:1"><input maxlength="16" autocomplete="off" aria-label="Новое имя" value="${esc(r.name)}"><button class="btn primary" type="submit">OK</button></form>`;
+  const f=row.querySelector('form'),inp=f.querySelector('input');inp.focus();inp.select();
+  f.onsubmit=e=>{e.preventDefault();const err=renamePlayer(id,inp.value);if(err){inp.setCustomValidity(err);inp.reportValidity();inp.oninput=()=>inp.setCustomValidity('')}else drawSetup()};
+}
 function drawSetup(){
   const canStart=pick.length>=2&&pick.length<=MAXP;
   sheet.open(`<h3>Кто играет</h3><p class="muted">Отметьте игроков в порядке хода, от 2 до ${MAXP}.</p>
-    <div class="roster">${roster.map(r=>{const k=pick.indexOf(r.id);return `<div class="ritem"><button class="pick${k>=0?' on':''}" data-id="${r.id}"><span class="seat">${k>=0?k+1:''}</span><span>${esc(r.name)}</span></button><button class="del${arm===r.id?' arm':''}" data-del="${r.id}" aria-label="Удалить ${esc(r.name)}">${arm===r.id?'Удалить?':'✕'}</button></div>`}).join('')}</div>
+    <div class="roster">${roster.map(r=>{const k=pick.indexOf(r.id);return `<div class="ritem"><button class="pick${k>=0?' on':''}" data-id="${r.id}"><span class="seat">${k>=0?k+1:''}</span><span>${esc(r.name)}</span></button><button class="del" data-edit="${r.id}" aria-label="Переименовать ${esc(r.name)}">✎</button><button class="del${arm===r.id?' arm':''}" data-del="${r.id}" aria-label="Удалить ${esc(r.name)}">${arm===r.id?'Удалить?':'✕'}</button></div>`}).join('')}</div>
     <form class="add" id="addf"><input id="newname" placeholder="Новый игрок" maxlength="16" autocomplete="off" aria-label="Имя нового игрока"><button class="btn" type="submit">Добавить</button></form>
     <div class="row"><button class="btn primary" id="go" ${canStart?'':'disabled'}>Начать игру</button><button class="btn" id="cancel">Отмена</button></div>`);
   document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{const id=b.dataset.id,k=pick.indexOf(id);arm=null;
     if(k>=0)pick.splice(k,1);else if(pick.length<MAXP)pick.push(id);drawSetup()});
-  document.querySelectorAll('.del').forEach(b=>b.onclick=()=>{const id=b.dataset.del;
+  document.querySelectorAll('.del[data-edit]').forEach(b=>b.onclick=()=>editInSetup(b.dataset.edit));
+  document.querySelectorAll('.del[data-del]').forEach(b=>b.onclick=()=>{const id=b.dataset.del;
     if(arm===id){roster=roster.filter(r=>r.id!==id);pick=pick.filter(x=>x!==id);arm=null;saveRoster()}else arm=id;drawSetup()});
   $('addf').onsubmit=e=>{e.preventDefault();const v=$('newname').value.trim();if(!v)return;
     let r=roster.find(x=>x.name.toLowerCase()===v.toLowerCase());

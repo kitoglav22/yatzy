@@ -7,14 +7,15 @@
   store={
     saveGame(g){clearTimeout(tm);tm=setTimeout(()=>db.doc('current/game').set({json:JSON.stringify(g),at:Date.now()}).then(()=>sync('Сохранено в облаке')).catch(()=>sync('Сохранено только на этом устройстве')),400)},
     saveRoster(r){db.doc('current/roster').set({json:JSON.stringify(r)}).catch(()=>{})},
-    addGame(g){db.collection('games').add(g).catch(()=>sync('Не удалось сохранить партию в облако'))}
+    addGame(g){db.collection('games').add(g).then(ref=>{g._doc=ref.id;lsSet('yatzy.hist',history)}).catch(()=>sync('Не удалось сохранить партию в облако'))},
+    updateGame(g){if(!g._doc)return;const {_doc,...data}=g;db.doc('games/'+_doc).set(data).catch(()=>{})}
   };
   try{
     const [gs,rs,hs]=await Promise.all([db.doc('current/game').get(),db.doc('current/roster').get(),db.collection('games').get()]);
     if(rs.exists){try{const r=JSON.parse(rs.data().json);if(Array.isArray(r)&&r.length)roster=r}catch(e){}}
     if(gs.exists){try{const g=normGame(JSON.parse(gs.data().json));if(g)game=g}catch(e){}}
     ensureRoster(game);
-    const remote=hs.docs.map(d=>d.data()),seen=new Set(remote.map(g=>g.at));
+    const remote=hs.docs.map(d=>({...d.data(),_doc:d.id})),seen=new Set(remote.map(g=>g.at));
     const localOnly=history.filter(g=>!seen.has(g.at));localOnly.forEach(g=>store.addGame(g));
     history=remote.concat(localOnly);
     lsSet('yatzy.hist',history);lsSet('yatzy.roster',roster);lsSet('yatzy.game',game);

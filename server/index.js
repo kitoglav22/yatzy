@@ -9,7 +9,7 @@ const crypto = require('crypto');
 require('dns').setDefaultResultOrder('ipv4first');
 try { require('net').setDefaultAutoSelectFamily(true) } catch (e) {}
 // an outside call that hangs fails after 8 s instead of eating the function's whole time
-const get = (url, opt = {}) => fetch(url, { ...opt, signal: AbortSignal.timeout(8000) });
+const get = (url, opt = {}, ms = 8000) => fetch(url, { ...opt, signal: AbortSignal.timeout(ms) });
 
 const CELLS = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'three', 'four', 'small', 'large', 'house', 'chance', 'yatzy'];
 const NAMES = { u1: 'Единицы', u2: 'Двойки', u3: 'Тройки', u4: 'Четвёрки', u5: 'Пятёрки', u6: 'Шестёрки', three: 'Тройка', four: 'Каре', small: 'Малый стрит', large: 'Большой стрит', house: 'Фулл-хаус', chance: 'Шанс', yatzy: 'Яцзы', joker: 'Джокер' };
@@ -235,13 +235,17 @@ async function handler(event, context) {
   const q = event.queryStringParameters || {}, h = Object.fromEntries(Object.entries(event.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
   // one-time setup: open the function's link with ?setup=<HOOK_SECRET>
   if (q.setup && q.setup === env.HOOK_SECRET) {
-    const self = env.SELF_URL || 'https://functions.yandexcloud.net/' + context.functionName;
-    const hook = await b.tg('setWebhook', { url: self, secret_token: env.HOOK_SECRET, allowed_updates: ['message', 'inline_query'] });
-    await b.tg('setMyCommands', { commands: [{ command: 'start', description: 'Открыть Яцзы' }] });
-    // the same check for the database, so one look at this page tells what works
-    let firebase = 'ok';
-    try { await b.db.get('srv/ping') } catch (e) { firebase = String(e && e.message || e) }
-    return out(200, { webhook: hook, url: self, firebase });
+    // every check runs at once with a short limit, so the page answers within a few seconds and names what fails
+    const self = env.SELF_URL || 'https://functions.yandexcloud.net/' + context.functionName, t0 = Date.now();
+    const timed = (p, ms) => Promise.race([Promise.resolve(p).then(v => v, e => ({ error: String(e && (e.cause && e.cause.code || e.message) || e) })), new Promise(ok => setTimeout(() => ok({ error: `нет ответа за ${ms / 1000} с` }), ms))]);
+    const ping = url => timed(get(url, {}, 4000).then(r => 'ok ' + r.status), 4500);
+    const [internet, telegram, google, webhook, firebase] = await Promise.all([
+      ping('https://ya.ru'), ping('https://api.telegram.org'), ping('https://oauth2.googleapis.com/token'),
+      timed(b.tg('setWebhook', { url: self, secret_token: env.HOOK_SECRET, allowed_updates: ['message', 'inline_query'] }), 4500),
+      timed(b.db.get('srv/ping').then(() => 'ok'), 4500),
+    ]);
+    if (webhook && webhook.ok) b.tg('setMyCommands', { commands: [{ command: 'start', description: 'Открыть Яцзы' }] });
+    return out(200, { webhook, firebase, url: self, internet, telegram, google, ms: Date.now() - t0 });
   }
   let body = {};
   try { body = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body || '', 'base64').toString() : event.body || '{}') } catch (e) { return out(400, { ok: false }) }

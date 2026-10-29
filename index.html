@@ -447,7 +447,9 @@ function rollDice(){
   const els=[...document.querySelectorAll('.die')],order=free.map((f,k)=>f?k:-1).filter(k=>k>=0);
   rolling=true;$('roll').disabled=true;els.forEach(d=>d.disabled=true);
   document.querySelector('.dicebar').classList.add('rolling');
-  const t0=performance.now(),stopAt={};order.forEach((k,j)=>stopAt[k]=(quick?150:850)+j*(quick?0:220));
+  // each roll lasts a different time (about 1.2–2.4 s) and the dice stop in random order; purely cosmetic
+  const span=quick?0:1200+Math.random()*1200;
+  const t0=performance.now(),stopAt={};order.forEach(k=>stopAt[k]=quick?150:600+Math.random()*(span-600));
   const last=Math.max(...Object.values(stopAt));
   order.forEach(k=>{els[k].classList.remove('held');els[k].classList.add('tumble')});
   let next={};

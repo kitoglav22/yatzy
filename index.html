@@ -134,6 +134,7 @@ table.avg td.hi{color:var(--ok)}
 .ach .who span{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--accent-soft)}
 .ach .who span.no{display:none}
 .seg{display:flex;gap:6px;flex-wrap:wrap}
+.statseg{margin-bottom:12px}
 .seg button{min-height:40px;padding:0 14px;border-radius:999px;border:1.5px solid var(--rule);background:var(--paper);font-weight:700}
 .seg button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .newach{display:flex;flex-direction:column;gap:6px;margin-top:10px}
@@ -241,6 +242,8 @@ td.cell button.flash{animation:flash 1.8s ease-out}
 @media (min-width:700px){.sheet-bg{align-items:center}.sheet{border-radius:20px;max-height:80%}}
 .sheet h3{margin:0;font-family:var(--display);font-size:1.1rem;font-weight:600;padding-right:40px}
 .sheet{position:relative}
+/* the grabber hints that a bottom sheet can be pulled down (see pullDown) */
+@media (max-width:699px){.sheet::before{content:'';position:absolute;top:7px;left:50%;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:var(--rule)}}
 .more{display:flex;flex-direction:column;gap:10px}
 .more .btn{justify-content:flex-start}
 .sheetx{position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;border:0;background:var(--bg);color:var(--muted);font-size:1rem;line-height:1;display:grid;place-items:center}
@@ -538,9 +541,28 @@ function renderHist(){
 
 const sheet={el:null,
   open(html){$('sheet').innerHTML=`<div class="sheet-bg" id="bg"><div class="sheet" role="dialog" aria-modal="true"><button class="sheetx" id="sheetx" type="button" aria-label="Закрыть">✕</button>${html}</div></div>`;
-    $('bg').onclick=e=>{if(e.target.id==='bg')sheet.close()};$('sheetx').onclick=sheet.close;},
+    $('bg').onclick=e=>{if(e.target.id==='bg')sheet.close()};$('sheetx').onclick=sheet.close;pullDown($('bg').firstElementChild)},
   close(){$('sheet').innerHTML=''}};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')sheet.close()});
+// a sheet at the bottom of a phone can be pulled down to close: it follows the finger while its content is scrolled to the top,
+// and closes past a third of its height or on a quick flick, otherwise springs back
+function pullDown(el){
+  let y0=null,dy=0,t0=0;
+  const back=()=>{el.style.transition='transform .2s ease';el.style.transform=''};
+  el.addEventListener('touchstart',e=>{y0=e.touches.length===1&&el.scrollTop<=0&&!matchMedia('(min-width:700px)').matches?e.touches[0].clientY:null;dy=0;t0=performance.now()},{passive:true});
+  el.addEventListener('touchmove',e=>{
+    if(y0==null)return;dy=e.touches[0].clientY-y0;
+    if(dy<=0){if(!el.style.transform)y0=null;else el.style.transform='';return}
+    if(e.cancelable)e.preventDefault();
+    el.style.transition='none';el.style.transform=`translateY(${dy}px)`;
+  },{passive:false});
+  el.addEventListener('touchend',()=>{
+    if(y0==null)return;y0=null;if(dy<=0)return back();
+    if(dy>el.offsetHeight/3||dy>40&&dy/(performance.now()-t0)>.6){el.style.transition='transform .18s ease-in';el.style.transform='translateY(100%)';setTimeout(()=>{if($('sheet').contains(el))sheet.close()},180)}
+    else back();
+  });
+  el.addEventListener('touchcancel',()=>{if(y0!=null){y0=null;back()}});
+}
 
 function openCell(i,cid){
   const c=[...ALL,JK].find(x=>x.id===cid),cur=game.scores[i][cid];
@@ -966,7 +988,10 @@ function renderStats(){
     el.innerHTML=`<div class="card" style="padding:20px"><p style="margin:0 0 6px;font-weight:700">Статистика появится после первой законченной партии</p><p class="muted">Здесь будут победы, средний счёт, рекорды и средние очки по каждой клетке. Ниже все ачивки, которые можно открыть.</p></div>`+achGrid(st);
     return;
   }
-  let h=`<div class="pcards">${st.players.map(p=>{
+  // one picker on top shows one player's card and achievements; records and the averages table stay shared
+  const sel=st.players.find(p=>p.name===statFilter);
+  const seg=st.players.length>1?`<div class="seg statseg"><button class="${sel?'':'on'}" data-n="">Все</button>${st.players.map(p=>`<button class="${sel===p?'on':''}" data-n="${esc(p.name)}">${esc(p.name)}</button>`).join('')}</div>`:'';
+  let h=seg+`<div class="pcards">${(sel?[sel]:st.players).map(p=>{
     const z=Object.entries(p.zeros).sort((a,b)=>b[1]-a[1])[0];
     const zc=z?[...ALL].find(c=>c.id===z[0]).name:'—';
     return `<div class="pcard"><h3>${esc(p.name)}</h3>
@@ -992,10 +1017,9 @@ function renderStats(){
 
 function achGrid(st){
   const ps=st.players,sel=ps.find(p=>p.name===statFilter);
-  const seg=ps.length>1?`<div class="seg"><button class="${sel?'':'on'}" data-n="">Все</button>${ps.map(p=>`<button class="${sel===p?'on':''}" data-n="${esc(p.name)}">${esc(p.name)}</button>`).join('')}</div>`:'';
   const pool=sel?[sel]:ps,cmp=!sel&&ps.length>1;
   const score=ps.length?`<div class="tally">${ps.map(p=>`<span class="chip">${esc(p.name)}: ${ACH.filter(a=>p.ach[a.id]).length} из ${ACH.length}</span>`).join('')}</div>`:'';
-  return `<section><h2>Ачивки</h2>${score}${seg}<div class="achs">${ACH.map(a=>{
+  return `<section><h2>Ачивки</h2>${score}<div class="achs">${ACH.map(a=>{
     const who=pool.filter(p=>p.ach[a.id]);
     const pills=cmp?pool.map(p=>p.ach[a.id]?`<span>${esc(p.name)}${p.ach[a.id].n>1?' ×'+p.ach[a.id].n:''}</span>`:`<span class="no">${esc(p.name)}</span>`).join('')
       :who.map(p=>`<span>${p.ach[a.id].n>1?'×'+p.ach[a.id].n:'есть'}</span>`).join('');
@@ -1048,7 +1072,7 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had){had=true;return}if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 // the release number under the page shows whether a new version has arrived
-{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 58';$('sync').after(v)}
+{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 59';$('sync').after(v)}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 // remind about a backup every 5 finished games, unless the Telegram cloud already keeps every game
 let cloudKeeps=false;

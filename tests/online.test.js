@@ -61,11 +61,12 @@ test('a score travels to the other device, undo only for your own move', async (
   assert.match(await B.textContent('.dnote'), /Женя/);
 });
 
-test('your own column carries a stripe on your device, whoever is on turn', async () => {
+test('your own column comes first and carries a stripe on your device, whoever is on turn', async () => {
   for (const P of [A, B]) {
-    const want = await P.evaluate(() => game.players.map(p => p.dev === DEV));
+    const mine = await P.evaluate(() => game.players.find(p => p.dev === DEV).name);
     const got = await P.$$eval('#table thead th', x => x.slice(1).map(e => e.classList.contains('me')));
-    assert.deepEqual(got, want);
+    assert.deepEqual(got, [true, false]);
+    assert.equal(await P.textContent('#table thead th:nth-child(2) .nm'), mine);
     assert.equal(await P.$$eval('#table td.me', x => x.length), (await P.$$eval('#table tbody tr:not(.section)', x => x.length)));
   }
 });

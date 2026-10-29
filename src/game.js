@@ -9,8 +9,10 @@ function render(){
   const catW=n>=4?'30%':n===3?'34%':'40%';
   // a light stripe down your own column (online) or the column on turn (one device), so it is not lost while scrolling
   const me=i=>(net?net.own(i):i===turn)?' me':'';
+  // in a room your own column comes first and the others follow in turn order, so your stripe always stands at the same place
+  const first=net?Math.max(0,game.players.findIndex((_,i)=>net.own(i))):0,cols=range(0,n-1).map(k=>(first+k)%n);
   let h=`<colgroup><col style="width:${catW}">${game.players.map(()=>'<col>').join('')}</colgroup><thead><tr><th><button class="rulesbtn" data-help="all">Правила</button></th>`;
-  h+=game.players.map((p,i)=>`<th class="${turn===i?'active':''}${me(i)}"><div class="ph"><button class="nm" data-ren="${i}" ${net?'disabled':''} aria-label="Переименовать ${esc(p.name)}">${esc(p.name)}</button><span class="tag">ходит</span></div></th>`).join('')+'</tr></thead><tbody>';
+  h+=cols.map(i=>[game.players[i],i]).map(([p,i])=>`<th class="${turn===i?'active':''}${me(i)}"><div class="ph"><button class="nm" data-ren="${i}" ${net?'disabled':''} aria-label="Переименовать ${esc(p.name)}">${esc(p.name)}</button><span class="tag">ходит</span></div></th>`).join('')+'</tr></thead><tbody>';
   const sug=turn>=0?suggestions(turn):null,topSug=sug?Math.max(...Object.values(sug)):0;
   // a score that has just come in flashes once
   const lm=lastMove(),L=(game.log||[]).length,fresh=seen.game===game.started&&L>seen.n?lm:null;seen.game=game.started;seen.n=L;
@@ -23,15 +25,15 @@ function render(){
     // with dice on one device, someone else's empty cell waits for their turn; a written one can still be corrected
     const shut=net||game.dice&&v==null&&i!==turn;
     return `<td class="cell${me(i)}"><button class="${cls}" data-p="${i}" data-c="${c.id}" ${shut?'disabled':''} aria-label="${esc(game.players[i].name)}: ${c.name}${v===0?', вычеркнуто':''}">${v==null?'—':v===0?'✕':v}</button></td>`};
-  const row=c=>`<tr><td><button class="cat" data-help="${c.id}"><b>${c.name}</b><small>${c.hint}</small></button></td>${game.players.map((_,i)=>cell(i,c)).join('')}</tr>`;
+  const row=c=>`<tr><td><button class="cat" data-help="${c.id}"><b>${c.name}</b><small>${c.hint}</small></button></td>${cols.map(i=>cell(i,c)).join('')}</tr>`;
   const need=t=>{if(t.bonus||!t.upFilled)return '';return t.par>=0?`<span class="need">с запасом +${t.par}</span>`:`<span class="need">отстаёт на ${-t.par}</span>`};
   const sec=t=>`<tr class="section"><td colspan="${n+1}">${t}</td></tr>`;
   h+=sec('Верхняя часть')+UP.map(row).join('');
-  h+=`<tr class="sum"><td>Сумма</td>${T.map((t,i)=>`<td class="v${me(i)}">${t.up}</td>`).join('')}</tr>`;
-  h+=`<tr class="sum"><td><button class="cat" data-help="bonus"><b>Бонус</b><small>50 очков при 63+</small></button></td>${T.map((t,i)=>`<td class="v${t.bonus?' got':''}${me(i)}">${t.bonus?'+50':'0'}${need(t)}</td>`).join('')}</tr>`;
+  h+=`<tr class="sum"><td>Сумма</td>${cols.map(i=>[T[i],i]).map(([t,i])=>`<td class="v${me(i)}">${t.up}</td>`).join('')}</tr>`;
+  h+=`<tr class="sum"><td><button class="cat" data-help="bonus"><b>Бонус</b><small>50 очков при 63+</small></button></td>${cols.map(i=>[T[i],i]).map(([t,i])=>`<td class="v${t.bonus?' got':''}${me(i)}">${t.bonus?'+50':'0'}${need(t)}</td>`).join('')}</tr>`;
   h+=sec('Нижняя часть')+LOW.map(row).join('')+row(JK);
   const best=Math.max(...T.map(t=>t.total)),leaders=T.filter(t=>t.total===best).length;
-  h+=`<tr class="total"><td>Итого</td>${T.map((t,i)=>`<td class="${t.total===best&&best>0&&leaders===1?'lead':''}${me(i)}">${t.total}</td>`).join('')}</tr></tbody>`;
+  h+=`<tr class="total"><td>Итого</td>${cols.map(i=>[T[i],i]).map(([t,i])=>`<td class="${t.total===best&&best>0&&leaders===1?'lead':''}${me(i)}">${t.total}</td>`).join('')}</tr></tbody>`;
   tb.innerHTML=h;drawTotbar();
   $('legend').innerHTML=over()||history.length>=5?'':`${game.dice?'<span><i class="lg sug">16</i>можно записать</span><span><i class="lg best">25</i>лучший вариант</span>':''}<span>Нажмите на название, чтобы увидеть правило</span>`;
 

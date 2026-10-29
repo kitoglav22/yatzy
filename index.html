@@ -306,7 +306,8 @@ const over=()=>game&&(done()||!!game.ended);
 function whoseTurn(){if(!game||over())return -1;const f=game.players.map((_,i)=>totals(i).filled);const m=Math.min(...f);return f.indexOf(m)}
 const anyScore=()=>game&&game.scores.some(s=>Object.keys(s).length);
 
-function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML}
+// also used inside attributes, so quotes are escaped too
+const esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 const $=id=>document.getElementById(id);
 
 function render(){
@@ -356,8 +357,10 @@ function render(){
     $('fyes').onclick=()=>{ui.finish=false;game.ended=true;archive();saveGame();render()};
     $('fno').onclick=()=>{ui.finish=false;render()};
   } else {
+    // reordering in the middle of a dice turn would hand the roll to another player
+    const midTurn=game.dice&&game.roll&&(game.roll.n>0||game.roll.jokerTaken);
     const last=(game.log||[]).slice(-1)[0],lp=last&&game.players.find(p=>p.id===last.pid),lc=last&&[...ALL,JK].find(c=>c.id===last.cid);
-    ac.innerHTML=`<div class="row">${lp&&lc?`<button class="btn" id="undo">↶ Отменить: ${esc(lp.name)}, ${lc.name}</button>`:''}<button class="btn" id="ng">Новая игра</button>${over()?'':`<button class="btn" id="sw">${n===2?'Поменять местами':'Сдвинуть порядок'}</button>`}${!over()&&anyScore()?'<button class="btn" id="fin">Закончить досрочно</button>':''}${over()?'':`<button class="btn" id="dmode">${game.dice?'Ввод вручную':'Кубики на экране'}</button>`}</div>`;
+    ac.innerHTML=`<div class="row">${lp&&lc?`<button class="btn" id="undo">↶ Отменить: ${esc(lp.name)}, ${lc.name}</button>`:''}<button class="btn" id="ng">Новая игра</button>${over()||midTurn?'':`<button class="btn" id="sw">${n===2?'Поменять местами':'Сдвинуть порядок'}</button>`}${!over()&&anyScore()?'<button class="btn" id="fin">Закончить досрочно</button>':''}${over()?'':`<button class="btn" id="dmode">${game.dice?'Ввод вручную':'Кубики на экране'}</button>`}</div>`;
     if($('dmode'))$('dmode').onclick=()=>{game.dice=!game.dice;if(game.dice&&!game.roll)game.roll=newRoll();lsSet('yatzy.dice',game.dice);saveGame();render()};
     if($('undo'))$('undo').onclick=undo;
     if($('fin'))$('fin').onclick=()=>{ui.finish=true;render()};
@@ -433,11 +436,11 @@ function renderDice(){
   const el=$('dice');
   if(!game||!game.dice||over()){el.innerHTML='';return}
   if(rolling)return;
-  const r=game.roll=game.roll||newRoll(),turn=whoseTurn(),who=game.players[turn].name;
+  const r=game.roll=game.roll||newRoll(),turn=whoseTurn(),who=game.players[turn].name,canHold=r.n>0&&r.n<3&&!r.jokerTaken;
   const hint=r.jokerTaken?`Джокер записан. Теперь поставьте 0 в любую свободную клетку колонки «${esc(who)}».`
     :!r.n?'Нажмите «Бросить».':r.n<3?'Нажмите на кубики, которые хотите оставить, и бросайте ещё, или выберите клетку в таблице.':'Броски закончились: выберите клетку в таблице.';
   el.innerHTML=`<div class="dicebar"><div class="dicehead"><span>Ходит <b>${esc(who)}</b></span><span class="muted">бросок ${r.n} из 3</span></div>
-    <div class="dicerow"><div class="dies">${r.dice.map((v,k)=>`<button class="die${r.held[k]?' held':''}${v?'':' blank'}" data-k="${k}" ${!r.n||r.n>=3||r.jokerTaken?'disabled':''} aria-label="${v?'Кубик '+v:'Кубик'}${r.held[k]?', держу':''}">${range(0,8).map(q=>`<i class="${v&&PIPS[v].includes(q)?'on':''}"></i>`).join('')}</button>`).join('')}</div>
+    <div class="dicerow"><div class="dies">${r.dice.map((v,k)=>`<button class="die${canHold&&r.held[k]?' held':''}${v?'':' blank'}" data-k="${k}" ${canHold?'':'disabled'} aria-label="${v?'Кубик '+v:'Кубик'}${canHold&&r.held[k]?', держу':''}">${range(0,8).map(q=>`<i class="${v&&PIPS[v].includes(q)?'on':''}"></i>`).join('')}</button>`).join('')}</div>
     <button class="btn primary rollbtn" id="roll" ${r.n>=3||r.jokerTaken?'disabled':''}>${r.n?'Бросить ещё':'Бросить'}</button></div>
     <p class="muted">${hint}</p></div>`;
   el.querySelectorAll('.die').forEach(b=>b.onclick=()=>{const k=+b.dataset.k;r.held[k]=!r.held[k];saveGame();renderDice()});
@@ -457,6 +460,7 @@ function rollDice(){
   const bar=document.querySelector('.dicebar'),els=[...document.querySelectorAll('.die')];
   const order=free.map((f,k)=>f?k:-1).filter(k=>k>=0);
   rolling=true;$('roll').disabled=true;els.forEach(d=>d.disabled=true);
+  if(r.n>=3)els.forEach(d=>d.classList.remove('held'));
   bar.classList.add('rolling');bar.classList.remove('shake');void bar.offsetWidth;if(!quick)bar.classList.add('shake');
   const span=quick?0:1200+Math.random()*1200,stopAt={},next={},face={};
   order.forEach(k=>{stopAt[k]=quick?0:600+Math.random()*(span-600);els[k].classList.remove('held','land');els[k].classList.add('shaking')});
@@ -492,6 +496,8 @@ function setScore(i,cid,v){
   if(v!=null)checkLive(i,beforeSc);
   // in dice mode a score for the player on turn ends the turn, except the joker, after which a 0 is still due
   if(game.dice&&v!=null&&i===turnBefore){if(cid==='joker'&&game.roll)game.roll.jokerTaken=true;else game.roll=newRoll()}
+  // clearing someone else's cell can move the turn to them: the roll must not follow
+  else if(game.dice&&whoseTurn()!==turnBefore)game.roll=newRoll();
   changed();
 }
 function undo(){
@@ -549,7 +555,7 @@ function renamePlayer(id,name){
   const old=r.name;if(old===name)return null;
   r.name=name;if(gp)gp.name=name;
   history.forEach(g=>{let hit=false;
-    g.players.forEach(p=>{if(p.id===id||(!p.id&&p.name===old)){p.name=name;p.id=id;hit=true}});
+    g.players.forEach(p=>{if(p.id===id||p.name===old){p.name=name;p.id=id;hit=true}});
     if(hit){if(g.winner===old)g.winner=name;store&&store.updateGame&&store.updateGame(g)}});
   if(statFilter===old)statFilter=name;
   lsSet('yatzy.hist',history);saveRoster();if(game)saveGame();render();
@@ -798,8 +804,10 @@ $('imp').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try{const d=JSON.parse(await f.text());if(!Array.isArray(d.history))throw 0;
     const seen=new Set(history.map(g=>g.at));let n=0;
-    d.history.forEach(g=>{if(!seen.has(g.at)){history.push(g);n++}});
-    (d.roster||[]).forEach(r=>{if(!roster.some(x=>x.name===r.name))roster.push(r)});
+    // skip anything that does not look like a finished game, so a damaged file cannot break the history
+    const ok=g=>g&&typeof g.at==='number'&&Array.isArray(g.players)&&g.players.length&&g.players.every(p=>p&&typeof p.name==='string'&&typeof p.total==='number');
+    d.history.forEach(g=>{if(ok(g)&&!seen.has(g.at)){seen.add(g.at);history.push(g);n++}});
+    (Array.isArray(d.roster)?d.roster:[]).forEach(r=>{if(r&&r.id&&typeof r.name==='string'&&!roster.some(x=>x.name===r.name||x.id===r.id))roster.push({id:r.id,name:r.name})});
     lsSet('yatzy.hist',history);saveRoster();render();
     $('bmsg').textContent='Добавлено партий: '+n+'. Всего в истории: '+history.length;
   }catch(_){$('bmsg').textContent='Это не файл копии Яцзы. Выберите файл yatzy-….json'}
@@ -810,8 +818,9 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reg.update().catch(()=>{})});
   }).catch(()=>{});
-  let reloaded=false;
-  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
+  // reload only when a new version replaces a running one, not on the very first install
+  let had=!!navigator.serviceWorker.controller,reloaded=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had){had=true;return}if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 // remind about a backup every 5 finished games

@@ -23,8 +23,10 @@ $('imp').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try{const d=JSON.parse(await f.text());if(!Array.isArray(d.history))throw 0;
     const seen=new Set(history.map(g=>g.at));let n=0;
-    d.history.forEach(g=>{if(!seen.has(g.at)){history.push(g);n++}});
-    (d.roster||[]).forEach(r=>{if(!roster.some(x=>x.name===r.name))roster.push(r)});
+    // skip anything that does not look like a finished game, so a damaged file cannot break the history
+    const ok=g=>g&&typeof g.at==='number'&&Array.isArray(g.players)&&g.players.length&&g.players.every(p=>p&&typeof p.name==='string'&&typeof p.total==='number');
+    d.history.forEach(g=>{if(ok(g)&&!seen.has(g.at)){seen.add(g.at);history.push(g);n++}});
+    (Array.isArray(d.roster)?d.roster:[]).forEach(r=>{if(r&&r.id&&typeof r.name==='string'&&!roster.some(x=>x.name===r.name||x.id===r.id))roster.push({id:r.id,name:r.name})});
     lsSet('yatzy.hist',history);saveRoster();render();
     $('bmsg').textContent='Добавлено партий: '+n+'. Всего в истории: '+history.length;
   }catch(_){$('bmsg').textContent='Это не файл копии Яцзы. Выберите файл yatzy-….json'}
@@ -35,8 +37,9 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reg.update().catch(()=>{})});
   }).catch(()=>{});
-  let reloaded=false;
-  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
+  // reload only when a new version replaces a running one, not on the very first install
+  let had=!!navigator.serviceWorker.controller,reloaded=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had){had=true;return}if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 // remind about a backup every 5 finished games

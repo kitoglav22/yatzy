@@ -280,6 +280,7 @@ document.getElementById('imp').onchange=async e=>{
   }catch(_){m.textContent='Это не файл копии Яцзы. Выберите файл yatzy-….json'}
   e.target.value='';
 };
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 </script>
 </body></html>

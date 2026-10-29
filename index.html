@@ -157,9 +157,9 @@ table.avg td.hi{color:var(--ok)}
 .dicehead{display:flex;justify-content:space-between;align-items:baseline;gap:8px 16px;flex-wrap:wrap}
 .dicehead b{font-weight:800}
 /* dice and the roll button share one row; the dice shrink to fit a phone */
-.dicerow{display:flex;gap:12px;align-items:center}
-.dies{display:flex;gap:12px;flex:1;min-width:0;padding:6px 0 4px}
-.die{position:relative;flex:0 1 62px;min-width:0;aspect-ratio:1;padding:9px;border-radius:14px;border:2px solid var(--rule);background:var(--paper);display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);place-items:center;box-shadow:0 3px 0 var(--rule);transition:transform .2s,box-shadow .2s}
+.dicerow{--g:12px;display:flex;gap:var(--g);align-items:center}
+.dies{display:flex;gap:var(--g);flex:0 1 auto;min-width:0;padding:6px 0 4px}
+.die{position:relative;flex:0 1 auto;width:62px;min-width:0;aspect-ratio:1;padding:9px;border-radius:14px;border:2px solid var(--rule);background:var(--paper);display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);place-items:center;box-shadow:0 3px 0 var(--rule);transition:transform .2s,box-shadow .2s}
 .die i{width:10px;height:10px;border-radius:50%;background:var(--ink);visibility:hidden}
 .die i.on{visibility:visible}
 .die.blank i{visibility:hidden}
@@ -180,7 +180,9 @@ table.avg td.hi{color:var(--ok)}
 .yflash{display:inline-block;margin-left:12px;line-height:1;font-family:var(--display);font-weight:800;font-size:1.6rem;color:var(--win);letter-spacing:.04em;animation:ypop 1.4s cubic-bezier(.2,1.6,.4,1) both}
 @keyframes ypop{0%{transform:scale(.3);opacity:0}25%{transform:scale(1.15);opacity:1}100%{transform:scale(1)}}
 @media (prefers-reduced-motion:reduce){.dicebar.shake .dies,.dicebar.yatzy,.yflash{animation:none}}
-.rollbtn{min-width:150px}
+/* the roll button is one more square in the row, the size of a die */
+.rollbtn{flex:none;width:min(62px,calc((100% - 5 * var(--g)) / 6));aspect-ratio:1;min-height:0;padding:0;border-radius:14px;box-shadow:0 3px 0 color-mix(in srgb,var(--accent) 55%,#000)}
+.rollbtn svg{width:46%;height:46%;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
 .dnote b{color:var(--ink)}
 .dhr{display:inline-flex;align-items:center;gap:10px}
 .rbtn{border:1.5px solid var(--rule);background:var(--bg);border-radius:999px;width:34px;height:30px;font-size:1rem;line-height:1;padding:0}
@@ -217,7 +219,7 @@ td.cell button.flash{animation:flash 1.8s ease-out}
 .minidice{display:flex;gap:6px}
 .die.mini{width:36px;height:36px;padding:5px;border-radius:9px;box-shadow:none;border-width:1.5px}
 .die.mini i{width:6px;height:6px}
-@media (max-width:520px){.die{padding:6px;border-radius:12px}.die i{width:7px;height:7px}.dies{gap:7px}.dicerow{gap:10px}.rollbtn{min-width:0;padding:0 16px;border-radius:999px}}
+@media (max-width:520px){.die{padding:6px;border-radius:12px}.die i{width:7px;height:7px}.dicerow{--g:7px}.rollbtn{border-radius:12px}}
 .sheet-bg{position:fixed;inset:0;background:color-mix(in srgb,#000 45%,transparent);display:flex;align-items:flex-end;justify-content:center;z-index:20;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .sheet{background:var(--paper);color:var(--ink);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px;max-height:88%;overflow:auto}
 @media (min-width:700px){.sheet-bg{align-items:center}.sheet{border-radius:20px;max-height:80%}}
@@ -713,12 +715,12 @@ function renderDice(){
   // a hint while the first turn of the game goes on, after that a line about the latest score
   const lm=lastMove(),first=!(game.log||[]).length;
   const tip=r.jokerTaken&&my?`Джокер записан. Теперь поставьте 0 в любую свободную клетку колонки «${esc(who)}».`
-    :first&&my?(!r.n?'Нажмите «Бросить», потом на кубики, которые хотите оставить.':r.n<3?'Нажмите на кубики, которые оставить, и бросайте ещё, или выберите клетку.':'Выберите клетку в таблице.')
+    :first&&my?(!r.n?'Нажмите синюю кнопку со стрелкой, потом на кубики, которые хотите оставить.':r.n<3?'Нажмите на кубики, которые оставить, и бросайте ещё, или выберите клетку.':'Выберите клетку в таблице.')
     :'';
   el.innerHTML=`<div class="dicebar"><div class="dicehead"><span>Ходит <b>${esc(who)}</b></span><span class="dhr"><span class="muted">бросок ${r.n} из 3</span>${net&&net.react?'<button class="rbtn" id="rbtn" aria-label="Реакция" aria-expanded="'+!!ui.reacts+'">😊</button>':''}</span></div>
     ${net&&net.react&&ui.reacts?`<div class="reacts">${REACTS.map((e,k)=>`<button data-react="${k}">${e}</button>`).join('')}</div>`:''}
     <div class="dicerow"><div class="dies">${r.dice.map((v,k)=>`<button class="die${showHeld&&r.held[k]?' held':''}${v?'':' blank'}" data-k="${k}" ${canHold?'':'disabled'} aria-label="${v?'Кубик '+v:'Кубик'}${showHeld&&r.held[k]?', держу':''}">${range(0,8).map(q=>`<i class="${v&&PIPS[v].includes(q)?'on':''}"></i>`).join('')}</button>`).join('')}</div>
-    <button class="btn primary rollbtn" id="roll" ${!my||r.n>=3||r.jokerTaken?'disabled':''}>${r.n?'Ещё раз':'Бросить'}</button></div>
+    <button class="btn primary rollbtn" id="roll" ${!my||r.n>=3||r.jokerTaken?'disabled':''} aria-label="${r.n?'Бросить ещё':'Бросить'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20.5 3.5v5h-5"/></svg></button></div>
     ${tip?`<p class="muted">${tip}</p>`:lm?`<p class="muted dnote">Записано: <b>${esc(game.players[lm.i].name)}</b>, ${lm.c.name} ${lm.v||'вычеркнуто'}</p>`:''}</div>`;
   el.querySelectorAll('.die').forEach(b=>b.onclick=()=>{const k=+b.dataset.k;r.held[k]=!r.held[k];saveGame();renderDice()});
   $('roll').onclick=rollDice;

@@ -40,6 +40,9 @@ button:focus-visible,input:focus-visible,label:focus-within{outline:3px solid va
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1.5px solid var(--rule);background:var(--paper);border-radius:12px;padding:0 18px;font-weight:700;min-height:48px;white-space:nowrap}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .btn.danger{background:var(--win);border-color:var(--win);color:var(--on-accent)}
+/* a long label (undo with two long names) wraps instead of pushing the page wider than the screen */
+.btn{max-width:100%}
+#undo{white-space:normal;line-height:1.2;padding-block:8px;text-align:center}
 .btn:disabled{opacity:.45;cursor:default}
 .btn.small{min-height:40px;padding:0 12px;font-size:.9rem}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -195,13 +198,12 @@ table.avg td.hi{color:var(--ok)}
 .rfn{font-size:.8rem;font-weight:800;padding:2px 10px;border-radius:999px;background:var(--paper);border:1px solid var(--rule)}
 @keyframes rfly{0%{opacity:0;transform:translate(-50%,30px) scale(.5)}12%{opacity:1;transform:translate(-50%,0) scale(1.1)}20%{transform:translate(-50%,0) scale(1)}75%{opacity:1}100%{opacity:0;transform:translate(-50%,-160px)}}
 @media (prefers-reduced-motion:reduce){.reactfly{animation:rfade 2.6s forwards}@keyframes rfade{0%,80%{opacity:1}100%{opacity:0}}}
-/* in a cell: a written score is plain bold; "+16" is what can be written; a ring marks the best of those; a dot marks each player's latest score */
+/* in a cell: a written score is plain bold; "+16" is what can be written; a ring marks the best of those */
 td.cell button.sug{color:var(--accent);font-weight:600;font-size:1rem;opacity:.85}
 td.cell button.sug::before,.lg.sug::before{content:"+"}
 td.cell button.sug.z{color:var(--muted);font-weight:400;font-size:.9rem;opacity:.6}
 td.cell button.sug.z::before{content:none}
 td.cell button.sug.best,.lg.best{outline:2px solid var(--accent);outline-offset:-7px;border-radius:14px;font-weight:800;opacity:1}
-td.cell button.last::after,.lg.dot::after{content:"";position:absolute;top:7px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--accent)}
 td.cell button.flash{animation:flash 1.8s ease-out}
 @keyframes flash{0%,30%{background:color-mix(in srgb,var(--accent) 30%,transparent)}}
 @media (prefers-reduced-motion:reduce){td.cell button.flash{animation:none}}
@@ -210,8 +212,6 @@ td.cell button.flash{animation:flash 1.8s ease-out}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .lg{position:relative;display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:24px;font-style:normal;font-weight:700;color:var(--accent);border-radius:8px}
 .lg.best{outline-offset:0;padding:0 6px}
-.lg.dot{color:var(--ink);font-weight:800}
-.lg.dot::after{top:1px;right:1px;width:6px;height:6px}
 .rulesbtn{border:1.5px solid var(--rule);background:transparent;border-radius:999px;padding:4px 12px;font-weight:700;font-size:.8rem;color:var(--muted)}
 .sheet p{margin:0}
 .rules{margin:0}
@@ -387,13 +387,12 @@ function render(){
   let h=`<colgroup><col style="width:${catW}">${game.players.map(()=>'<col>').join('')}</colgroup><thead><tr><th><button class="rulesbtn" data-help="all">Правила</button></th>`;
   h+=game.players.map((p,i)=>`<th class="${turn===i?'active':''}"><div class="ph"><button class="nm" data-ren="${i}" ${net?'disabled':''} aria-label="Переименовать ${esc(p.name)}">${esc(p.name)}</button><span class="tag">ходит</span></div></th>`).join('')+'</tr></thead><tbody>';
   const sug=turn>=0?suggestions(turn):null,topSug=sug?Math.max(...Object.values(sug)):0;
-  // each player's latest score gets a dot; a score that has just come in flashes once
-  const lastOf={};(game.log||[]).forEach(e=>lastOf[e.pid]=e.cid);
+  // a score that has just come in flashes once
   const lm=lastMove(),L=(game.log||[]).length,fresh=seen.game===game.started&&L>seen.n?lm:null;seen.game=game.started;seen.n=L;
   const cell=(i,c)=>{const v=game.scores[i][c.id];
     if(v==null&&i===turn&&sug&&sug[c.id]!=null&&mine(i)){const x=sug[c.id];
       return `<td class="cell"><button class="sug${x===0?' z':''}${x>0&&x===topSug?' best':''}" data-p="${i}" data-c="${c.id}" data-s="${x}" aria-label="${esc(game.players[i].name)}: ${c.name}, записать ${x}">${x}</button></td>`}
-    const cls=(v==null?'empty':v===0?'zero':'')+(v!=null&&lastOf[game.players[i].id]===c.id?' last':'')+(fresh&&fresh.i===i&&fresh.c.id===c.id?' flash':'');
+    const cls=(v==null?'empty':v===0?'zero':'')+(fresh&&fresh.i===i&&fresh.c.id===c.id?' flash':'');
     return `<td class="cell"><button class="${cls}" data-p="${i}" data-c="${c.id}" ${net?'disabled':''} aria-label="${esc(game.players[i].name)}: ${c.name}">${v==null?'—':v}</button></td>`};
   const row=c=>`<tr><td><button class="cat" data-help="${c.id}"><b>${c.name}</b><small>${c.hint}</small></button></td>${game.players.map((_,i)=>cell(i,c)).join('')}</tr>`;
   const need=t=>{if(t.bonus||!t.upFilled)return '';return t.par>=0?`<span class="need">с запасом +${t.par}</span>`:`<span class="need">отстаёт на ${-t.par}</span>`};
@@ -405,7 +404,7 @@ function render(){
   const best=Math.max(...T.map(t=>t.total)),leaders=T.filter(t=>t.total===best).length;
   h+=`<tr class="total"><td>Итого</td>${T.map(t=>`<td class="${t.total===best&&best>0&&leaders===1?'lead':''}">${t.total}</td>`).join('')}</tr></tbody>`;
   tb.innerHTML=h;
-  $('legend').innerHTML=over()?'':`${game.dice?'<span><i class="lg sug">16</i>можно записать</span><span><i class="lg best">25</i>лучший вариант</span>':''}<span><i class="lg dot">16</i>последняя запись</span><span>Нажмите на название, чтобы увидеть правило</span>`;
+  $('legend').innerHTML=over()?'':`${game.dice?'<span><i class="lg sug">16</i>можно записать</span><span><i class="lg best">25</i>лучший вариант</span>':''}<span>Нажмите на название, чтобы увидеть правило</span>`;
 
   const bn=$('banner');
   if(over()){

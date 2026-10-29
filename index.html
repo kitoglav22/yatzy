@@ -228,7 +228,6 @@ function load(){
   game=normGame(lsGet('yatzy.game'))||normGame(old);
   history=lsGet('yatzy.hist')||[];
   if(game)ensureRoster(game);
-  if(!roster.length)roster=[{id:uid(),name:'Евгений'}];
 }
 
 function totals(i){
@@ -413,25 +412,45 @@ const ACH=[
   {id:'grave',badge:'✕5',name:'Кладбище',desc:'вычеркнуть 5+ клеток за партию',t:c=>c.zeros>=5},
   {id:'g10',badge:'10',name:'Завсегдатай',desc:'сыграть 10 партий',t:c=>c.s.games===10},
   {id:'g50',badge:'50',name:'Полсотни',desc:'сыграть 50 партий',t:c=>c.s.games===50},
+  {id:'s200',badge:'200',name:'Разминка',desc:'200+ очков за партию',t:c=>c.p.total>=200},
+  {id:'low150',badge:'150',name:'Нижний этаж',desc:'150+ в нижней части',t:c=>c.low>=150},
+  {id:'exact63',badge:'=63',name:'Впритык',desc:'ровно 63 в верхней части',t:c=>c.up===63},
+  {id:'almost',badge:'60–62',name:'Чуть-чуть не хватило',desc:'60–62 в верхней части',t:c=>c.up>=60&&c.up<=62},
+  {id:'solid',badge:'3+',name:'Крепкий середняк',desc:'в каждой клетке верха минимум три кубика',t:c=>UP.every(x=>c.sc[x.id]>=x.par)},
+  {id:'ones',badge:'1×5',name:'Пять единиц',desc:'5 в «Единицах»',t:c=>c.sc.u1===5},
+  {id:'chance30',badge:'30',name:'Максимальный шанс',desc:'30 в «Шансе»',t:c=>c.sc.chance===30},
+  {id:'noyatzy',badge:'250',name:'Без Яцзы, но 250+',desc:'250+ очков без Яцзы',t:c=>c.p.total>=250&&!(c.sc.yatzy>0)},
+  {id:'nochance',badge:'0',name:'Пустой шанс',desc:'0 в «Шансе»',t:c=>c.sc.chance===0},
+  {id:'crushed',badge:'−100',name:'Разгромлен',desc:'проиграть на 100+ очков',t:c=>!c.won&&c.behind>=100},
+  {id:'draw',badge:'=',name:'Ничья',desc:'сыграть вничью',t:c=>c.draw&&c.p.total===c.top},
+  {id:'comeback',badge:'↺',name:'Камбэк',desc:'победить после трёх поражений подряд',t:c=>c.won&&c.lossRun>=3},
+  {id:'record',badge:'PB',name:'Новый личный рекорд',desc:'побить свой лучший счёт, с 4-й партии',t:c=>c.s.games>=4&&c.p.total>c.prevBest},
+  {id:'steady',badge:'5×200',name:'Стабильность',desc:'5 партий подряд по 200+',t:c=>c.s.run200===5},
+  {id:'night',badge:'00:00',name:'Полуночник',desc:'закончить партию после полуночи',t:c=>c.hour<5},
+  {id:'marathon',badge:'5/день',name:'Марафон',desc:'5 партий за один день',t:c=>c.dayN===5},
+  {id:'g100',badge:'100',name:'Сотня',desc:'сыграть 100 партий',t:c=>c.s.games===100},
 ];
 
 function computeStats(){
   const games=[...history].sort((a,b)=>a.at-b.at),P={},rec={best:null,margin:null,worst:null};
-  const get=n=>P[n]||(P[n]={name:n,games:0,wins:0,sum:0,best:0,worst:Infinity,bonus:0,yatzy:0,joker:0,zeros:{},cat:{},streak:0,bestStreak:0,ach:{},last:[]});
+  const get=n=>P[n]||(P[n]={name:n,games:0,wins:0,sum:0,best:0,worst:Infinity,bonus:0,yatzy:0,joker:0,zeros:{},cat:{},streak:0,bestStreak:0,ach:{},last:[],lossRun:0,run200:0,days:{}});
   games.forEach(g=>{
     const sorted=[...g.players].sort((a,b)=>b.total-a.total);
     const margin=sorted.length>1?sorted[0].total-sorted[1].total:0;
     if(g.winner&&(!rec.margin||margin>rec.margin.v))rec.margin={v:margin,who:g.winner,at:g.at};
     g.players.forEach(p=>{
-      const s=get(p.name),sc=p.scores||{},won=g.winner===p.name;
+      const s=get(p.name),sc=p.scores||{},won=g.winner===p.name,prevBest=s.best,lossRun=s.lossRun;
       const up=UP.reduce((a,c)=>a+(sc[c.id]||0),0),zeros=ALL.filter(c=>sc[c.id]===0).length;
       s.games++;s.sum+=p.total;s.best=Math.max(s.best,p.total);s.worst=Math.min(s.worst,p.total);s.last.push(won);
       if(up>=63)s.bonus++;if(sc.yatzy===50)s.yatzy++;if(sc.joker===100)s.joker++;
       ALL.forEach(c=>{if(sc[c.id]==null)return;(s.cat[c.id]=s.cat[c.id]||[]).push(sc[c.id]);if(sc[c.id]===0)s.zeros[c.id]=(s.zeros[c.id]||0)+1});
-      if(won){s.wins++;s.streak++;s.bestStreak=Math.max(s.bestStreak,s.streak)}else s.streak=0;
+      if(won){s.wins++;s.streak++;s.bestStreak=Math.max(s.bestStreak,s.streak);s.lossRun=0}else{s.streak=0;if(g.winner)s.lossRun++}
+      s.run200=p.total>=200?s.run200+1:0;
+      const dk=new Date(g.at).toDateString();s.days[dk]=(s.days[dk]||0)+1;
       if(!rec.best||p.total>rec.best.v)rec.best={v:p.total,who:p.name,at:g.at};
       if(!rec.worst||p.total<rec.worst.v)rec.worst={v:p.total,who:p.name,at:g.at};
-      const c={p,sc,up,won,margin,zeros,s};
+      const low=LOW.reduce((a,c)=>a+(sc[c.id]||0),0),top=sorted[0].total;
+      const c={p,sc,up,low,won,margin,zeros,s,prevBest,lossRun,top,behind:top-p.total,draw:!g.winner&&g.players.length>1,hour:new Date(g.at).getHours(),dayN:s.days[dk]};
       ACH.forEach(a=>{if(a.t(c)){const r=s.ach[a.id]||(s.ach[a.id]={n:0,first:g.at});r.n++}});
     });
   });

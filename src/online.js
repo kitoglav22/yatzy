@@ -136,6 +136,7 @@ async function startRoomGame(){
 
 function renderNet(){
   const el=$('net');if(!el)return;
+  $('sync').textContent=net?'Онлайн-партия хранится в комнате, история и ачивки на этом устройстве':'Всё хранится на этом устройстве';
   if(!net){el.innerHTML='';return}
   const s=net.state,away=s?s.players.filter(p=>p.dev!==DEV&&net.on[p.dev]!==true):[];
   const status=net.error?'не удалось подключиться':!net.connected?'подключаюсь…':away.length?`${away.map(p=>esc(p.name)).join(', ')} не в сети`:'все на связи';

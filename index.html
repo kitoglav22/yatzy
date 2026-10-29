@@ -133,7 +133,7 @@ table.avg td.hi{color:var(--ok)}
 .netbar>span:nth-child(2){flex:1;min-width:0}
 .netbar .dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--rule)}
 .netbar .dot.on{background:var(--ok)}
-.roomcode{font-size:2.4rem;font-weight:800;letter-spacing:.3em;text-align:center;padding:8px 0;font-variant-numeric:tabular-nums}
+.roomcode{font-size:2.4rem;font-weight:800;letter-spacing:.3em;padding-left:.3em!important;text-align:center;padding:8px 0;font-variant-numeric:tabular-nums}
 .note{margin:0;padding:10px 12px;border-radius:12px;background:var(--win-soft);font-size:.9rem}
 .sheet table.avg td,.sheet table.avg th{padding:6px 10px}
 .sheet table.avg tr.t td{font-weight:800;background:var(--accent-soft)}
@@ -996,6 +996,7 @@ async function startRoomGame(){
 
 function renderNet(){
   const el=$('net');if(!el)return;
+  $('sync').textContent=net?'Онлайн-партия хранится в комнате, история и ачивки на этом устройстве':'Всё хранится на этом устройстве';
   if(!net){el.innerHTML='';return}
   const s=net.state,away=s?s.players.filter(p=>p.dev!==DEV&&net.on[p.dev]!==true):[];
   const status=net.error?'не удалось подключиться':!net.connected?'подключаюсь…':away.length?`${away.map(p=>esc(p.name)).join(', ')} не в сети`:'все на связи';

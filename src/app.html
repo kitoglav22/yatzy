@@ -1,0 +1,297 @@
+<title>Блокнот Яцзы</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Manrope:wght@400;600;700;800&display=swap">
+<style>
+/* Layout: a printed dice-game score block — one tall table, categories left, a column per player, tap a cell to pick a score */
+:root{
+  --bg:#eef2f5; --paper:#ffffff; --ink:#1d2a3a; --muted:#66758a; --rule:#d3dbe4;
+  --accent:#1f5fd1; --on-accent:#ffffff; --accent-soft:#e3ecfb; --win:#c23b22; --win-soft:#fbe9e5; --ok:#1f8a4c;
+  --display:"Unbounded", "Arial Black", system-ui, sans-serif;
+  --body:"Manrope", -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1520; --paper:#182131; --ink:#e6ecf4; --muted:#93a1b5; --rule:#2b384c;
+  --accent:#6ea0ff; --on-accent:#0f1520; --accent-soft:#1f2f4d; --win:#ff8a70; --win-soft:#3a2420; --ok:#5ccf8c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1520; --paper:#182131; --ink:#e6ecf4; --muted:#93a1b5; --rule:#2b384c;
+  --accent:#6ea0ff; --on-accent:#0f1520; --accent-soft:#1f2f4d; --win:#ff8a70; --win-soft:#3a2420; --ok:#5ccf8c; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+body{color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.3;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+.wrap{max-width:820px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:20px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-family:var(--display);font-weight:800;font-size:1.75rem;margin:0;display:flex;align-items:center;gap:12px}
+.pip{display:inline-grid;grid-template-columns:repeat(3,6px);gap:3px;padding:6px;border-radius:9px;background:var(--accent)}
+.pip i{width:6px;height:6px;border-radius:50%;background:var(--on-accent)}
+.pip i.o{background:transparent}
+.muted{font-size:.85rem;color:var(--muted);margin:0}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,label:focus-within{outline:3px solid var(--accent);outline-offset:2px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1.5px solid var(--rule);background:var(--paper);border-radius:12px;padding:0 18px;font-weight:700;min-height:48px;white-space:nowrap}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.danger{background:var(--win);border-color:var(--win);color:var(--on-accent)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.small{min-height:40px;padding:0 12px;font-size:.9rem}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+.card{background:var(--paper);border:1px solid var(--rule);border-radius:16px;overflow:hidden}
+table{width:100%;border-collapse:collapse;table-layout:fixed;font-variant-numeric:tabular-nums}
+th,td{border-bottom:1px solid var(--rule);padding:8px 12px;text-align:left;vertical-align:middle}
+td+td,th+th{border-left:1px solid var(--rule);text-align:center}
+tbody tr:last-child td{border-bottom:0}
+thead th{padding:10px 6px;vertical-align:bottom}
+.ph{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.ph .nm{font-weight:800;font-size:1.05rem;max-width:100%;overflow-wrap:break-word;hyphens:auto;text-align:center;line-height:1.2}
+.ph .tag{font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:999px;color:transparent}
+th.active .tag{background:var(--accent);color:var(--on-accent)}
+th.active,td.colact{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
+.cat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.cat b{font-weight:700}
+.cat small{font-size:.75rem;font-weight:400;color:var(--muted);overflow-wrap:anywhere}
+td.cell{padding:0;height:56px}
+td.cell button{display:block;width:100%;height:56px;border:0;background:transparent;font-size:1.3rem;font-weight:800}
+td.cell button:hover{background:var(--accent-soft)}
+td.cell button.empty{color:var(--muted);font-weight:400;font-size:1rem}
+td.cell button.zero{color:var(--muted);text-decoration:line-through}
+tr.sum td{background:var(--bg);font-weight:800}
+tr.sum td.v{font-size:1.1rem}
+.v .need{display:block;font-size:.72rem;font-weight:600;color:var(--muted);margin-top:2px}
+.v.got{color:var(--ok)}
+tr.total td{font-family:var(--display);font-size:1.2rem;background:var(--accent-soft);padding-block:16px}
+tr.total td.lead{color:var(--win)}
+tr.section td{padding:10px 12px 6px;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:800;background:var(--paper)}
+
+.banner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:16px 18px;border-radius:16px;background:var(--win-soft);border:1px solid var(--win)}
+.banner strong{font-family:var(--display);font-size:1.1rem;font-weight:600}
+.confirm{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-radius:14px;background:var(--win-soft)}
+.confirm span{flex:1 1 220px}
+
+h2{font-family:var(--display);font-size:1.05rem;margin:0;font-weight:600}
+section{display:flex;flex-direction:column;gap:10px}
+.tally{display:flex;gap:8px;flex-wrap:wrap}
+.chip{padding:8px 14px;border-radius:999px;background:var(--paper);border:1px solid var(--rule);font-weight:700}
+.hist{list-style:none;margin:0;padding:0}
+.hist li{display:flex;justify-content:space-between;align-items:baseline;gap:6px 16px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--rule)}
+.hist li:last-child{border-bottom:0}
+.hist .date{font-size:.8rem;color:var(--muted)}
+.hist .res{font-variant-numeric:tabular-nums;font-weight:600;min-width:0;overflow-wrap:anywhere}
+.hist .res b{color:var(--win)}
+
+.sheet-bg{position:fixed;inset:0;background:color-mix(in srgb,#000 45%,transparent);display:flex;align-items:flex-end;justify-content:center;z-index:20;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+.sheet{background:var(--paper);color:var(--ink);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px;max-height:88%;overflow:auto}
+@media (min-width:700px){.sheet-bg{align-items:center}.sheet{border-radius:20px;max-height:80%}}
+.sheet h3{margin:0;font-family:var(--display);font-size:1.1rem;font-weight:600}
+.vals{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
+.vals button{min-height:56px;border-radius:12px;border:1.5px solid var(--rule);background:var(--bg);font-size:1.25rem;font-weight:800;font-variant-numeric:tabular-nums}
+.vals button.sel{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.vals button.z{color:var(--muted)}
+.roster{display:flex;flex-direction:column;gap:8px}
+.ritem{display:flex;gap:8px;align-items:center}
+.pick{flex:1;min-width:0;display:flex;align-items:center;gap:12px;min-height:52px;padding:0 14px;border-radius:12px;border:1.5px solid var(--rule);background:var(--bg);font-weight:700;text-align:left}
+.pick .seat{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;border:1.5px solid var(--rule);font-size:.85rem;font-variant-numeric:tabular-nums}
+.pick span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pick.on{border-color:var(--accent);background:var(--accent-soft)}
+.pick.on .seat{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.del{flex:none;min-height:52px;min-width:52px;border-radius:12px;border:1.5px solid var(--rule);background:var(--paper);color:var(--muted);font-weight:700;padding:0 10px}
+.del.arm{background:var(--win);border-color:var(--win);color:var(--on-accent)}
+.add{display:flex;gap:8px}
+.add input{flex:1;min-width:0;min-height:48px;border-radius:12px;border:1.5px solid var(--rule);background:var(--bg);padding:0 14px}
+@media (max-width:520px){
+  th,td{padding-inline:8px}
+  .cat small{display:none}
+  td.cell button{font-size:1.1rem}
+  .ph .nm{font-size:.9rem}
+  tr.total td{font-size:1rem}
+  h1{font-size:1.4rem}
+}
+@media (prefers-reduced-motion:no-preference){td.cell button,.pick{transition:background .15s,border-color .15s}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1><span class="pip" aria-hidden="true"><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i></span>Яцзы</h1>
+    <button class="btn small" id="players">Игроки</button>
+  </header>
+
+  <div id="banner"></div>
+
+  <div class="card"><table id="table"></table></div>
+
+  <div id="actions"></div>
+
+  <section>
+    <h2>Прошлые игры</h2>
+    <div class="tally" id="tally"></div>
+    <div class="card"><ul class="hist" id="hist"></ul></div>
+  </section>
+  <!--EXTRA-->
+  <p class="muted" id="sync"></p>
+</div>
+<div id="sheet"></div>
+
+<script>
+const range=(a,b,s=1)=>{const r=[];for(let x=a;x<=b;x+=s)r.push(x);return r};
+const UP=[1,2,3,4,5,6].map((n,i)=>({id:'u'+n,name:['Единицы','Двойки','Тройки','Четвёрки','Пятёрки','Шестёрки'][i],hint:'сумма '+['единиц','двоек','троек','четвёрок','пятёрок','шестёрок'][i],vals:range(0,5).map(k=>k*n),par:3*n}));
+const LOW=[
+  {id:'three',name:'Тройка',hint:'три одинаковых, сумма всех кубиков',vals:[0,...range(5,30)]},
+  {id:'four',name:'Каре',hint:'четыре одинаковых, сумма всех кубиков',vals:[0,...range(5,30)]},
+  {id:'small',name:'Малый стрит',hint:'четыре подряд',vals:[0,30]},
+  {id:'large',name:'Большой стрит',hint:'пять подряд',vals:[0,40]},
+  {id:'house',name:'Фулл-хаус',hint:'тройка + пара',vals:[0,25]},
+  {id:'chance',name:'Шанс',hint:'сумма всех кубиков',vals:[0,...range(5,30)]},
+  {id:'yatzy',name:'Яцзы',hint:'пять одинаковых',vals:[0,50]},
+];
+const ALL=[...UP,...LOW];
+const JK={id:'joker',name:'Джокер',hint:'повторный Яцзы, один раз за игру; в другую клетку 0',vals:[0,100]};
+const MAXP=4;
+const uid=()=>Math.random().toString(36).slice(2,9);
+
+let roster=[], game=null, history=[], ui={confirm:false}, store=null;
+
+function normGame(g){
+  if(!g||!Array.isArray(g.scores))return null;
+  if(!g.players&&Array.isArray(g.names))g.players=g.names.map(n=>({id:uid(),name:n}));
+  if(!Array.isArray(g.players)||g.players.length!==g.scores.length)return null;
+  delete g.names;
+  g.scores.forEach(s=>{delete s.pair;delete s.twopair;if(s.joker>100)s.joker=100});
+  return g;
+}
+function newGameFor(players){return {players:players.map(p=>({id:p.id,name:p.name})),scores:players.map(()=>({})),started:Date.now(),saved:false}}
+function ensureRoster(g){if(!g)return;g.players.forEach(p=>{const r=roster.find(r=>r.id===p.id||r.name===p.name);if(r)p.id=r.id;else roster.push({id:p.id,name:p.name})})}
+
+function lsGet(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+
+function load(){
+  roster=lsGet('yatzy.roster')||[];
+  const old=lsGet('yatzy.state');
+  game=normGame(lsGet('yatzy.game'))||normGame(old);
+  history=lsGet('yatzy.hist')||[];
+  if(game)ensureRoster(game);
+  if(!roster.length)roster=[{id:uid(),name:'Евгений'}];
+}
+
+function totals(i){
+  const s=game.scores[i];let up=0,low=0;
+  UP.forEach(c=>{if(s[c.id]!=null)up+=s[c.id]});
+  LOW.forEach(c=>{if(s[c.id]!=null)low+=s[c.id]});
+  const par=UP.reduce((a,c)=>a+(s[c.id]!=null?s[c.id]-c.par:0),0);
+  const upFilled=UP.filter(c=>s[c.id]!=null).length;
+  const bonus=up>=63?50:0, jk=s.joker||0;
+  return {up,bonus,low,jk,total:up+bonus+low+jk,par,upFilled,filled:ALL.filter(c=>s[c.id]!=null).length};
+}
+const done=()=>game&&game.players.every((_,i)=>totals(i).filled===ALL.length);
+function whoseTurn(){if(!game||done())return -1;const f=game.players.map((_,i)=>totals(i).filled);const m=Math.min(...f);return f.indexOf(m)}
+const anyScore=()=>game&&game.scores.some(s=>Object.keys(s).length);
+
+function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML}
+const $=id=>document.getElementById(id);
+
+function render(){
+  const tb=$('table');
+  if(!game){
+    tb.innerHTML=`<tbody><tr><td style="padding:28px 20px;text-align:center"><p style="margin:0 0 14px;font-weight:700">Выберите, кто играет, и начните партию</p><button class="btn primary" id="start0">Выбрать игроков</button></td></tr></tbody>`;
+    $('start0').onclick=openSetup;$('banner').innerHTML='';$('actions').innerHTML='';renderHist();return;
+  }
+  const n=game.players.length,T=game.players.map((_,i)=>totals(i)),turn=whoseTurn();
+  const catW=n>=4?'30%':n===3?'34%':'40%';
+  let h=`<colgroup><col style="width:${catW}">${game.players.map(()=>'<col>').join('')}</colgroup><thead><tr><th></th>`;
+  h+=game.players.map((p,i)=>`<th class="${turn===i?'active':''}"><div class="ph"><span class="nm">${esc(p.name)}</span><span class="tag">ходит</span></div></th>`).join('')+'</tr></thead><tbody>';
+  const cell=(i,c)=>{const v=game.scores[i][c.id];const cls=v==null?'empty':v===0?'zero':'';
+    return `<td class="cell${turn===i?' colact':''}"><button class="${cls}" data-p="${i}" data-c="${c.id}" aria-label="${esc(game.players[i].name)}: ${c.name}">${v==null?'—':v}</button></td>`};
+  const row=c=>`<tr><td><div class="cat"><b>${c.name}</b><small>${c.hint}</small></div></td>${game.players.map((_,i)=>cell(i,c)).join('')}</tr>`;
+  const need=t=>{if(t.bonus||!t.upFilled)return '';return t.par>=0?`<span class="need">с запасом +${t.par}</span>`:`<span class="need">отстаёт на ${-t.par}</span>`};
+  const sec=t=>`<tr class="section"><td colspan="${n+1}">${t}</td></tr>`;
+  h+=sec('Верхняя часть')+UP.map(row).join('');
+  h+=`<tr class="sum"><td>Сумма</td>${T.map(t=>`<td class="v">${t.up}</td>`).join('')}</tr>`;
+  h+=`<tr class="sum"><td><div class="cat"><b>Бонус</b><small>50 очков при 63+</small></div></td>${T.map(t=>`<td class="v${t.bonus?' got':''}">${t.bonus?'+50':'0'}${need(t)}</td>`).join('')}</tr>`;
+  h+=sec('Нижняя часть')+LOW.map(row).join('')+row(JK);
+  const best=Math.max(...T.map(t=>t.total)),leaders=T.filter(t=>t.total===best).length;
+  h+=`<tr class="total"><td>Итого</td>${T.map(t=>`<td class="${t.total===best&&best>0&&leaders===1?'lead':''}">${t.total}</td>`).join('')}</tr></tbody>`;
+  tb.innerHTML=h;
+
+  const bn=$('banner');
+  if(done()){
+    const order=T.map((t,i)=>({t:t.total,name:game.players[i].name})).sort((a,b)=>b.t-a.t);
+    const msg=leaders>1?`Ничья, ${order.map(o=>o.t).join(' : ')}`:`Победа: ${esc(order[0].name)}, ${order.map(o=>o.t).join(' : ')}`;
+    bn.innerHTML=`<div class="banner"><strong>${msg}</strong><button class="btn primary" id="again">Новая игра</button></div>`;
+    $('again').onclick=openSetup;
+  } else bn.innerHTML='';
+
+  const ac=$('actions');
+  if(ui.confirm){
+    ac.innerHTML=`<div class="confirm"><span>Игра не закончена. Начать заново? Текущий счёт не попадёт в историю.</span><button class="btn danger" id="yes">Да, новая игра</button><button class="btn" id="no">Отмена</button></div>`;
+    $('yes').onclick=()=>{ui.confirm=false;render();openSetup()};
+    $('no').onclick=()=>{ui.confirm=false;render()};
+  } else {
+    ac.innerHTML=`<div class="row"><button class="btn" id="ng">Новая игра</button></div>`;
+    $('ng').onclick=()=>{if(done()||!anyScore())openSetup();else{ui.confirm=true;render()}};
+  }
+  renderHist();
+}
+
+function renderHist(){
+  const list=[...history].sort((a,b)=>b.at-a.at);
+  const wins={};list.forEach(g=>{if(g.winner!=null)wins[g.winner]=(wins[g.winner]||0)+1});
+  const draws=list.filter(g=>g.winner==null).length;
+  $('tally').innerHTML=list.length?Object.entries(wins).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="chip">${esc(k)}: ${v}</span>`).join('')+(draws?`<span class="chip">Ничьи: ${draws}</span>`:''):'';
+  $('hist').innerHTML=list.length?list.slice(0,100).map(g=>{
+    const d=new Date(g.at).toLocaleString('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});
+    const r=g.players.map(p=>p.name===g.winner?`<b>${esc(p.name)} ${p.total}</b>`:`${esc(p.name)} ${p.total}`).join(' · ');
+    return `<li><span class="res">${r}</span><span class="date">${d}</span></li>`}).join(''):'<li><span class="muted">Здесь появятся сыгранные партии с датой и счётом.</span></li>';
+}
+
+const sheet={el:null,
+  open(html){$('sheet').innerHTML=`<div class="sheet-bg" id="bg"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
+    $('bg').onclick=e=>{if(e.target.id==='bg')sheet.close()};},
+  close(){$('sheet').innerHTML=''}};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')sheet.close()});
+
+function openCell(i,cid){
+  const c=[...ALL,JK].find(x=>x.id===cid),cur=game.scores[i][cid];
+  sheet.open(`<h3>${esc(game.players[i].name)} · ${c.name}</h3><p class="muted">${c.hint}. 0 — вычеркнуть.</p>
+    <div class="vals">${c.vals.map(v=>`<button data-v="${v}" class="${v===cur?'sel':''}${v===0?' z':''}">${v}</button>`).join('')}</div>
+    <div class="row">${cur!=null?'<button class="btn" id="clr">Стереть</button>':''}<button class="btn" id="cancel">Отмена</button></div>`);
+  $('cancel').onclick=sheet.close;
+  const clr=$('clr');if(clr)clr.onclick=()=>{delete game.scores[i][cid];changed()};
+  document.querySelectorAll('.vals button').forEach(b=>b.onclick=()=>{game.scores[i][cid]=+b.dataset.v;changed()});
+  const f=document.querySelector('.vals .sel')||document.querySelector('.vals button');f&&f.focus();
+}
+function changed(){sheet.close();if(done()&&!game.saved)archive();saveGame();render()}
+$('table').addEventListener('click',e=>{const b=e.target.closest('button[data-c]');if(b)openCell(+b.dataset.p,b.dataset.c)});
+
+let pick=[],arm=null;
+function openSetup(){
+  pick=game?game.players.map(p=>p.id).filter(id=>roster.some(r=>r.id===id)):[];arm=null;drawSetup();
+}
+function drawSetup(){
+  const canStart=pick.length>=2&&pick.length<=MAXP;
+  sheet.open(`<h3>Кто играет</h3><p class="muted">Отметьте игроков в порядке хода, от 2 до ${MAXP}.</p>
+    <div class="roster">${roster.map(r=>{const k=pick.indexOf(r.id);return `<div class="ritem"><button class="pick${k>=0?' on':''}" data-id="${r.id}"><span class="seat">${k>=0?k+1:''}</span><span>${esc(r.name)}</span></button><button class="del${arm===r.id?' arm':''}" data-del="${r.id}" aria-label="Удалить ${esc(r.name)}">${arm===r.id?'Удалить?':'✕'}</button></div>`}).join('')}</div>
+    <form class="add" id="addf"><input id="newname" placeholder="Новый игрок" maxlength="16" autocomplete="off" aria-label="Имя нового игрока"><button class="btn" type="submit">Добавить</button></form>
+    <div class="row"><button class="btn primary" id="go" ${canStart?'':'disabled'}>Начать игру</button><button class="btn" id="cancel">Отмена</button></div>`);
+  document.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{const id=b.dataset.id,k=pick.indexOf(id);arm=null;
+    if(k>=0)pick.splice(k,1);else if(pick.length<MAXP)pick.push(id);drawSetup()});
+  document.querySelectorAll('.del').forEach(b=>b.onclick=()=>{const id=b.dataset.del;
+    if(arm===id){roster=roster.filter(r=>r.id!==id);pick=pick.filter(x=>x!==id);arm=null;saveRoster()}else arm=id;drawSetup()});
+  $('addf').onsubmit=e=>{e.preventDefault();const v=$('newname').value.trim();if(!v)return;
+    let r=roster.find(x=>x.name.toLowerCase()===v.toLowerCase());
+    if(!r){r={id:uid(),name:v};roster.push(r);saveRoster()}
+    if(!pick.includes(r.id)&&pick.length<MAXP)pick.push(r.id);drawSetup();$('newname').focus()};
+  $('go').onclick=()=>{if(done()&&!game.saved)archive();game=newGameFor(pick.map(id=>roster.find(r=>r.id===id)));ui.confirm=false;saveGame();sheet.close();render();window.scrollTo({top:0,behavior:'smooth'})};
+  $('cancel').onclick=sheet.close;
+}
+$('players').onclick=()=>{if(game&&anyScore()&&!done()){ui.confirm=true;render();$('actions').scrollIntoView({behavior:'smooth',block:'center'})}else openSetup()};
+
+function archive(){
+  const T=game.players.map((_,i)=>totals(i)),best=Math.max(...T.map(t=>t.total)),w=T.filter(t=>t.total===best);
+  const g={at:Date.now(),players:game.players.map((p,i)=>({id:p.id,name:p.name,total:T[i].total,scores:game.scores[i]})),
+    winner:w.length>1?null:game.players[T.findIndex(t=>t.total===best)].name};
+  game.saved=true;history.push(g);lsSet('yatzy.hist',history);
+  store&&store.addGame(g);renderHist();
+}
+function saveGame(){lsSet('yatzy.game',game);store&&store.saveGame(game)}
+function saveRoster(){lsSet('yatzy.roster',roster);store&&store.saveRoster(roster)}
+
+load();render();
+</script>

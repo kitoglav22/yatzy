@@ -502,7 +502,10 @@ document.addEventListener('visibilitychange',keepAwake);
 function setScore(i,cid,v){
   const beforeSc={...game.scores[i]};
   const turnBefore=whoseTurn();
-  (game.log=game.log||[]).push({pid:game.players[i].id,cid,prev:game.scores[i][cid],roll:game.roll?JSON.parse(JSON.stringify(game.roll)):null});
+  const entry={pid:game.players[i].id,cid,prev:game.scores[i][cid],roll:game.roll?JSON.parse(JSON.stringify(game.roll)):null};
+  // the joker stands only on a Yatzy of 50: correcting that cell takes the joker with it (undo brings both back)
+  if(cid==='yatzy'&&v!==50&&game.scores[i].joker!=null){entry.jk=game.scores[i].joker;delete game.scores[i].joker}
+  (game.log=game.log||[]).push(entry);
   if(game.log.length>200)game.log.shift();
   if(v==null)delete game.scores[i][cid];else game.scores[i][cid]=v;
   if(v!=null)checkLive(i,beforeSc);
@@ -515,7 +518,7 @@ function setScore(i,cid,v){
 function undo(){
   const e=(game.log||[]).pop();if(!e)return;
   const i=game.players.findIndex(p=>p.id===e.pid);
-  if(i>=0){if(e.prev==null)delete game.scores[i][e.cid];else game.scores[i][e.cid]=e.prev}
+  if(i>=0){if(e.prev==null)delete game.scores[i][e.cid];else game.scores[i][e.cid]=e.prev;if(e.jk===100)game.scores[i].joker=100}
   if('roll' in e)game.roll=e.roll;
   if(game.saved)unarchive();
   saveGame();render();
@@ -554,6 +557,7 @@ function openCell(i,cid){
     return;
   }
   sheet.open(`<h3>${esc(game.players[i].name)} · ${c.name}</h3><p class="muted">${c.hint}${cid==='joker'?'':'. 0 — вычеркнуть'}.</p>
+    ${cid==='yatzy'&&game.scores[i].joker!=null?'<p class="note">Если здесь будет не 50, джокер тоже сотрётся.</p>':''}
     ${noJoker?'<p class="note">Джокер можно поставить только после Яцзы: сначала впишите 50 в клетку «Яцзы».</p>':`<div class="vals">${c.vals.map(v=>`<button data-v="${v}" class="${v===cur?'sel':''}${v===0?' z':''}">${v}</button>`).join('')}</div>`}
     <div class="row">${cur!=null?'<button class="btn" id="clr">Стереть</button>':''}<button class="btn" id="cancel">Отмена</button></div>`);
   $('cancel').onclick=sheet.close;
@@ -1036,7 +1040,7 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had){had=true;return}if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 // the release number under the page shows whether a new version has arrived
-{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 56';$('sync').after(v)}
+{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 57';$('sync').after(v)}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 // remind about a backup every 5 finished games, unless the Telegram cloud already keeps every game
 let cloudKeeps=false;
@@ -1117,22 +1121,29 @@ const okGame=g=>!!g&&typeof g==='object'&&okPlayers(g.players)&&g.players.length
   &&g.scores.every(sc=>sc&&typeof sc==='object'&&!Array.isArray(sc)&&Object.entries(sc).every(([k,v])=>cellOk(k,v)))
   &&Number.isFinite(g.started)&&(g.ended==null||typeof g.ended==='boolean')&&(g.dice==null||typeof g.dice==='boolean')&&okRoll(g.roll)
   &&(g.log==null||Array.isArray(g.log)&&g.log.length<=200&&g.log.every(e=>e&&okId(e.pid)&&cellOk(e.cid,e.prev??null)&&okRoll(e.roll)));
-const okState=s=>!!s&&typeof s==='object'&&okPlayers(s.players)&&(s.game==null||okGame(s.game))&&(s.prev==null||okGame(s.prev));
+// a proposal to end the game early: who proposed it, the devices that agreed, and the game it is about
+const okStop=v=>!!v&&typeof v==='object'&&okId(v.by)&&Array.isArray(v.yes)&&v.yes.length<=MAXP&&v.yes.every(okId)&&Number.isFinite(v.g);
+const okState=s=>!!s&&typeof s==='object'&&okPlayers(s.players)&&(s.game==null||okGame(s.game))&&(s.prev==null||okGame(s.prev))&&(s.stop==null||okStop(s.stop));
 function parseState(str){if(str==null)return null;try{const s=JSON.parse(str);return okState(s)?s:undefined}catch(e){return undefined}}
 
 function makeNet(code){
-  const n={code,state:null,on:{},connected:false,loaded:false,last:'',offs:[],
+  const n={code,state:null,on:{},connected:false,loaded:false,last:'',offs:[],q:Promise.resolve(),base:null,tip:null,
     own(i){return !!game&&!!game.players[i]&&game.players[i].dev===DEV},
     mine(i){return n.connected&&n.own(i)},
+    // moves go to the room one after another, each only onto the game it was made on (n.base: the room's game as last
+    // seen here, n.tip: the latest move still on its way); a move that meets a game someone else has changed in the meantime is not written over it, so
+    // neither side's action silently disappears: this device shows what the room has instead
     push(){
       if(!n.connected||!game||!n.state||!n.state.game||game.started!==n.state.game.started)return;
       const g=synced(game),j=JSON.stringify(g);if(j===n.last)return;n.last=j;
-      // if the move does not reach the room, go back to what the room has
       // the bot hears about written cells only, not about every roll
       const cells=x=>x.scores.reduce((a,sc)=>a+ALL.filter(c=>sc[c.id]!=null).length,0);let wrote=false;
-      txRoom(code,s=>{if(!s.game||s.game.started!==g.started)return;wrote=cells(s.game)!==cells(g);s.game=g;s.by=DEV;s.rev=(s.rev||0)+1;return s})
-        .then(s=>{if(!s||!s.game||JSON.stringify(s.game)!==j)throw 0;if(wrote)botNote(code)})
-        .catch(()=>{if(net!==n)return;toast({badge:'!',label:'Онлайн',name:'Ход не отправился',desc:'показываю то, что сохранено в комнате'},'Онлайн',false);n.resync()});
+      // the base is fixed when the move is made: the room's game, or the previous move from here if that is still on its way
+      const base=n.tip!=null?n.tip:n.base;n.tip=j;
+      n.q=n.q.then(()=>{
+        return txRoom(code,s=>{if(!s.game||s.game.started!==g.started||s.game.ended||base!=null&&JSON.stringify(s.game)!==base)return;wrote=cells(s.game)!==cells(g);s.game=g;s.by=DEV;s.rev=(s.rev||0)+1;return s})
+          .then(s=>{if(!s||!s.game||JSON.stringify(s.game)!==j)throw 0;n.base=j;if(n.tip===j)n.tip=null;if(wrote)botNote(code)})})
+        .catch(()=>{n.tip=null;if(net!==n)return;toast({badge:'!',label:'Онлайн',name:'Ход не отправился',desc:'показываю то, что сохранено в комнате'},'Онлайн',false);n.resync()});
     },
     resync(){n.last='';if(n.state)n.apply(JSON.stringify(n.state),true)},
     // a reaction only touches s.fx; one per 1.2 s from this device
@@ -1147,9 +1158,14 @@ function makeNet(code){
       const first=!n.loaded,was=n.state&&JSON.stringify([n.state.players,n.state.game,n.state.prev]);n.state=s;n.loaded=true;
       if(first&&roomHook)roomHook('enter',code,s);
       const fx=s.fx,fxNew=fx&&fx.t!==n.fxT;n.fxT=fx&&fx.t;
+      // a proposal to end early pops up on the other devices; a refused one tells those who agreed
+      const stop=stopOf(s),hadStop=n.stopSeen;n.stopSeen=stop?[stop.by,stop.g,...stop.yes].join():'';
+      if(!first&&stop&&!hadStop&&stop.by!==DEV&&gameDevs(s).includes(DEV))toast({badge:'⏹',label:'Онлайн',name:`${esc(devName(s,stop.by))} предлагает закончить`,desc:'ответ под таблицей'},'Онлайн',false);
+      if(!first&&hadStop&&!stop&&n.stopMine&&s.game&&!finished(s.game))toast({badge:'▶',label:'Онлайн',name:'Играем дальше',desc:'кто-то не согласился закончить'},'Онлайн',false);
+      n.stopMine=!!stop&&stop.yes.includes(DEV);
       if(fxNew&&!first&&fx.dev!==DEV&&REACTS[fx.e]&&Number.isInteger(fx.e)){const p=s.players.find(x=>x.dev===fx.dev);if(p){showReact(p.name,REACTS[fx.e]);buzz('land')}}
       // nothing but a reaction changed: the local game may already be a move ahead of the room, so it stays as it is
-      if(!first&&!force&&was===JSON.stringify([s.players,s.game,s.prev]))return;
+      if(!first&&!force&&was===JSON.stringify([s.players,s.game,s.prev])){if(n.stopSeen!==hadStop)render();return}
       // a game that has just started closes the room sheet
       if($('roomsheet')){if(s.game&&!finished(s.game)&&!(game&&game.started===s.game.started))sheet.close();else redrawRoom()}
       // a device that missed the end of the previous game still gets it into its history
@@ -1159,6 +1175,8 @@ function makeNet(code){
       }
       // own writes come back too; the local game is already ahead of them
       if(!force&&s.by===DEV&&!first&&s.game&&game&&game.started===s.game.started)return;
+      // what the room has now is what the next move from here builds on
+      n.base=s.game?JSON.stringify(s.game):null;
       if(!s.game){if(game&&game.players.some(p=>p.dev)){game=null;lsSet('yatzy.game',null)}render();return}
       const old=game&&game.started===s.game.started?game:null;
       const ng=normGame(JSON.parse(JSON.stringify(s.game)));if(!ng)return;
@@ -1177,8 +1195,14 @@ function makeNet(code){
     actions(ac){
       const last=(game.log||[]).slice(-1)[0],li=last?game.players.findIndex(p=>p.id===last.pid):-1,lc=last&&[...ALL,JK].find(c=>c.id===last.cid);
       const canUndo=li>=0&&lc&&n.mine(li)&&!rolling;
-      ac.innerHTML=canUndo?`<div class="row"><button class="btn" id="undo">↶ Отменить: ${esc(game.players[li].name)}, ${lc.name}</button></div>`:'';
+      const s=n.state,stop=s&&stopOf(s);
+      const ask=!stop||!gameDevs(s).includes(DEV)?'':stop.yes.includes(DEV)
+        ?`<div class="confirm"><span>Предложение закончить досрочно. Ждём: ${gameDevs(s).filter(d=>!stop.yes.includes(d)).map(d=>esc(devName(s,d))).join(', ')}.</span><button class="btn" id="sno">Играть дальше</button></div>`
+        :`<div class="confirm"><span>${esc(devName(s,stop.by))} предлагает закончить партию досрочно. В статистику она не попадёт.</span><button class="btn danger" id="syes">Закончить</button><button class="btn" id="sno">Играть дальше</button></div>`;
+      ac.innerHTML=ask+(canUndo?`<div class="row"><button class="btn" id="undo">↶ Отменить: ${esc(game.players[li].name)}, ${lc.name}</button></div>`:'');
       if(canUndo)$('undo').onclick=undo;
+      if($('syes'))$('syes').onclick=()=>voteStop(true);
+      if($('sno'))$('sno').onclick=()=>{n.stopMine=false;voteStop(false)};
     },
     again(){if(n.state&&n.state.players.length>=2)startRoomGame();else openRoom()},
     openRoom(){openRoom()},
@@ -1247,6 +1271,21 @@ async function leaveRoom(gone){
     if(s&&!s.players.length)await b.remove(me.code);
   }catch(e){}
 }
+// ending a room game early takes every device in it: one proposes, each of the others agrees or refuses
+const gameDevs=s=>[...new Set(s.game.players.map(p=>p.dev))];
+const devName=(s,dev)=>(s.game.players.find(p=>p.dev===dev)||{name:'Игрок'}).name;
+const stopOf=s=>s.stop&&s.game&&!finished(s.game)&&s.stop.g===s.game.started?s.stop:null;
+function voteStop(yes){
+  const code=net&&net.code;if(!code)return;
+  // written without this device's mark, so its own echo is applied here too and the game ends on every screen alike
+  txRoom(code,s=>{
+    if(!s.game||finished(s.game))return;
+    const v=stopOf(s)||(yes?{by:DEV,yes:[],g:s.game.started}:null);if(!v)return;
+    if(!yes)delete s.stop;
+    else{if(!v.yes.includes(DEV))v.yes.push(DEV);if(gameDevs(s).every(d=>v.yes.includes(d))){s.game.ended=true;delete s.stop}else s.stop=v}
+    delete s.by;s.rev=(s.rev||0)+1;return s;
+  }).catch(()=>toast({badge:'!',label:'Онлайн',name:'Не получилось',desc:'нет связи с комнатой'},'Онлайн',false));
+}
 async function startRoomGame(){
   if(!net)return;
   const code=net.code;
@@ -1257,6 +1296,7 @@ async function startRoomGame(){
     const k=(s.round||0)%s.players.length,ps=s.players.slice(k).concat(s.players.slice(0,k));
     s.round=(s.round||0)+1;
     if(s.game)s.prev=s.game;
+    delete s.stop;
     s.game={players:ps.map(p=>({id:p.id,name:p.name,dev:p.dev})),scores:ps.map(()=>({})),started:Date.now(),dice:true,roll:newRoll(),log:[]};
     s.by=DEV;s.rev=(s.rev||0)+1;return s;
   }).then(s=>{if(s&&s.game)botNote(code)}).catch(()=>{});
@@ -1299,8 +1339,12 @@ function drawRoom(){
     <div class="roster">${s.players.map((p,i)=>`<div class="pick on"><span class="seat">${i+1}</span><span>${esc(p.name)}${p.dev===DEV?' · это устройство':net.on[p.dev]?'':' · не в сети'}${roomBot?roomBot.mark(net.code,p.id):''}</span></div>`).join('')}</div>
     ${roomList()}
     <p class="muted" id="nmsg">${playing?'Партия идёт. Новые игроки смогут войти, когда она закончится.':s.players.length<2?'Ждём второго игрока.':''}</p>
-    <div class="row">${playing?'':`<button class="btn primary" id="nstart" ${canStart?'':'disabled'}>Начать партию</button>`}<button class="btn" id="nshare">Пригласить</button><button class="btn" id="nleave">Выйти из комнаты</button><button class="btn" id="cancel">Закрыть</button></div>`);
+    <div class="row">${playing&&!stopOf(s)?'<button class="btn" id="nstop">Закончить досрочно</button>':''}${playing?'':`<button class="btn primary" id="nstart" ${canStart?'':'disabled'}>Начать партию</button>`}<button class="btn" id="nshare">Пригласить</button><button class="btn" id="nleave">Выйти из комнаты</button><button class="btn" id="cancel">Закрыть</button></div>`);
   if($('nstart'))$('nstart').onclick=()=>{sheet.close();startRoomGame()};
+  if($('nstop'))$('nstop').onclick=()=>{
+    if($('nstop').dataset.arm!=='1'){$('nstop').dataset.arm='1';$('nstop').textContent='Предложить закончить';$('nmsg').textContent='Остальные игроки получат вопрос. Партия закончится, когда согласятся все, и в статистику не попадёт.';return}
+    sheet.close();voteStop(true);
+  };
   $('nshare').onclick=()=>shareRoom(net.code);
   $('nleave').onclick=()=>{
     if(playing&&$('nleave').dataset.arm!=='1'){$('nleave').dataset.arm='1';$('nleave').textContent='Точно выйти?';$('nmsg').textContent='Партия не закончена. Комната останется в списке «Мои комнаты», вернуться можно в одно касание.';return}
@@ -1571,6 +1615,9 @@ function tgCloud(tg){
     }
     // deleted on another device
     const n=history.length;history=history.filter(g=>!gone.has(g.at));if(history.length!==n)changed=true;
+    // the cloud holds about a thousand keys; when it gets close, markers of games deleted long ago make room
+    // (the game's own time is in the key; half a year is long enough for every device to have seen the marker)
+    if(keys.length>900){const old=keys.filter(k=>k[0]==='d'&&num(k)<Date.now()-182*864e5);if(old.length)call(cs.removeItems,old).catch(()=>{})}
     if(keys.includes('roster')){try{const r=JSON.parse(await call(cs.getItem,'roster'));
       if(Array.isArray(r))r.forEach(x=>{if(okPerson(x)&&!roster.some(y=>y.name===x.name||y.id===x.id)){roster.push({id:x.id,name:x.name});changed=true}})}catch(e){}}
     if(changed){lsSet('yatzy.hist',history);lsSet('yatzy.roster',roster);render()}

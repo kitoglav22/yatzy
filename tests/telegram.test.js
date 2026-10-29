@@ -19,7 +19,8 @@ window.Telegram = { WebApp: {
   CloudStorage: {
     data: { g1000: JSON.stringify({ at: 1000, players: [{ name: 'Облако', total: 200, scores: { u1: 3 } }, { name: 'Миша', total: 150, scores: {} }], winner: 'Облако' }),
       g2000: '{"broken"', d3000: '1', g3000: JSON.stringify({ at: 3000, players: [{ name: 'Удалённая', total: 1 }] }),
-      roster: JSON.stringify([{ id: 'cl', name: 'Облако' }]) },
+      roster: JSON.stringify([{ id: 'cl', name: 'Облако' }]),
+      rooms: JSON.stringify({ rooms: [{ code: 'QW3RT', names: ['Облако', 'Миша'] }, { code: 'OLD12', names: ['Аня'] }], gone: ['OLD12'] }) },
     getKeys(cb) { setTimeout(() => cb(null, Object.keys(this.data))); },
     getItem(k, cb) { setTimeout(() => cb(null, this.data[k] ?? '')); },
     getItems(ks, cb) { setTimeout(() => cb(null, Object.fromEntries(ks.map(k => [k, this.data[k] ?? ''])))); },
@@ -32,7 +33,7 @@ window.Telegram = { WebApp: {
 let env, p;
 before(async () => {
   env = await start();
-  p = await env.device('tg', () => { localStorage.clear(); sessionStorage.clear(); }, {
+  p = await env.device('tg', () => { localStorage.clear(); sessionStorage.clear(); localStorage.setItem('yatzy.rooms', JSON.stringify([{ code: 'OLD12', names: ['Аня'] }, { code: 'LOCAL', names: ['Аня', 'Миша'] }])); }, {
     hash: '#tgWebAppData=x&tgWebAppPlatform=ios&tgWebAppVersion=8.0',
     setup: ctx => ctx.route('https://telegram.org/js/telegram-web-app.js', r => r.fulfill({ contentType: 'text/javascript', body: fakeTelegram })),
   });
@@ -93,6 +94,17 @@ test('history and players come from the Telegram cloud, damaged and deleted game
   const h = await p.evaluate(() => history.map(g => g.at));
   assert.ok(h.includes(1000)); assert.ok(!h.includes(3000));
   assert.ok(await p.evaluate(() => roster.some(r => r.name === 'Облако')));
+});
+
+test('«Мои комнаты» are shared through the Telegram cloud, a room that is over does not come back', async () => {
+  await p.waitForFunction(() => cloudKeeps);
+  assert.deepEqual(await p.evaluate(() => myRooms().map(r => r.code)), ['LOCAL', 'QW3RT'], 'the phone\'s room shows up, the finished one is dropped');
+  const cloud = () => p.evaluate(() => JSON.parse(Telegram.WebApp.CloudStorage.data.rooms));
+  assert.deepEqual((await cloud()).rooms.map(r => r.code), ['LOCAL', 'QW3RT'], 'and this device\'s rooms go up');
+  await p.evaluate(() => { keepRoom('LOCAL', null); render(); });
+  const c = await cloud();
+  assert.deepEqual(c.rooms.map(r => r.code), ['QW3RT']);
+  assert.deepEqual(c.gone, ['LOCAL', 'OLD12']);
 });
 
 test('a finished game goes up to the cloud, a deleted one leaves a marker', async () => {

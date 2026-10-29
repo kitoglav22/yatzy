@@ -11,8 +11,11 @@ app = (js('app.html').replace('/*STYLE*/\n', js('style.css'))
 tail = "\nload();render();setView(location.hash==='#stats'?'stats':'game');\n</script>\n"
 assert tail in app and '/*JS*/' not in app and '/*STYLE*/' not in app
 
-# GitHub Pages
+# GitHub Pages; the release number is the service worker's cache name
+import re
+version = re.search(r"yatzy-v(\d+)", (root / 'sw.js').read_text(encoding='utf8')).group(1)
 s = app.replace('<!--EXTRA-->', js('backup.html')).replace(tail, tail[:-10] + js('offline.js') + js('online.js') + js('telegram.js') + '</script>\n')
+s = s.replace('/*VERSION*/', version)
 i = s.index('</style>') + len('</style>')
 head = '''<!doctype html>
 <html lang="ru"><head><meta charset="utf-8">

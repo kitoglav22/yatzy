@@ -40,6 +40,8 @@ if('serviceWorker' in navigator){
   let had=!!navigator.serviceWorker.controller,reloaded=false;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had){had=true;return}if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
+// the release number under the page shows whether a new version has arrived
+{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия /*VERSION*/';$('sync').after(v)}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 // remind about a backup every 5 finished games
 function lastBackupText(since){

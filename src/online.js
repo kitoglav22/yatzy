@@ -32,9 +32,24 @@ const roomCode=()=>{const a=new Uint8Array(5);crypto.getRandomValues(a);return [
 // change the room state in a transaction; fn gets the parsed state and returns the new one, or undefined to leave it
 async function txRoom(code,fn){
   const b=await backend();
-  const r=await b.tx(code,cur=>{if(cur==null)return null;let s;try{s=JSON.parse(cur)}catch(e){return}const n=fn(s);return n===undefined?undefined:JSON.stringify(n)});
-  return r.val?JSON.parse(r.val):null;
+  const r=await b.tx(code,cur=>{if(cur==null)return null;const s=parseState(cur);if(!s)return;const n=fn(s);return n===undefined?undefined:JSON.stringify(n)});
+  return parseState(r.val)||null;
 }
+
+// anyone who knows a room code can write to it, so everything that comes from the room is checked
+// before it reaches the page: known cells with allowed values, dice 0-6, short names and ids
+const okId=x=>typeof x==='string'&&/^[a-z0-9]{1,24}$/.test(x);
+const okName=x=>typeof x==='string'&&x.trim().length>0&&x.length<=16;
+const cellOk=(id,v)=>{const c=[...ALL,JK].find(c=>c.id===id);return !!c&&(v===null||c.vals.includes(v))};
+const okPlayers=ps=>Array.isArray(ps)&&ps.length<=MAXP&&ps.every(p=>p&&okId(p.id)&&okName(p.name)&&okId(p.dev));
+const okRoll=r=>r==null||(typeof r==='object'&&Array.isArray(r.dice)&&r.dice.length===5&&r.dice.every(v=>Number.isInteger(v)&&v>=0&&v<=6)
+  &&Array.isArray(r.held)&&r.held.length===5&&r.held.every(v=>typeof v==='boolean')&&Number.isInteger(r.n)&&r.n>=0&&r.n<=3&&(r.jokerTaken==null||typeof r.jokerTaken==='boolean'));
+const okGame=g=>!!g&&typeof g==='object'&&okPlayers(g.players)&&g.players.length>=2&&Array.isArray(g.scores)&&g.scores.length===g.players.length
+  &&g.scores.every(sc=>sc&&typeof sc==='object'&&!Array.isArray(sc)&&Object.entries(sc).every(([k,v])=>cellOk(k,v)))
+  &&Number.isFinite(g.started)&&(g.ended==null||typeof g.ended==='boolean')&&(g.dice==null||typeof g.dice==='boolean')&&okRoll(g.roll)
+  &&(g.log==null||Array.isArray(g.log)&&g.log.length<=200&&g.log.every(e=>e&&okId(e.pid)&&cellOk(e.cid,e.prev??null)&&okRoll(e.roll)));
+const okState=s=>!!s&&typeof s==='object'&&okPlayers(s.players)&&(s.game==null||okGame(s.game));
+function parseState(str){if(str==null)return null;try{const s=JSON.parse(str);return okState(s)?s:undefined}catch(e){return undefined}}
 
 function makeNet(code){
   const n={code,state:null,on:{},connected:false,loaded:false,last:'',offs:[],
@@ -45,7 +60,7 @@ function makeNet(code){
       txRoom(code,s=>{if(!s.game||s.game.started!==g.started)return;s.game=g;s.by=DEV;s.rev=(s.rev||0)+1;return s}).catch(()=>{});
     },
     apply(str){
-      const s=str?JSON.parse(str):null;
+      const s=parseState(str);if(s===undefined)return;
       if(!s){if(n.loaded)leaveRoom(true);return}
       const first=!n.loaded;n.state=s;n.loaded=true;
       // a game that has just started closes the room sheet

@@ -24,7 +24,7 @@ $('imp').onchange=async e=>{
   try{const d=JSON.parse(await f.text());if(!Array.isArray(d.history))throw 0;
     const seen=new Set(history.map(g=>g.at));let n=0;
     // skip anything that does not look like a finished game, so a damaged file cannot break the history
-    const ok=g=>g&&typeof g.at==='number'&&Array.isArray(g.players)&&g.players.length&&g.players.every(p=>p&&typeof p.name==='string'&&typeof p.total==='number');
+    const ok=g=>g&&typeof g.at==='number'&&Array.isArray(g.players)&&g.players.length&&g.players.every(p=>p&&typeof p.name==='string'&&Number.isFinite(p.total)&&(p.scores==null||typeof p.scores==='object'&&Object.values(p.scores).every(v=>v===null||Number.isFinite(v))));
     d.history.forEach(g=>{if(ok(g)&&!seen.has(g.at)){seen.add(g.at);history.push(g);n++}});
     (Array.isArray(d.roster)?d.roster:[]).forEach(r=>{if(r&&r.id&&typeof r.name==='string'&&!roster.some(x=>x.name===r.name||x.id===r.id))roster.push({id:r.id,name:r.name})});
     lsSet('yatzy.hist',history);saveRoster();render();

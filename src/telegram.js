@@ -152,6 +152,9 @@ function tgCloud(tg){
     }
     // deleted on another device
     const n=history.length;history=history.filter(g=>!gone.has(g.at));if(history.length!==n)changed=true;
+    // the cloud holds about a thousand keys; when it gets close, markers of games deleted long ago make room
+    // (the game's own time is in the key; half a year is long enough for every device to have seen the marker)
+    if(keys.length>900){const old=keys.filter(k=>k[0]==='d'&&num(k)<Date.now()-182*864e5);if(old.length)call(cs.removeItems,old).catch(()=>{})}
     if(keys.includes('roster')){try{const r=JSON.parse(await call(cs.getItem,'roster'));
       if(Array.isArray(r))r.forEach(x=>{if(okPerson(x)&&!roster.some(y=>y.name===x.name||y.id===x.id)){roster.push({id:x.id,name:x.name});changed=true}})}catch(e){}}
     if(changed){lsSet('yatzy.hist',history);lsSet('yatzy.roster',roster);render()}

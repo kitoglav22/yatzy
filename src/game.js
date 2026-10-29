@@ -98,7 +98,10 @@ document.addEventListener('visibilitychange',keepAwake);
 function setScore(i,cid,v){
   const beforeSc={...game.scores[i]};
   const turnBefore=whoseTurn();
-  (game.log=game.log||[]).push({pid:game.players[i].id,cid,prev:game.scores[i][cid],roll:game.roll?JSON.parse(JSON.stringify(game.roll)):null});
+  const entry={pid:game.players[i].id,cid,prev:game.scores[i][cid],roll:game.roll?JSON.parse(JSON.stringify(game.roll)):null};
+  // the joker stands only on a Yatzy of 50: correcting that cell takes the joker with it (undo brings both back)
+  if(cid==='yatzy'&&v!==50&&game.scores[i].joker!=null){entry.jk=game.scores[i].joker;delete game.scores[i].joker}
+  (game.log=game.log||[]).push(entry);
   if(game.log.length>200)game.log.shift();
   if(v==null)delete game.scores[i][cid];else game.scores[i][cid]=v;
   if(v!=null)checkLive(i,beforeSc);
@@ -111,7 +114,7 @@ function setScore(i,cid,v){
 function undo(){
   const e=(game.log||[]).pop();if(!e)return;
   const i=game.players.findIndex(p=>p.id===e.pid);
-  if(i>=0){if(e.prev==null)delete game.scores[i][e.cid];else game.scores[i][e.cid]=e.prev}
+  if(i>=0){if(e.prev==null)delete game.scores[i][e.cid];else game.scores[i][e.cid]=e.prev;if(e.jk===100)game.scores[i].joker=100}
   if('roll' in e)game.roll=e.roll;
   if(game.saved)unarchive();
   saveGame();render();
@@ -150,6 +153,7 @@ function openCell(i,cid){
     return;
   }
   sheet.open(`<h3>${esc(game.players[i].name)} · ${c.name}</h3><p class="muted">${c.hint}${cid==='joker'?'':'. 0 — вычеркнуть'}.</p>
+    ${cid==='yatzy'&&game.scores[i].joker!=null?'<p class="note">Если здесь будет не 50, джокер тоже сотрётся.</p>':''}
     ${noJoker?'<p class="note">Джокер можно поставить только после Яцзы: сначала впишите 50 в клетку «Яцзы».</p>':`<div class="vals">${c.vals.map(v=>`<button data-v="${v}" class="${v===cur?'sel':''}${v===0?' z':''}">${v}</button>`).join('')}</div>`}
     <div class="row">${cur!=null?'<button class="btn" id="clr">Стереть</button>':''}<button class="btn" id="cancel">Отмена</button></div>`);
   $('cancel').onclick=sheet.close;

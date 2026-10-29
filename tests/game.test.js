@@ -41,6 +41,18 @@ test('on a phone the total stays in a bar at the bottom of the screen until the 
   await ph.close();
 });
 
+test('correcting a Yatzy of 50 takes the joker with it, undo brings both back', async () => {
+  await fresh();
+  await p.evaluate(() => { game.scores[0].yatzy = 50; game.scores[0].joker = 100; saveGame(); render(); });
+  await p.click('button[data-p="0"][data-c="yatzy"]');
+  assert.match(await p.textContent('.sheet'), /джокер тоже сотрётся/);
+  await p.click('.vals button[data-v="0"]');
+  assert.equal((await state(p)).scores[0].joker, undefined);
+  await p.click('#undo');
+  const s = await state(p);
+  assert.equal(s.scores[0].yatzy, 50); assert.equal(s.scores[0].joker, 100);
+});
+
 test('the last cell ends the game, undo reopens it and takes it out of the history', async () => {
   await fresh();
   await p.evaluate(() => {

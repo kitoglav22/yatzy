@@ -3,7 +3,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { start, state, settle } = require('./helpers');
 
-let env, A, B, code;
+let env, A, B, C, code;
 const w = ms => A.waitForTimeout(ms);
 const mine = p => p.evaluate(() => mine(whoseTurn()));
 before(async () => {
@@ -100,6 +100,19 @@ test('a move that does not reach the room is rolled back', async () => {
   assert.equal((await state(A)).turn, 0);
 });
 
+test('a move made on a game the room no longer has is not written over it', async () => {
+  // the device on turn has a stale view of the room: someone else changed the game in the meantime
+  const P = (await mine(A)) ? A : B;
+  await P.evaluate(() => { net.base = '{"stale":true}'; });
+  const hist = JSON.stringify((await state(P)).scores);
+  await P.click('#roll'); await settle(P);
+  await w(400);
+  assert.match(await P.textContent('#toasts'), /Ход не отправился/);
+  assert.equal(JSON.stringify((await state(P)).scores), hist);
+  assert.equal((await state(P)).roll.n, 0, 'the roll is taken back');
+  await P.evaluate(async () => { await toastQ; $('toasts').innerHTML = ''; });
+});
+
 test('damaged or hostile room data is ignored', async () => {
   const before = JSON.stringify((await state(A)).scores);
   for (const f of [
@@ -117,7 +130,7 @@ test('damaged or hostile room data is ignored', async () => {
 });
 
 test('a new device takes over a seat', async () => {
-  const C = await env.device('C', () => localStorage.clear(), { online: true });
+  C = await env.device('C', () => localStorage.clear(), { online: true });
   await C.click('#onl0'); await C.fill('#ncode', code); await C.click('#njoin button'); await w(300);
   await C.click('[data-seat]:nth-of-type(2)'); await w(300);
   assert.ok(await mine(C) || (await state(C)).turn === 0, 'C plays for Друг now');
@@ -156,4 +169,24 @@ test('a room left mid-game waits under "Мои комнаты" and comes back in
   await A.click('[data-room="ZZZZZ"]'); await w(400);
   assert.match(await A.textContent('#nmsg'), /нет/);
   assert.deepEqual(await A.evaluate(() => lsGet('yatzy.rooms')), [{ code, names: ['Друг', 'Женя'] }]);
+});
+
+test('a room game ends early only when every device agrees', async () => {
+  await A.click(`[data-room="${code}"]`); await w(400);
+  await A.click('#nroom'); await A.click('#nstop'); await A.click('#nstop'); await w(400);
+  assert.match(await A.textContent('#actions'), /Ждём: Друг/);
+  assert.match(await C.textContent('#actions'), /Женя предлагает закончить/);
+  assert.equal(await B.$('#syes'), null, 'a device without a seat in this game is not asked');
+  // refusing keeps the game going for both
+  await C.click('#sno'); await w(400);
+  assert.equal(await A.$('#sno'), null); assert.equal(await C.$('#syes'), null);
+  assert.ok(!(await state(A)).over);
+  await A.click('#nroom'); await A.click('#nstop'); await A.click('#nstop'); await w(400);
+  const before = await C.evaluate(() => history.length);
+  await C.click('#syes'); await w(500);
+  for (const P of [A, C]) {
+    assert.ok((await state(P)).over, 'the game is over on every device');
+    assert.ok(await P.evaluate(() => history[history.length - 1].early), 'and goes to the history as finished early');
+  }
+  assert.equal(await C.evaluate(() => history.length), before + 1);
 });

@@ -25,6 +25,7 @@ window.Telegram = { WebApp: {
     getItems(ks, cb) { setTimeout(() => cb(null, Object.fromEntries(ks.map(k => [k, this.data[k] ?? ''])))); },
     setItem(k, v, cb) { this.data[k] = v; setTimeout(() => cb && cb(null, true)); },
     removeItem(k, cb) { delete this.data[k]; setTimeout(() => cb && cb(null, true)); },
+    removeItems(ks, cb) { ks.forEach(k => delete this.data[k]); setTimeout(() => cb && cb(null, true)); },
   },
 } };`;
 

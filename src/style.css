@@ -64,8 +64,10 @@ tr.sum td.v{font-size:1.1rem}
 .v .need{display:block;font-size:.72rem;font-weight:600;color:var(--muted);margin-top:2px}
 .v.got{color:var(--ok)}
 tr.total td{font-family:var(--display);font-size:1.2rem;background:var(--accent-soft);padding-block:12px}
-/* the total stays on screen at the bottom while the sheet scrolls; the page colour fills the strip under it down to the screen edge */
-tr.total td{--sb:env(safe-area-inset-bottom,0px);position:sticky;bottom:var(--sb);z-index:2;box-shadow:0 -1px 0 var(--rule),0 var(--sb) 0 var(--bg)}
+/* the total stays on screen at the bottom while the sheet scrolls; the page colour fills the strip under it down to the screen edge
+   (a pseudo-element, since iPhones skip box-shadow on table cells; the card clips it once the row is back in its place) */
+tr.total td{--sb:env(safe-area-inset-bottom,0px);position:sticky;bottom:var(--sb);z-index:2;box-shadow:0 -1px 0 var(--rule)}
+tr.total td::after{content:"";position:absolute;left:-1px;right:-1px;top:100%;height:var(--sb);background:var(--bg)}
 tr.total td.lead{color:var(--win)}
 tr.section td{padding:10px 12px 6px;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:800;background:var(--paper)}
 

@@ -247,9 +247,8 @@ function archive(){
   const after=computeStats();
   game.newAch=after.players.filter(p=>g.players.some(x=>x.name===p.name)).map(p=>{const b=before.players.find(x=>x.name===p.name);
     return {name:p.name,list:ACH.filter(a=>p.ach[a.id]&&(!b||!b.ach[a.id]||b.ach[a.id].n<p.ach[a.id].n)).map(a=>({id:a.id,name:a.name,first:!b||!b.ach[a.id]}))}});
-  // pop up what was not shown during the game, new ones first, at most five; the rest are listed under the result
-  const pend=[];game.newAch.forEach(x=>x.list.forEach(a=>{if(!((game.shown||{})[x.name]||[]).includes(a.id))pend.push({a:ACH.find(z=>z.id===a.id),name:x.name,first:a.first})}));
-  pend.sort((x,y)=>y.first-x.first);
+  // pop up first-time ones not shown during the game, at most five; all of the game's achievements are listed under the result
+  const pend=[];game.newAch.forEach(x=>x.list.forEach(a=>{if(a.first&&!((game.shown||{})[x.name]||[]).includes(a.id))pend.push({a:ACH.find(z=>z.id===a.id),name:x.name,first:true})}));
   pend.slice(0,5).forEach(x=>toastLater(x.a,x.name,x.first));
   if(pend.length>5)toastLater({badge:'+'+(pend.length-5),name:'И ещё '+(pend.length-5),desc:'список под итогом партии'},'Ачивки',false);
   store&&store.addGame(g);renderHist();

@@ -26,6 +26,11 @@ test('on a phone the total row stays at the bottom of the screen while the sheet
   assert.equal(await bottom(), 700);
   await ph.evaluate(() => window.scrollTo(0, 300));
   assert.equal(await bottom(), 700);
+  // with a home bar the row sits above it and the page colour covers the strip below
+  await ph.addStyleTag({ content: 'tr.total td{--sb:34px}' });
+  assert.equal(await bottom(), 666);
+  const hit = await ph.evaluate(() => !!document.elementFromPoint(200, 690).closest('tr.total'));
+  assert.ok(hit, 'the strip under the total covers the rows behind it');
   await ph.close();
 });
 
@@ -67,11 +72,28 @@ test('a past game opens and is deleted after a second tap', async () => {
 
 test('achievements that depend on a single cell pop up during the game', async () => {
   await fresh();
-  await p.evaluate(async () => { await toastQ; $('toasts').innerHTML = ''; });
+  await p.evaluate(async () => { history = []; lsSet('yatzy.hist', history); await toastQ; $('toasts').innerHTML = ''; });
   await p.click('button[data-c="u6"][data-p="0"]'); await p.click('.vals button[data-v="30"]');
   await p.waitForTimeout(700);
   const names = await p.$$eval('.toast b', x => x.map(e => e.textContent));
   assert.ok(names.includes('Пять шестёрок'), names.join());
+});
+
+test('an achievement earned before is counted again but does not pop up', async () => {
+  const sixes = () => p.evaluate(() => (computeStats().players.find(x => x.name === 'Аня').ach.sixes || { n: 0 }).n);
+  // finish the game with five sixes, then play another one with five sixes
+  await p.evaluate(() => { ALL.forEach(c => { if (game.scores[0][c.id] == null) game.scores[0][c.id] = c.vals[1]; if (game.scores[1][c.id] == null) game.scores[1][c.id] = c.vals[0]; }); changed(); });
+  const n = await sixes();
+  assert.ok(n >= 1);
+  await fresh();
+  await p.evaluate(async () => { await toastQ; $('toasts').innerHTML = ''; });
+  await p.click('button[data-c="u6"][data-p="0"]'); await p.click('.vals button[data-v="30"]');
+  await p.evaluate(() => { ALL.forEach(c => { if (game.scores[0][c.id] == null) game.scores[0][c.id] = c.vals[1]; if (game.scores[1][c.id] == null) game.scores[1][c.id] = c.vals[0]; }); changed(); });
+  await p.waitForTimeout(700);
+  const names = await p.$$eval('.toast b', x => x.map(e => e.textContent));
+  assert.ok(!names.includes('Пять шестёрок'), names.join());
+  assert.equal(await sixes(), n + 1, 'the repeat is counted');
+  assert.match(await p.textContent('#banner'), /Пять шестёрок/, 'and listed under the result');
 });
 
 test('names with quotes and tags are shown as text', async () => {

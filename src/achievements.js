@@ -1,6 +1,6 @@
 // achievements: pop-ups during the game, statistics and the achievement grid
-// achievement pop-ups: ones that depend only on a player's own cells show up as soon as they are earned,
-// the rest (wins, streaks, records) when the game ends
+// achievement pop-ups, only for a player's first time (repeats are still counted in the statistics and listed under the result):
+// ones that depend only on a player's own cells show up as soon as they are earned, the rest (wins, streaks, records) when the game ends
 const LIVE=['yatzy','joker','bonus','upper80','sixes','ladder','chance','ones','chance30','nochance','low150','fullset','solid'];
 function toast(a,name,first){
   const box=$('toasts');if(!box)return;
@@ -18,7 +18,7 @@ function checkLive(i,beforeSc){
   const sc=game.scores[i],name=game.players[i].name,shown=(game.shown=game.shown||{})[name]=(game.shown[name]||[]);
   ACH.filter(a=>LIVE.includes(a.id)).forEach(a=>{
     if(shown.includes(a.id))return;
-    if(a.t(liveCtx(sc))&&!a.t(liveCtx(beforeSc))){shown.push(a.id);toastLater(a,name,!hadBefore(name,a.id))}
+    if(a.t(liveCtx(sc))&&!a.t(liveCtx(beforeSc))){shown.push(a.id);if(!hadBefore(name,a.id))toastLater(a,name,true)}
   });
 }
 

@@ -128,7 +128,9 @@ function tgBot(tg,has){
 let tgCloudInfo='';
 function tgCloud(tg){
   const cs=tg.CloudStorage,call=(fn,...a)=>new Promise((ok,bad)=>fn.call(cs,...a,(e,v)=>e?bad(e):ok(v)));
-  const put=(k,v)=>{const j=JSON.stringify(v);return j.length>4096?Promise.resolve():call(cs.setItem,k,j).catch(()=>{})};
+  // a game that did not reach the cloud brings the backup reminder back
+  const lost=()=>{if(cloudKeeps){cloudKeeps=false;render()}};
+  const put=(k,v)=>{const j=JSON.stringify(v);if(j.length>4096){lost();return Promise.resolve()}return call(cs.setItem,k,j).catch(lost)};
   const plain=g=>{const {_doc,...x}=g;return x};
   store={
     saveGame(){},
@@ -154,6 +156,7 @@ function tgCloud(tg){
       if(Array.isArray(r))r.forEach(x=>{if(okPerson(x)&&!roster.some(y=>y.name===x.name||y.id===x.id)){roster.push({id:x.id,name:x.name});changed=true}})}catch(e){}}
     if(changed){lsSet('yatzy.hist',history);lsSet('yatzy.roster',roster);render()}
     // what is only on this device goes up
+    cloudKeeps=true;render();
     history.filter(g=>!inCloud.has(g.at)).forEach(g=>store.addGame(g));
     store.saveRoster(roster);
     show(`Партии и игроки сохраняются в облаке Telegram и видны на всех ваших устройствах с этим аккаунтом. Сейчас там партий: ${history.length}.`);

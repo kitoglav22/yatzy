@@ -105,6 +105,19 @@ test('a finished game goes up to the cloud, a deleted one leaves a marker', asyn
   await p.waitForFunction(at => !Telegram.WebApp.CloudStorage.data['g' + at] && Telegram.WebApp.CloudStorage.data['d' + at], at);
 });
 
+test('with every game in the Telegram cloud there is no backup reminder', async () => {
+  await p.evaluate(() => {
+    localStorage.removeItem('yatzy.backupAt');
+    for (let k = 0; k < 5; k++) { game = newGameFor([{ id: 'a', name: 'Аня' }, { id: 'b', name: 'Миша' }]); ALL.forEach(c => { game.scores[0][c.id] = c.vals[1]; game.scores[1][c.id] = c.vals[0]; }); game.started += k; archive(); }
+    render();
+  });
+  assert.equal(await p.textContent('#remind'), '');
+  // a game the cloud refused brings it back
+  await p.evaluate(() => { const cs = Telegram.WebApp.CloudStorage; cs.ok = cs.setItem; cs.setItem = (k, v, cb) => setTimeout(() => cb('STORAGE_KEY_LIMIT')); store.addGame({ at: 9, players: [] }); });
+  await p.waitForFunction(() => /Сохраните копию/.test($('remind').textContent));
+  await p.evaluate(() => { const cs = Telegram.WebApp.CloudStorage; cs.setItem = cs.ok; cloudKeeps = true; render(); });
+});
+
 test('the result of a game is shared to a chat with a link to the bot', async () => {
   await p.click('#shareres');
   const link = new URL(await p.evaluate(() => __tg.link));

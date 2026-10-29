@@ -43,7 +43,8 @@ if('serviceWorker' in navigator){
 // the release number under the page shows whether a new version has arrived
 {const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия /*VERSION*/';$('sync').after(v)}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
-// remind about a backup every 5 finished games
+// remind about a backup every 5 finished games, unless the Telegram cloud already keeps every game
+let cloudKeeps=false;
 function lastBackupText(since){
   const t=lsGet('yatzy.backupTime');
   if(!t)return 'Резервную копию ещё не сохраняли.';
@@ -54,7 +55,7 @@ window.onAfterRender=()=>{
   const since=history.length-(lsGet('yatzy.backupAt')||0);
   if($('blast'))$('blast').textContent=lastBackupText(since);
   const el=$('remind');if(!el)return;
-  if(since>=5&&(!game||!anyScore()||over())){
+  if(since>=5&&!cloudKeeps&&(!game||!anyScore()||over())){
     el.innerHTML=`<div class="remind"><span>${lastBackupText(since)} Сохраните копию, чтобы история не потерялась.</span><button class="btn small" id="rexp">Сохранить копию</button></div>`;
     $('rexp').onclick=exportBackup;
   } else el.innerHTML='';

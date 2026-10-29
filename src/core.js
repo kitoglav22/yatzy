@@ -14,6 +14,8 @@ const ALL=[...UP,...LOW];
 const JK={id:'joker',name:'Джокер',hint:'повторный Яцзы, один раз за игру; в другую клетку 0',vals:[0,100]};
 const MAXP=4;
 const uid=()=>Math.random().toString(36).slice(2,9);
+// Russian plural: 1 ачивка, 2 ачивки, 5 ачивок
+const plural=(n,one,few,many)=>{const a=n%10,b=n%100;return a===1&&b!==11?one:a>=2&&a<=4&&(b<12||b>14)?few:many};
 
 let roster=[], game=null, history=[], ui={confirm:false}, store=null, net=null;
 // how a finished game is shared to a chat; set by the GitHub Pages and Telegram versions

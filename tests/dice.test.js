@@ -8,7 +8,7 @@ before(async () => {
   env = await start();
   p = await env.device('ipad', twoPlayers);
   await p.evaluate(() => { game = newGameFor(roster); saveGame(); render(); });
-  if (!(await p.evaluate(() => game.dice))) await p.click('#dmode');
+  if (!(await p.evaluate(() => game.dice))) { await p.click('#more'); await p.click('#dmode'); }
 });
 after(async () => { assert.deepEqual(env.errors, []); await env.stop(); });
 const roll = async () => { await p.click('#roll'); await settle(p); };
@@ -18,7 +18,9 @@ test('held dice stay, free dice are rolled again', async () => {
   await p.click('.die[data-k="0"]'); await p.click('.die[data-k="1"]');
   const d1 = (await state(p)).roll.dice;
   assert.equal(await p.$$eval('.die.held', x => x.length), 2);
+  await p.click('#more');
   assert.equal(await p.$('#sw'), null, 'order cannot change in the middle of a turn');
+  await p.click('#sheetx');
   await roll();
   const s = await state(p);
   assert.deepEqual(s.roll.dice.slice(0, 2), d1.slice(0, 2)); assert.equal(s.roll.n, 2);
@@ -33,7 +35,8 @@ test('after the third roll nothing is held and the dice are locked', async () =>
 });
 
 test('every free cell of the player on turn suggests its score, a tap ends the turn', async () => {
-  assert.equal(await p.$$eval('button.sug', x => x.length), 13);
+  const scoring = await p.evaluate(() => Object.values(suggestions(0)).filter(x => x > 0).length);
+  assert.equal(await p.$$eval('button.sug', x => x.length), scoring, 'only cells that score are suggested');
   const want = await p.evaluate(() => scoreFor('chance', game.roll.dice));
   await p.click('button.sug[data-c="chance"]');
   const s = await state(p);
@@ -72,9 +75,9 @@ test('the latest score is named under the dice and flashes once in its cell', as
   await roll(); await p.click('button.sug[data-c="chance"]');
   assert.match(await p.textContent('.dnote'), /Записано: Аня, Шанс \d+/);
   assert.ok(await p.$('button.flash[data-p="0"][data-c="chance"]'));
-  await roll(); await p.click('button.sug[data-c="u1"]');
+  await roll(); await p.evaluate(() => { game.roll.dice = [1, 2, 3, 4, 6]; render(); }); await p.click('button.sug[data-c="u1"]');
   assert.deepEqual(await p.$$eval('button.flash', x => x.map(b => b.dataset.p + b.dataset.c)), ['1u1']);
-  assert.match(await p.textContent('.dnote'), /Записано: Миша, Единицы (\d+|вычеркнуто)/);
+  assert.match(await p.textContent('.dnote'), /Записано: Миша, Единицы 1/);
 });
 
 test('tapping a combination name explains it, with the full rules one tap away', async () => {

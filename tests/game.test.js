@@ -100,3 +100,8 @@ test('on a phone a short name lines up with a two-line one and the turn tags sha
   assert.ok(Math.abs(ta.bottom - tb.bottom) < 1, 'tags on one line');
   await p.setViewportSize({ width: 820, height: 1180 });
 });
+
+test('a quick double tap does not zoom the page', async () => {
+  assert.equal(await p.evaluate(() => getComputedStyle(document.querySelector('td.cell button')).touchAction), 'manipulation');
+  assert.match(await p.getAttribute('meta[name="viewport"]', 'content'), /maximum-scale=1,user-scalable=no/);
+});

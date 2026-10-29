@@ -66,7 +66,7 @@ tr.total td{font-family:var(--display);font-size:1.2rem;background:var(--accent-
 /* a copy of the total row fixed to the bottom of the screen while the table's own row is below it (see drawTotbar);
    a sticky table row shook and slipped on iPhones on a fast flick */
 #totbar{position:fixed;bottom:0;z-index:4;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px));background:var(--bg)}
-#totbar .card{box-shadow:0 -4px 14px color-mix(in srgb,#000 10%,transparent)}
+#totbar .card{box-shadow:0 -4px 14px rgba(0,0,0,calc(.1*var(--fade,1)))}
 html.tgfull #totbar{padding-bottom:calc(6px + var(--tg-bottom,0px))}
 tr.total td.lead{color:var(--win)}
 tr.section td{padding:10px 12px 6px;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:800;background:var(--paper)}

@@ -268,20 +268,29 @@ function drawSetup(){
 $('players').onclick=()=>{if(net)return net.openRoom();if(game&&anyScore()&&!over()){ui.confirm=true;render();$('actions').scrollIntoView({behavior:'smooth',block:'center'})}else openSetup()};
 
 // the total row, copied into a bar fixed to the bottom of the screen while the table's own total row is further down;
-// the copy keeps the table's column widths, so its numbers stand under their columns
-let totObs=null;
+// the copy keeps the table's column widths, so its numbers stand under their columns.
+// The bar goes away only when the real row has come up to exactly where the copy stands, so one replaces the other
+// without a jump; its shadow fades out over the last stretch before that
+let totGap=0,totRaf=0;
 function drawTotbar(){
   let bar=$('totbar');if(!bar){bar=document.createElement('div');bar.id='totbar';bar.hidden=true;document.body.appendChild(bar)}
-  if(totObs){totObs.disconnect();totObs=null}
   const row=document.querySelector('#table tr.total');if(!row){bar.hidden=true;return}
   bar.innerHTML=`<div class="card"><table>${$('table').querySelector('colgroup').outerHTML}<tbody>${row.outerHTML}</tbody></table></div>`;
-  placeTotbar();
-  if(!window.IntersectionObserver)return;
-  totObs=new IntersectionObserver(([e])=>{const r=e.boundingClientRect;bar.hidden=$('vgame').hidden||e.isIntersecting||r.height===0||r.top<0;if(!bar.hidden)placeTotbar()});
-  totObs.observe(row);
+  totGap=0;placeTotbar();syncTotbar();
 }
 function placeTotbar(){const bar=$('totbar'),c=$('table').parentElement.getBoundingClientRect();if(bar&&c.width){bar.style.left=c.left+'px';bar.style.width=c.width+'px'}}
-window.addEventListener('resize',placeTotbar);
+function syncTotbar(){
+  totRaf=0;const bar=$('totbar'),row=document.querySelector('#table tr.total');if(!bar)return;
+  if(!row||$('vgame').hidden||!row.offsetHeight){bar.hidden=true;return}
+  // how far the copy's row ends above the bottom of the screen (bottoms, as the real row's top edge runs through the line above it), measured once while the bar is shown
+  if(!totGap){const was=bar.hidden;bar.style.visibility='hidden';bar.hidden=false;totGap=innerHeight-bar.querySelector('tr').getBoundingClientRect().bottom;bar.hidden=was;bar.style.visibility=''}
+  const d=row.getBoundingClientRect().bottom-(innerHeight-totGap);
+  bar.hidden=d<=.5;
+  if(!bar.hidden)bar.style.setProperty('--fade',Math.min(1,d/48).toFixed(2));
+}
+const queueTotbar=()=>{if(!totRaf)totRaf=requestAnimationFrame(syncTotbar)};
+addEventListener('scroll',queueTotbar,{passive:true});
+addEventListener('resize',()=>{totGap=0;placeTotbar();queueTotbar()});
 
 function archive(){
   const T=game.players.map((_,i)=>totals(i)),best=Math.max(...T.map(t=>t.total)),w=T.filter(t=>t.total===best);
@@ -344,8 +353,7 @@ function saveRoster(){lsSet('yatzy.roster',roster);store&&store.saveRoster(roste
 function setView(v){
   const st=v==='stats';
   $('vgame').hidden=st;$('vstats').hidden=!st;
-  // the total bar belongs to the game tab: hidden at once on the statistics, set up afresh on the way back
-  // (an observer reports only changes, and the table's total stays out of view through both switches)
+  // the total bar belongs to the game tab
   if(st){if($('totbar'))$('totbar').hidden=true}else drawTotbar();
   $('tgame').setAttribute('aria-selected',!st);$('tstats').setAttribute('aria-selected',st);
   if(st)renderStats();

@@ -27,6 +27,16 @@ test('on a phone the total stays in a bar at the bottom of the screen until the 
   assert.deepEqual(await bar(), { bottom: 700, text: 'Итого30' });
   const cols = await ph.evaluate(() => [...document.querySelectorAll('#totbar td')].map((td, k) => Math.round(td.getBoundingClientRect().left - document.querySelectorAll('#table tr.total td')[k].getBoundingClientRect().left)));
   assert.deepEqual(cols, [0, 0, 0], 'the numbers stand under their columns');
+  // the bar stays until the real row has come up to exactly where the copy stands, so the swap does not jump
+  const gap = () => ph.evaluate(() => { const t = $('totbar').querySelector('tr').getBoundingClientRect(), r = document.querySelector('#table tr.total').getBoundingClientRect(); return { d: r.bottom - t.bottom, h: r.height - t.height }; });
+  const g0 = await gap();
+  assert.ok(Math.abs(g0.h) <= 1, 'the copy is as tall as the row');
+  await ph.evaluate(d => window.scrollBy(0, d), g0.d - 10); await ph.waitForTimeout(100);
+  assert.ok(await bar(), 'still there with the row 10px below it');
+  await ph.evaluate(() => window.scrollBy(0, 20)); await ph.waitForTimeout(100);
+  assert.equal(await bar(), null, 'gone once the row has passed its place');
+  await ph.evaluate(() => window.scrollBy(0, -20)); await ph.waitForTimeout(100);
+  assert.ok(await bar(), 'back when the row goes down again');
   await ph.evaluate(() => window.scrollTo(0, 99999));
   await ph.waitForFunction(() => $('totbar').hidden);
   await ph.click('#tstats');

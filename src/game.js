@@ -3,7 +3,7 @@ function render(){
   const tb=$('table');
   if(!game){
     tb.innerHTML=`<tbody><tr><td style="padding:28px 20px;text-align:center"><p style="margin:0 0 14px;font-weight:700">Выберите, кто играет, и начните партию</p><div class="row" style="justify-content:center"><button class="btn primary" id="start0">Выбрать игроков</button>${window.openOnline?'<button class="btn" id="onl0">Играть онлайн</button>':''}</div></td></tr></tbody>`;
-    $('start0').onclick=openSetup;if($('onl0'))$('onl0').onclick=window.openOnline;$('banner').innerHTML='';$('actions').innerHTML='';$('legend').innerHTML='';renderHist();keepAwake();window.onAfterRender&&window.onAfterRender();return;
+    $('start0').onclick=openSetup;if($('onl0'))$('onl0').onclick=window.openOnline;$('banner').innerHTML='';$('actions').innerHTML='';$('legend').innerHTML='';drawTotbar();renderHist();keepAwake();window.onAfterRender&&window.onAfterRender();return;
   }
   const n=game.players.length,T=game.players.map((_,i)=>totals(i)),turn=whoseTurn();
   const catW=n>=4?'30%':n===3?'34%':'40%';
@@ -28,7 +28,7 @@ function render(){
   h+=sec('Нижняя часть')+LOW.map(row).join('')+row(JK);
   const best=Math.max(...T.map(t=>t.total)),leaders=T.filter(t=>t.total===best).length;
   h+=`<tr class="total"><td>Итого</td>${T.map((t,i)=>`<td class="${t.total===best&&best>0&&leaders===1?'lead':''}${me(i)}">${t.total}</td>`).join('')}</tr></tbody>`;
-  tb.innerHTML=h;
+  tb.innerHTML=h;drawTotbar();
   $('legend').innerHTML=over()?'':`${game.dice?'<span><i class="lg sug">16</i>можно записать</span><span><i class="lg best">25</i>лучший вариант</span>':''}<span>Нажмите на название, чтобы увидеть правило</span>`;
 
   const bn=$('banner');
@@ -236,6 +236,22 @@ function drawSetup(){
   $('cancel').onclick=sheet.close;
 }
 $('players').onclick=()=>{if(net)return net.openRoom();if(game&&anyScore()&&!over()){ui.confirm=true;render();$('actions').scrollIntoView({behavior:'smooth',block:'center'})}else openSetup()};
+
+// the total row, copied into a bar fixed to the bottom of the screen while the table's own total row is further down;
+// the copy keeps the table's column widths, so its numbers stand under their columns
+let totObs=null;
+function drawTotbar(){
+  let bar=$('totbar');if(!bar){bar=document.createElement('div');bar.id='totbar';bar.hidden=true;document.body.appendChild(bar)}
+  if(totObs){totObs.disconnect();totObs=null}
+  const row=document.querySelector('#table tr.total');if(!row){bar.hidden=true;return}
+  bar.innerHTML=`<div class="card"><table>${$('table').querySelector('colgroup').outerHTML}<tbody>${row.outerHTML}</tbody></table></div>`;
+  placeTotbar();
+  if(!window.IntersectionObserver)return;
+  totObs=new IntersectionObserver(([e])=>{const r=e.boundingClientRect;bar.hidden=e.isIntersecting||r.height===0||r.top<0;if(!bar.hidden)placeTotbar()});
+  totObs.observe(row);
+}
+function placeTotbar(){const bar=$('totbar'),c=$('table').parentElement.getBoundingClientRect();if(bar&&c.width){bar.style.left=c.left+'px';bar.style.width=c.width+'px'}}
+window.addEventListener('resize',placeTotbar);
 
 function archive(){
   const T=game.players.map((_,i)=>totals(i)),best=Math.max(...T.map(t=>t.total)),w=T.filter(t=>t.total===best);

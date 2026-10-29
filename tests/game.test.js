@@ -19,18 +19,19 @@ test('on one device the stripe follows the player on turn', async () => {
   assert.deepEqual(await striped(), [false, true]);
 });
 
-test('on a phone the total row stays at the bottom of the screen while the sheet scrolls', async () => {
+test('on a phone the total stays in a bar at the bottom of the screen until the table\'s own row comes up', async () => {
   const ph = await env.device('phone', twoPlayers, { viewport: { width: 390, height: 700 } });
-  await ph.evaluate(() => { game = newGameFor(roster); game.dice = false; saveGame(); render(); window.scrollTo(0, 0); });
-  const bottom = () => ph.$eval('tr.total td', e => Math.round(e.getBoundingClientRect().bottom));
-  assert.equal(await bottom(), 700);
-  await ph.evaluate(() => window.scrollTo(0, 300));
-  assert.equal(await bottom(), 700);
-  // with a home bar the row sits above it and the page colour covers the strip below
-  await ph.addStyleTag({ content: 'tr.total td{--sb:34px}' });
-  assert.equal(await bottom(), 666);
-  const hit = await ph.evaluate(() => !!document.elementFromPoint(200, 690).closest('tr.total'));
-  assert.ok(hit, 'the strip under the total covers the rows behind it');
+  await ph.evaluate(() => { game = newGameFor(roster); game.dice = false; game.scores[0].u1 = 3; saveGame(); render(); window.scrollTo(0, 0); });
+  const bar = () => ph.evaluate(() => { const b = $('totbar'), r = b.getBoundingClientRect(); return b.hidden ? null : { bottom: Math.round(r.bottom), text: b.textContent }; });
+  await ph.waitForFunction(() => !$('totbar').hidden);
+  assert.deepEqual(await bar(), { bottom: 700, text: 'Итого30' });
+  const cols = await ph.evaluate(() => [...document.querySelectorAll('#totbar td')].map((td, k) => Math.round(td.getBoundingClientRect().left - document.querySelectorAll('#table tr.total td')[k].getBoundingClientRect().left)));
+  assert.deepEqual(cols, [0, 0, 0], 'the numbers stand under their columns');
+  await ph.evaluate(() => window.scrollTo(0, 99999));
+  await ph.waitForFunction(() => $('totbar').hidden);
+  await ph.click('#tstats');
+  await ph.evaluate(() => window.scrollTo(0, 0)); await ph.waitForTimeout(100);
+  assert.equal(await bar(), null, 'no bar on the statistics tab');
   await ph.close();
 });
 

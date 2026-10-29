@@ -36,8 +36,7 @@ button:focus-visible,input:focus-visible,label:focus-within{outline:3px solid va
 .btn.small{min-height:40px;padding:0 12px;font-size:.9rem}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 
-/* clip, not hidden: a hidden overflow would stop the total row from sticking to the bottom of the screen (hidden stays as the fallback) */
-.card{background:var(--paper);border:1px solid var(--rule);border-radius:16px;overflow:hidden;overflow:clip}
+.card{background:var(--paper);border:1px solid var(--rule);border-radius:16px;overflow:hidden}
 table{width:100%;border-collapse:collapse;table-layout:fixed;font-variant-numeric:tabular-nums}
 th,td{border-bottom:1px solid var(--rule);padding:8px 12px;text-align:left;vertical-align:middle}
 td+td,th+th{border-left:1px solid var(--rule);text-align:center}
@@ -50,7 +49,7 @@ thead th{padding:10px 6px;vertical-align:bottom;height:1px}
 .ph .tag{font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:999px;color:transparent}
 th.active .tag{background:var(--accent);color:var(--on-accent)}
 /* the tint lies over each row's own background, so the stripe runs through the sums too; plain rgba, since older iPhone web views skip color-mix */
-#table th.me,#table td.me{background-image:linear-gradient(var(--stripe),var(--stripe))}
+#table th.me,#table td.me,#totbar td.me{background-image:linear-gradient(var(--stripe),var(--stripe))}
 .cat{display:flex;flex-direction:column;gap:2px;min-width:0;width:100%;border:0;background:none;padding:0;text-align:left;color:inherit;font:inherit}
 .cat b{font-weight:700;text-decoration:underline dotted color-mix(in srgb,var(--muted) 60%,transparent);text-underline-offset:4px}
 .cat small{font-size:.75rem;font-weight:400;color:var(--muted);overflow-wrap:anywhere}
@@ -64,10 +63,11 @@ tr.sum td.v{font-size:1.1rem}
 .v .need{display:block;font-size:.72rem;font-weight:600;color:var(--muted);margin-top:2px}
 .v.got{color:var(--ok)}
 tr.total td{font-family:var(--display);font-size:1.2rem;background:var(--accent-soft);padding-block:12px}
-/* the total stays on screen at the bottom while the sheet scrolls; the page colour fills the strip under it down to the screen edge
-   (a pseudo-element, since iPhones skip box-shadow on table cells; it is taller than any bottom inset, and the card clips it once the row is back in its place) */
-tr.total td{--sb:env(safe-area-inset-bottom,0px);position:sticky;bottom:var(--sb);z-index:2;box-shadow:0 -1px 0 var(--rule)}
-tr.total td::after{content:"";position:absolute;left:-1px;right:-1px;top:100%;height:240px;background:var(--bg)}
+/* a copy of the total row fixed to the bottom of the screen while the table's own row is below it (see drawTotbar);
+   a sticky table row shook and slipped on iPhones on a fast flick */
+#totbar{position:fixed;bottom:0;z-index:4;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px));background:var(--bg)}
+#totbar .card{box-shadow:0 -4px 14px color-mix(in srgb,#000 10%,transparent)}
+html.tgfull #totbar{padding-bottom:calc(6px + var(--tg-bottom,0px))}
 tr.total td.lead{color:var(--win)}
 tr.section td{padding:10px 12px 6px;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:800;background:var(--paper)}
 
@@ -253,6 +253,5 @@ html.tgfull .wrap{padding-top:calc(20px + var(--tg-top,0px));padding-bottom:calc
 /* a solid strip under those buttons: the table scrolls away beneath it, and the dice stick just below it */
 html.tgfull body::before{content:"";position:fixed;left:0;right:0;top:0;height:var(--tg-top,0px);background:var(--bg);z-index:10}
 html.tgfull #dice{top:var(--tg-top,0px)}
-html.tgfull tr.total td{--sb:var(--tg-bottom,0px)}
 html.tgfull .toasts{padding-top:calc(12px + var(--tg-top,0px))}
 html.tgfull .sheet-bg{padding-top:var(--tg-top,0px)}

@@ -51,6 +51,16 @@ test('only the player on turn rolls; the other device sees the roll and the held
   assert.equal(await B.$$eval('button.sug', x => x.length), 0);
 });
 
+test('on your turn in a room a cell the dice give nothing for can be crossed out', async () => {
+  const cid = await A.evaluate(() => ALL.find(c => game.scores[0][c.id] == null && scoreFor(c.id, game.roll.dice) === 0).id);
+  assert.ok(!(await A.$eval(`button[data-p="0"][data-c="${cid}"]`, b => b.disabled)));
+  assert.ok(await B.$eval(`button[data-p="0"][data-c="${cid}"]`, b => b.disabled), 'not on the other device');
+  assert.ok(await A.$eval('button[data-p="1"][data-c="u1"]', b => b.disabled), 'nor someone else\'s cell');
+  await A.click(`button[data-p="0"][data-c="${cid}"]`);
+  assert.deepEqual(await A.$$eval('.vals button', x => x.map(e => e.textContent)), ['0']);
+  await A.click('#cancel');
+});
+
 test('a score travels to the other device, undo only for your own move', async () => {
   await A.click('button.sug'); await w(300);
   const s = await state(B);

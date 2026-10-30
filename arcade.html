@@ -1,6 +1,5 @@
 <!doctype html>
-<!-- Аркада Яцзы (альфа): собрано в закрытом репозитории yatzy-arcade (npm run build → dist/notebook.html). Руками не править. -->
-
+<!-- Аркада Яцзы (альфа) v71.1: собрано в закрытом репозитории yatzy-arcade, ветка PR #34, коммит a9a2a32 (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -334,21 +333,24 @@ return { default: __default };
 })();
 
 M["src/data/tables.js"] = (() => {
-// A table: `turns` turns, each starts with a free roll; rerolls come from one pool for the whole stage.
-// The pool: `rerolls` at the first table of a stage and nothing more until the next stage, so what is saved goes to the boss.
-// After a won boss what is left becomes stars (SHOP.change in abilities.js), the next stage starts a fresh pool. Turns do not carry over.
-// The order: every table but the very first names one combination of `order.combos` (by seed) with ×`order.times` multiplier.
+// A table: `turns` turns, each starts with a free roll; rerolls come from the table's own pool of `rerolls`, any number per turn.
+// Nothing carries over: after a won table what is left becomes stars (SHOP.change in abilities.js), the rest is gone
+// (audit 30.10.2026: a pool for the whole stage hid the price of a reroll until a table or two later).
+// The order: every table but the very first names one combination of `order.combos` (by seed); playing it adds `order.rerolls`
+// to the table's pool (it does not change the score: a ×2 was worth nothing against a levelled-up combination, playtest 8).
 // Score targets: one row per stage, [normal, hard, boss]; after the last row each stage multiplies it by `growth`.
+// ×1.3 and growth 1.6 since an amulet comes at the start of every stage (Docs/proposals/2026-10-30-variety-and-cliff.md):
+// one more amulet a run, and a smoother curve on stages 4–5.
 // Status in Docs/GDD.md: Г — the main thing to tune after playtests.
 const __default = {
   turns: 4,
-  rerolls: 20,
-  growth: 1.75,
-  order: { times: 2, combos: ['pair', 'twopair', 'three', 'small', 'large', 'house', 'four'] },
+  rerolls: 8,
+  growth: 1.6,
+  order: { rerolls: 3, combos: ['pair', 'twopair', 'three', 'small', 'large', 'house', 'four'] },
   targets: [
-    [400, 500, 900],
-    [700, 1050, 1750],
-    [1450, 2100, 3750],
+    [500, 650, 1150],
+    [900, 1350, 2300],
+    [1900, 2750, 4900],
   ],
 };
 
@@ -396,20 +398,22 @@ function detect(dice) {
 
 // A condition holds when every key in it holds. Keys allowed for each kind of effect are listed in
 // CONDITIONS; tests/data.test.js checks the amulet data against them.
-const CONDITIONS = { die: ['parity', 'face'], hand: ['combo'] };
+// firstRoll: the hand is played without a reroll this turn; lastTurn: the table's last turn (ctx.turn).
+const CONDITIONS = { die: ['parity', 'face'], hand: ['combo', 'firstRoll', 'lastTurn'] };
 const dieMatches = (cond = {}, face) =>
   (cond.parity === undefined || (cond.parity === 'even') === (face % 2 === 0))
   && (cond.face === undefined || cond.face === face);
-const handMatches = (cond = {}, combo) => cond.combo === undefined || cond.combo.includes(combo);
+const handMatches = (cond = {}, combo, turn) => (cond.combo === undefined || cond.combo.includes(combo))
+  && (cond.firstRoll === undefined || cond.firstRoll === (turn?.rollsUsed === 1))
+  && (cond.lastTurn === undefined || cond.lastTurn === (turn?.turnsLeft === 1));
 
-// ctx: { levels, amulets (definitions in slot order), faceChips (a boss's chips per face), order: { combo, times } of the table, turn: { rollsUsed, turnsLeft, rerolls }, history }.
+// ctx: { levels, amulets (definitions in slot order), faceChips (a boss's chips per face), turn: { rollsUsed, turnsLeft, rerolls }, history }.
 // turn and history are for amulets and bosses that depend on the run; run.js context() builds ctx.
 // Order of scoring (Docs/GDD.md, «Порядок подсчёта»):
 //   1. the combination's chips and multiplier for its level;
 //   2. scoring dice left to right: each adds its face, then every amulet's die effects fire, amulets left to right;
-//   3. amulets left to right: hand effects (add, then times, in the order written);
-//   4. the table's order: its combination gets ×order.times multiplier.
-function score(dice, comboId, { levels = {}, amulets = [], faceChips = {}, order = null } = {}) {
+//   3. amulets left to right: hand effects (add, then times, in the order written).
+function score(dice, comboId, { levels = {}, amulets = [], faceChips = {}, turn } = {}) {
   const idx = detect(dice)[comboId];
   if (!idx) return null;
   const c = comboById[comboId];
@@ -429,9 +433,8 @@ function score(dice, comboId, { levels = {}, amulets = [], faceChips = {}, order
     }));
   }
   amulets.forEach((a, slot) => a.effects.forEach(e => {
-    if (e.when === 'hand' && handMatches(e.if, comboId)) apply(e, { kind: 'amulet', id: a.id, slot });
+    if (e.when === 'hand' && handMatches(e.if, comboId, turn)) apply(e, { kind: 'amulet', id: a.id, slot });
   }));
-  if (order && order.combo === comboId) { mult *= order.times; steps.push({ kind: 'order', chips, mult }); }
   return { combo: comboId, dice: idx, chips, mult, total: chips * mult, steps };
 }
 
@@ -490,20 +493,26 @@ return { makeRng, seedFromCode, derive };
 })();
 
 M["src/data/amulets.js"] = (() => {
-// Amulets for the grey box (stage 1). Each effect is data, read by scoring.js:
+// Amulets for the grey box (stage 1). At the start of every stage the player takes one of OFFER for free.
+// Each effect is data, read by scoring.js:
 //   when: 'die'  — fires for every scoring die, right after that die adds its face
 //   when: 'hand' — fires once, after all dice, in amulet order left to right
-//   if:   { parity: 'even'|'odd' } | { face: n } (die effects), { combo: [ids] } (hand effects)
+//   if:   { parity: 'even'|'odd' } | { face: n } (die effects), { combo: [ids] } | { firstRoll: true } | { lastTurn: true } (hand effects)
 //   add:  { chips, mult }    times: { mult }
+const OFFER = 3;
+
 const __default = [
   { id: 'abacus', desc: '+2 множителя', name: 'Счёты', icon: '🧮', price: 5, rarity: 'common', effects: [{ when: 'hand', add: { mult: 2 } }] },
   { id: 'even', desc: '+1 множителя за каждый чётный кубик в комбинации', name: 'Чётный', icon: '⚖️', price: 5, rarity: 'common', effects: [{ when: 'die', if: { parity: 'even' }, add: { mult: 1 } }] },
   { id: 'odd', desc: '+15 фишек за каждый нечётный кубик в комбинации', name: 'Нечётный', icon: '🌓', price: 5, rarity: 'common', effects: [{ when: 'die', if: { parity: 'odd' }, add: { chips: 15 } }] },
   { id: 'sixer', desc: '+20 фишек за каждую шестёрку в комбинации', name: 'Шестёрочник', icon: '🎲', price: 4, rarity: 'common', effects: [{ when: 'die', if: { face: 6 }, add: { chips: 20 } }] },
+  { id: 'first', desc: '+3 множителя, если ход сыгран без перебросов', name: 'С первого раза', icon: '⚡', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { firstRoll: true }, add: { mult: 3 } }] },
+  { id: 'last', desc: '×2 множителя на последнем ходу стола', name: 'Последний шанс', icon: '⏳', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { lastTurn: true }, times: { mult: 2 } }] },
+  { id: 'twins', desc: '×2 множителя на паре и двух парах', name: 'Двойняшки', icon: '👯', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { combo: ['pair', 'twopair'] }, times: { mult: 2 } }] },
   { id: 'straight', desc: '×2 множителя на малом и большом стрите', name: 'Стритовик', icon: '🪜', price: 6, rarity: 'rare', effects: [{ when: 'hand', if: { combo: ['small', 'large'] }, times: { mult: 2 } }] },
 ];
 
-return { default: __default };
+return { default: __default, OFFER };
 })();
 
 M["src/data/bosses.js"] = (() => {
@@ -516,7 +525,7 @@ const FIRST = { id: 'gate', name: 'Привратник', icon: '🚪', desc: '�
 
 const __default = [
   { id: 'rush', name: 'Спешка', icon: '⏳', desc: '−1 ход', rules: { turns: -1 } },
-  { id: 'miser', name: 'Скряга', icon: '🪙', desc: 'забирает 3 переброса из запаса', rules: { rerolls: -3 } },
+  { id: 'miser', name: 'Скряга', icon: '🪙', desc: 'забирает 3 переброса у стола', rules: { rerolls: -3 } },
   { id: 'shadow', name: 'Тень', icon: '🌑', desc: 'шестёрки не дают фишек', rules: { faceChips: { 6: 0 } } },
   // the author's idea (30.10.2026): classic Yatzy for one table; Шанс stays free so a turn can always be played
   { id: 'clerk', name: 'Бюрократ', icon: '📋', desc: 'каждая комбинация один раз за стол, кроме Шанса', rules: { once: true } },
@@ -528,18 +537,19 @@ return { default: __default, FIRST };
 M["src/data/abilities.js"] = (() => {
 // One-shot abilities bought with stars before the boss (Docs/proposals/2026-10-30-abilities.md, minimal version).
 // Stars (variant «Д», Docs/proposals/2026-10-30-stars-and-wall.md): 1 for a won table, and the change —
-// after a won boss, 1 for every `change` rerolls left in the stage's pool.
+// after every won table, 1 for every `change` rerolls left in the table's pool.
 // Ва-банк (×2 or 0 after a reroll of all dice) is out: it hands the outcome back to luck (Docs/proposals/2026-10-30-core-review.md).
 // use: 'die' — applied to one die during a turn; 'hand' — switched on before the combination is played.
 // Status in Docs/GDD.md: Г.
 const SHOP = { slots: 2, offer: 3, change: 2 };
-// Tablets: +1 level to one combination for good, `offer` of them in the shop and after the boss
-const TABLETS = { price: 2, offer: 2 };
+// Tablets: +1 level to one combination for good, `offer` of them in the shop and after the boss.
+// The price grows with the level: `price` for the 2nd level, +`step` for every level after it (playtest 8: one cheap combination levelled to 7).
+const TABLETS = { price: 2, step: 1, offer: 2 };
 
 const __default = [
   { id: 'nudge', name: 'Подкрутка', icon: '🔧', price: 2, use: 'die', desc: '+1 или −1 к одному кубику' },
   { id: 'flip', name: 'Переворот', icon: '🔄', price: 2, use: 'die', desc: 'кубик на противоположную грань: 1↔6, 2↔5, 3↔4' },
-  { id: 'single', name: 'Один кубик', icon: '🎯', price: 1, use: 'die', desc: 'перебросить один кубик, запас не тратится' },
+  { id: 'single', name: 'Один кубик', icon: '🎯', price: 1, use: 'die', desc: 'перебросить один кубик, переброс стола не тратится' },
   { id: 'double', name: 'Дубль', icon: '✖️', price: 4, use: 'hand', desc: 'очки этого хода ×2' },
 ];
 
@@ -553,6 +563,7 @@ const TABLES = M["src/data/tables.js"].default;
 const { makeRng, derive } = M["src/rng.js"];
 const { score } = M["src/scoring.js"];
 const AMULETS = M["src/data/amulets.js"].default;
+const { OFFER } = M["src/data/amulets.js"];
 const BOSSES = M["src/data/bosses.js"].default;
 const { FIRST } = M["src/data/bosses.js"];
 const ABILITIES = M["src/data/abilities.js"].default;
@@ -581,9 +592,9 @@ function bossFor(run, stage = run.stage) {
 }
 
 // Rules of the current table. Bosses, amulets and special dice will change them here, nowhere else.
-// rerolls: what the table adds to the pool as it starts — the stage's pool at its first table, nothing after.
+// rerolls: the table's own pool; nothing carries over from the table before.
 function rules(run) {
-  const base = { turns: TABLES.turns, rerolls: run.table === 0 ? TABLES.rerolls : 0, dice: 5, faceChips: {}, once: false };
+  const base = { turns: TABLES.turns, rerolls: TABLES.rerolls, dice: 5, faceChips: {}, once: false };
   if (run.table !== KINDS.length - 1) return base;
   const b = bossFor(run).rules;
   return { ...base, turns: base.turns + (b.turns || 0), rerolls: base.rerolls + (b.rerolls || 0), faceChips: b.faceChips || {}, once: !!b.once };
@@ -597,8 +608,9 @@ function rng(run, name) {
   return { r, save: () => { run.rng[name] = r.state; } };
 }
 
-// Amulets are instances { id, n } in slot order: a save holds ids and counters, not definitions
-function newRun(seed, { amulets = [] } = {}) {
+// Amulets are instances { id, n } in slot order: a save holds ids and counters, not definitions.
+// pick: the run opens with the first amulet to choose (phase 'pick'), as every next stage does after its boss.
+function newRun(seed, { amulets = [], pick = false } = {}) {
   seed >>>= 0;
   const run = {
     v: SAVE_VERSION, seed, stage: 0, table: 0, phase: 'table', won: 0,
@@ -606,10 +618,12 @@ function newRun(seed, { amulets = [] } = {}) {
     amulets: amulets.map(id => ({ id, n: 0 })),
     stars: 0, abilities: [], bought: [],
   };
-  return startTable(run);
+  startTable(run);
+  if (pick && offer({ ...run, phase: 'pick' }).length) run.phase = 'pick';
+  return run;
 }
 
-// The order of a table: one combination with a bigger multiplier, by seed. The very first table of a run has none:
+// The order of a table: one combination, by seed; playing it adds TABLES.order.rerolls to the table's pool. The very first table of a run has none:
 // there the player meets only the dice, the turns and the pool.
 function orderFor(run, stage = run.stage, table = run.table) {
   const O = TABLES.order;
@@ -617,11 +631,10 @@ function orderFor(run, stage = run.stage, table = run.table) {
   return O.combos[makeRng(derive(run.seed, 'order', stage, table)).int(0, O.combos.length - 1)];
 }
 
-// rest: the rerolls left from the table before in this stage (a new stage starts from nothing)
-function startTable(run, rest = 0) {
+function startTable(run) {
   const kind = KINDS[run.table], R = rules(run);
   run.rng.dice = derive(run.seed, 'dice', run.stage, run.table);
-  const rerolls = Math.max(0, rest + R.rerolls);
+  const rerolls = Math.max(0, R.rerolls);
   run.t = { kind, target: targetFor(run.stage, kind), points: 0, turns: R.turns, turnsLeft: R.turns, rerolls, pool: rerolls, order: orderFor(run), dice: null, held: Array(R.dice).fill(false), rolled: 0, armed: [], used: [] };
   if (run.table === 0) run.bought = [];
   run.phase = 'table';
@@ -656,7 +669,6 @@ function context(run) {
     banned: rules(run).once ? run.t.used.filter(id => id !== 'chance') : [],
     levels: run.levels,
     amulets: run.amulets.map(a => amuletById[a.id]),
-    order: run.t.order ? { combo: run.t.order, times: TABLES.order.times } : null,
     turn: { rollsUsed: run.t.rolled, turnsLeft: run.t.turnsLeft, rerolls: run.t.rerolls },
     history: run.history,
   };
@@ -678,6 +690,8 @@ function play(run, comboId) {
     s.steps.push({ kind: 'ability', id, chips: s.chips, mult: s.mult });
     run.abilities.splice(run.abilities.indexOf(id), 1);
   }
+  // the order pays in rerolls: they join the table's pool (and become stars if they are left)
+  if (t.order === comboId) { s.rerolls = TABLES.order.rerolls; t.rerolls += s.rerolls; t.pool += s.rerolls; }
   run.history[comboId] = (run.history[comboId] || 0) + 1;
   t.used.push(comboId);
   t.points += s.total;
@@ -691,17 +705,17 @@ function play(run, comboId) {
 // How many rerolls the next table starts with, shown on the won-table screen
 function nextRerolls(run) {
   const table = (run.table + 1) % KINDS.length, stage = run.stage + (table === 0 ? 1 : 0);
-  return Math.max(0, (table === 0 ? 0 : run.t.rerolls) + rules({ ...run, table, stage }).rerolls);
+  return Math.max(0, rules({ ...run, table, stage }).rerolls);
 }
-// The change: after a won boss every SHOP.change rerolls left in the stage's pool are a star, the rest of the pool is gone
-const changeFor = run => (isBoss(run) && SHOP.change > 0 ? Math.floor(run.t.rerolls / SHOP.change) : 0);
+// The change: after a won table every SHOP.change rerolls left in its pool are a star, the rest is gone
+const changeFor = run => (SHOP.change > 0 ? Math.floor(run.t.rerolls / SHOP.change) : 0);
 
 function leaveShop(run) {
+  if (run.phase === 'pick') { run.phase = 'table'; return; }
   if (run.phase !== 'shop') return;
-  const rest = run.t.rerolls;
   run.table++;
   if (run.table === KINDS.length) { run.table = 0; run.stage++; }
-  startTable(run, run.table === 0 ? 0 : rest);
+  startTable(run);
 }
 
 // Read a saved run. Returns null for a save this version cannot read.
@@ -721,26 +735,26 @@ function load(json) {
   run.abilities = run.abilities.filter(id => abilityById[id]);
   run.t.armed = (run.t.armed || []).filter(id => abilityById[id]);
   run.t.used ??= [];
-  // saves from before the stage pool and the orders: the old pool stopped at 12 and was topped up every table,
-  // now nothing comes until the next stage, so the table in play gets a full stage's pool once
-  if (!('pool' in run.t)) run.t.rerolls = run.t.pool = Math.max(run.t.rerolls, TABLES.rerolls);
+  // saves from before the table's own pool keep what the table in play has; the next table starts its own
+  if (!('pool' in run.t)) run.t.pool = run.t.rerolls;
   if (!('order' in run.t)) run.t.order = orderFor(run);
   run.amulets = run.amulets.filter(a => amuletById[a.id]);
   return run;
 }
 
-// Grey box reward: after a won boss table the player may take one of two amulets for free
-// (after every table it made stages 1–4 trivial, playtest 30.10.2026).
+// An amulet for every stage: before the first table of the run and after a won boss (that is, before the next stage)
+// the player may take one of OFFER for free (after every table it made stages 1–4 trivial, playtest 30.10.2026).
 // The shop with coins replaces this on stage 2. The offer depends only on the seed and the table.
 const SLOTS = 5;
 const isBoss = run => run.table === KINDS.length - 1;
 function offer(run) {
-  if (run.phase !== 'shop' || !isBoss(run) || run.amulets.length >= SLOTS) return [];
+  const start = run.phase === 'pick';
+  if (!(start || (run.phase === 'shop' && isBoss(run))) || run.amulets.length >= SLOTS) return [];
   const own = new Set(run.amulets.map(a => a.id));
   const pool = AMULETS.map(a => a.id).filter(id => !own.has(id));
-  const r = makeRng(derive(run.seed, 'shop', run.stage, run.table));
+  const r = makeRng(start ? derive(run.seed, 'start') : derive(run.seed, 'shop', run.stage, run.table));
   for (let i = pool.length - 1; i > 0; i--) { const j = r.int(0, i); [pool[i], pool[j]] = [pool[j], pool[i]]; }
-  return pool.slice(0, 2);
+  return pool.slice(0, OFFER);
 }
 
 function take(run, id) {
@@ -795,12 +809,14 @@ function tabletOffer(run) {
 }
 const tabletKey = (run, id) => `lv:${run.table}:${id}`;
 const tabletBought = (run, id) => run.bought.includes(tabletKey(run, id));
+// the next level costs more the higher the combination already is
+const tabletPrice = (run, id) => TABLETS.price + (TABLETS.step || 0) * ((run.levels[id] || 1) - 1);
 function canBuyTablet(run, id) {
-  return tabletOffer(run).includes(id) && !tabletBought(run, id) && run.stars >= TABLETS.price;
+  return tabletOffer(run).includes(id) && !tabletBought(run, id) && run.stars >= tabletPrice(run, id);
 }
 function buyTablet(run, id) {
   if (!canBuyTablet(run, id)) return false;
-  run.stars -= TABLETS.price;
+  run.stars -= tabletPrice(run, id);
   run.levels[id] = (run.levels[id] || 1) + 1;
   run.bought.push(tabletKey(run, id));
   return true;
@@ -829,7 +845,7 @@ function useAbility(run, k, { die, by } = {}) {
   return true;
 }
 
-return { amuletById, abilityById, SAVE_VERSION, targetFor, bossFor, rules, newRun, orderFor, roll, hold, context, play, nextRerolls, changeFor, leaveShop, load, SLOTS, isBoss, offer, take, moveAmulet, shopOpen, abilityOffer, canBuy, buy, tabletsOpen, tabletOffer, tabletBought, canBuyTablet, buyTablet, useAbility };
+return { amuletById, abilityById, SAVE_VERSION, targetFor, bossFor, rules, newRun, orderFor, roll, hold, context, play, nextRerolls, changeFor, leaveShop, load, SLOTS, isBoss, offer, take, moveAmulet, shopOpen, abilityOffer, canBuy, buy, tabletsOpen, tabletOffer, tabletBought, tabletPrice, canBuyTablet, buyTablet, useAbility };
 })();
 
 M["src/sim.js"] = (() => {
@@ -838,13 +854,12 @@ M["src/sim.js"] = (() => {
 // Used by tools/sim.js and by the balance panel in the test build.
 const { newRun, roll, hold, play, leaveShop, context } = M["src/run.js"];
 const { best } = M["src/scoring.js"];
-const TABLES = M["src/data/tables.js"].default;
 
 // keep the dice of the most common face (higher face on a tie), roll the rest;
-// spends the stage's reroll pool evenly: at most its share for the turns left in the stage
+// spends the table's reroll pool evenly: at most its share for the turns left
 function turn(run) {
   roll(run);
-  const budget = Math.ceil(run.t.rerolls / (run.t.turnsLeft + (2 - run.table) * TABLES.turns));
+  const budget = Math.ceil(run.t.rerolls / run.t.turnsLeft);
   for (let k = 0; k < budget && run.t.rerolls > 0; k++) {
     const d = run.t.dice, cnt = {};
     d.forEach(f => (cnt[f] = (cnt[f] || 0) + 1));
@@ -903,11 +918,12 @@ function fields() {
     });
   }
   add('Стол', 'tables.turns', 'ходов', TABLES, 'turns');
-  add('Стол', 'tables.rerolls', 'перебросов на этап', TABLES, 'rerolls');
-  add('Стол', 'tables.order.times', '×множитель заказа стола', TABLES.order, 'times', 0.5);
+  add('Стол', 'tables.rerolls', 'перебросов на стол', TABLES, 'rerolls');
+  add('Стол', 'tables.order.rerolls', 'перебросов за заказ стола', TABLES.order, 'rerolls');
   for (const a of ABILITIES) add('Способности', `ability.${a.id}.price`, `${a.icon} ${a.name}, цена ★`, a, 'price');
-  add('Звёзды', 'shop.change', 'перебросов за ★ после босса', SHOP, 'change');
-  add('Звёзды', 'tablets.price', 'табличка, цена ★', TABLETS, 'price');
+  add('Звёзды', 'shop.change', 'перебросов за ★ после стола', SHOP, 'change');
+  add('Звёзды', 'tablets.price', 'табличка, цена ★ за 2-й уровень', TABLETS, 'price');
+  add('Звёзды', 'tablets.step', 'табличка, +★ за каждый следующий уровень', TABLETS, 'step');
   add('Стол', 'tables.growth', 'рост цели после 3 этапа', TABLES, 'growth', 0.1);
   TABLES.targets.forEach((row, s) => row.forEach((_, k) => add('Цели столов', `tables.targets.${s}.${k}`, `этап ${s + 1}, ${KIND[k]}`, row, k, 50)));
   return f;
@@ -1183,7 +1199,7 @@ M["ui/app.js"] = (() => {
 const COMBOS = M["src/data/combos.js"].default;
 const TABLES = M["src/data/tables.js"].default;
 const { detect, score, best } = M["src/scoring.js"];
-const { newRun, roll, hold, play, load, context, rules, offer, take, leaveShop, nextRerolls, orderFor, moveAmulet, amuletById, abilityById, targetFor, isBoss, bossFor, shopOpen, abilityOffer, canBuy, buy, useAbility, SLOTS, tabletsOpen, tabletOffer, tabletBought, canBuyTablet, buyTablet } = M["src/run.js"];
+const { newRun, roll, hold, play, load, context, rules, offer, take, leaveShop, nextRerolls, orderFor, moveAmulet, amuletById, abilityById, targetFor, isBoss, bossFor, shopOpen, abilityOffer, canBuy, buy, useAbility, SLOTS, tabletsOpen, tabletOffer, tabletBought, tabletPrice, canBuyTablet, buyTablet } = M["src/run.js"];
 const { SHOP, TABLETS } = M["src/data/abilities.js"];
 const { applySaved, openTune, tuneChanges } = M["ui/tune.js"];
 const { makeLog, claudeSink } = M["ui/log.js"];
@@ -1196,7 +1212,8 @@ const KIND = { normal: 'обычный стол', hard: 'сложный стол
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 const KEY = 'arcade.run', BEST = 'arcade.best', BOSS_SEEN = 'arcade.bossSeen', TIPS = 'arcade.tips';
 // replaced by tools/build.mjs with the commit and date the page was built from
-const BUILD = "c539a30 2026-10-30 18:43";
+const BUILD = "a9a2a32 2026-10-30 22:19";
+const VERSION = "71.1";
 // which page this is: 'notebook' for the friends' alpha on the notebook site, anything else is the claude.ai test page
 const TARGET = "notebook";
 const NOTEBOOK = TARGET === 'notebook';
@@ -1214,8 +1231,8 @@ const store = {
 // One new thing at a time: each mechanic is explained once per player (not per run), the first time it shows up.
 // Stars stay off the screen until their tip is seen, amulet slots until the first amulet is offered.
 const TIP = {
-  stars: () => `Новое: звёзды. ★ за каждую победу. Перебросы даются на весь этап: что сбережёте, пригодится боссу, а после победы над ним каждые ${SHOP.change} оставшихся станут ★. Звёзды тратятся в лавке перед боссом.`,
-  order: () => `Новое: заказ стола ${ORDER}. На каждом столе одна комбинация получает ×${TABLES.order.times} к множителю, она отмечена ${ORDER}.`,
+  stars: () => `Новое: звёзды. ★ за каждую победу, и каждые ${SHOP.change} несгоревших переброса стола тоже станут ★: сэкономили — заработали. Перебросы на следующий стол не переносятся. Звёзды тратятся в лавке и на таблички.`,
+  order: () => `Новое: заказ стола ${ORDER}. На каждом столе одна комбинация отмечена ${ORDER}. Сыграете её — +${TABLES.order.rerolls} ${plural(TABLES.order.rerolls, 'переброс', 'переброса', 'перебросов')} на этот стол.`,
   shop: () => `Новое: лавка. Способность — разовая помощь на любом столе, слотов ${SHOP.slots}. Табличка навсегда усиливает одну комбинацию.`,
   amulet: 'Новое: амулеты. Работают сами, каждый ход. Срабатывают слева направо, порядок можно поменять.',
   boss: 'Новое: с этого этапа у каждого босса своё правило.',
@@ -1227,15 +1244,15 @@ const markTips = ids => { const s = seenTips(); store.set(TIPS, JSON.stringify([
 const tuned = applySaved(store);
 const log = makeLog(store, NOTEBOOK ? firebaseSink() : claudeSink());
 let run = load(store.get(KEY)) || fresh();
-if (log.current?.seed !== run.seed) log.start(run, tuneChanges(), BUILD);
+if (log.current?.seed !== run.seed) log.start(run, tuneChanges(), `${VERSION} ${BUILD}`);
 let sel = -1, busy = false, shown = { victory: run.won >= 3 };
 // an ability waiting for its die: { k: slot, die }
 let pick = null;
 
 function fresh() {
   const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-  const r = newRun(seed);
-  log.start(r, tuneChanges(), BUILD);
+  const r = newRun(seed, { pick: true });
+  log.start(r, tuneChanges(), `${VERSION} ${BUILD}`);
   return r;
 }
 function save() {
@@ -1330,10 +1347,10 @@ function render() {
     const dbl = s && t.armed.includes('double');
     const ch = s ? s.chips : c.chips + (lv - 1) * c.level.chips, mu = s ? round1(s.mult) + (dbl ? '×2' : '') : c.mult + (lv - 1) * c.level.mult;
     const pv = !s ? '' : dbl ? s.total * 2 : s.total;
-    b.innerHTML = `<span class="nm">${c.name}${t.order === c.id ? ` <b class="ord">${ORDER}×${TABLES.order.times}</b>` : ''}${lv > 1 ? ` <small>ур. ${lv}</small>` : ''}</span><span class="base${s ? ' live' : ''}"><i class="c">${ch}</i>×<i class="m">${mu}</i></span><span class="pv">${pv}</span>`;
+    b.innerHTML = `<span class="nm">${c.name}${t.order === c.id ? ` <b class="ord" title="заказ стола: +${TABLES.order.rerolls} к перебросам стола">${ORDER}+${TABLES.order.rerolls}</b>` : ''}${lv > 1 ? ` <small>ур. ${lv}</small>` : ''}</span><span class="base${s ? ' live' : ''}"><i class="c">${ch}</i>×<i class="m">${mu}</i></span><span class="pv">${pv}</span>`;
     list.append(b);
   }
-  $('seed').textContent = `Забег ${run.seed.toString(36).toUpperCase()} · рекорд: ${+store.get(BEST) || 0} ст.`;
+  $('seed').textContent = `Забег ${run.seed.toString(36).toUpperCase()} · рекорд: ${+store.get(BEST) || 0} ст. · v${VERSION}`;
   $('tune').textContent = tunedNow() ? '⚙ Баланс (изменён)' : '⚙ Баланс';
   overlay();
 }
@@ -1346,7 +1363,7 @@ function abilityBar() {
   bar.hidden = !run.abilities.length && !(run.stars && seen('stars'));
   const stars = document.createElement('span');
   stars.className = 'stars'; stars.textContent = `★ ${run.stars}`;
-  stars.title = 'Звёзды: за победу на столе и сдачей за перебросы сверх 12. Тратятся в лавке и на таблички.';
+  stars.title = `Звёзды: за победу на столе и за каждые ${SHOP.change} несгоревших переброса стола. Тратятся в лавке и на таблички.`;
   bar.append(stars);
   const usable = !busy && run.phase === 'table' && t.dice;
   const add = (txt, fn, cls = '') => { const b = document.createElement('button'); b.className = 'ab ' + cls; b.textContent = txt; b.disabled = !usable; b.onclick = fn; bar.append(b); return b; };
@@ -1399,11 +1416,10 @@ function applyAbility(arg) {
 function wonTable(h, btn) {
   const t = run.t, change = t.change ?? 0, next = nextRerolls(run);
   const rr = k => `${k} ${plural(k, 'переброс', 'переброса', 'перебросов')}`;
-  h('p', `★ +1 за победу${change ? `, ★ +${change} за ${rr(t.rerolls)} в запасе` : ''}. Всего ★ ${run.stars}.`).className = 'carry';
+  h('p', `★ +1 за победу${change ? `, ★ +${change} за ${t.rerolls} ${plural(t.rerolls, 'несгоревший переброс', 'несгоревших переброса', 'несгоревших перебросов')}` : ''}. Всего ★ ${run.stars}.`).className = 'carry';
   tip(h, 'stars');
-  const take = run.table === 1 ? -rules({ ...run, table: 2 }).rerolls : 0;
-  h('p', isBoss(run) ? `Новый этап — новый запас: ${rr(next)}.`
-    : `В запасе этапа ${rr(next)}${take > 0 ? ` (${bossFor(run).name} забирает ${Math.min(take, t.rerolls)})` : ''}, новых до следующего этапа не будет.`).className = 'carry';
+  const take = run.table === 1 ? TABLES.rerolls - next : 0;
+  h('p', `На следующем столе ${rr(next)}${take > 0 ? ` (${bossFor(run).name} забирает ${take})` : ''}.`).className = 'carry';
   if (orderFor(run, run.stage + (isBoss(run) ? 1 : 0), (run.table + 1) % 3)) tip(h, 'order');
   const shop = shopOpen(run);
   if (shop) h('h3', 'Лавка перед боссом');
@@ -1426,7 +1442,7 @@ function abilityShop() {
 // A tablet shows the combination's base before and after: no arithmetic for the player
 function tablets(h) {
   h('h3', 'Таблички');
-  h('p', `+1 уровень комбинации до конца забега, ★ ${TABLETS.price}.` + (isBoss(run) ? ' Покупайте до выбора амулета.' : ''));
+  h('p', `+1 уровень комбинации до конца забега. Чем выше уровень, тем дороже: ★ ${TABLETS.price} за 2-й, дальше +★ ${TABLETS.step} за каждый.` + (isBoss(run) ? ' Покупайте до выбора амулета.' : ''));
   const ids = tabletOffer(run);
   for (const id of ids) {
     const c = COMBOS.find(x => x.id === id), lv = run.levels[id] || 1, bought = tabletBought(run, id);
@@ -1434,7 +1450,7 @@ function tablets(h) {
     const b = document.createElement('button');
     b.className = 'pick buy';
     b.disabled = !canBuyTablet(run, id);
-    b.innerHTML = `<span class="ic">📜</span><b>${c.name}, ур. ${lv + (bought ? 0 : 1)} <span class="price">${bought ? 'куплено' : `★ ${TABLETS.price}`}</span></b><small>${bought ? base(lv) : `${base(lv)} → ${base(lv + 1)}`}</small>`;
+    b.innerHTML = `<span class="ic">📜</span><b>${c.name}, ур. ${lv + (bought ? 0 : 1)} <span class="price">${bought ? 'куплено' : `★ ${tabletPrice(run, id)}`}</span></b><small>${bought ? base(lv) : `${base(lv)} → ${base(lv + 1)}`}</small>`;
     b.onclick = () => { if (buyTablet(run, id)) { log.add('l', id, ids); log.save(run); save(); render(); } };
     $('card').append(b);
   }
@@ -1471,7 +1487,7 @@ function danger() {
 const round1 = v => Math.round(v * 10) / 10;
 
 // Where a hand's chips and multiplier come from, as a formula under the calculation line:
-// the combination's base, the faces of the scoring dice, each amulet by its icon, the order, Дубль.
+// the combination's base, the faces of the scoring dice, each amulet by its icon, Дубль.
 // It grows step by step while the hand is scored (upto: how many steps are counted so far).
 function explain(s, upto = s.steps.length) {
   const [base, ...rest] = s.steps.slice(0, upto), amulets = context(run).amulets;
@@ -1480,7 +1496,6 @@ function explain(s, upto = s.steps.length) {
   for (const st of rest) {
     const dc = st.chips - prev.chips;
     if (st.kind === 'die') faces.push(dc);
-    if (st.kind === 'order') mult.push([ORDER, `×${round1(st.mult / prev.mult)}`]);
     if (st.kind === 'ability') mult.push([abilityById[st.id].icon, `×${round1(st.mult / prev.mult)}`]);
     if (st.kind === 'amulet') {
       const ic = amulets[st.slot].icon;
@@ -1560,10 +1575,11 @@ function amuletGains(dice, id) {
   const ctx = context(run), full = score(dice, id, ctx).total;
   return ctx.amulets.map((a, k) => ({ name: a.name, icon: a.icon, add: full - score(dice, id, { ...ctx, amulets: ctx.amulets.filter((_, j) => j !== k) }).total }));
 }
-// After the hand: its whole formula, and the amulets that did not fire this time
+// After the hand: its whole formula, the amulets that did not fire this time and the order's rerolls
 function showGains(gains, s) {
   const idle = gains.filter(g => !g.add).map(g => ` · ${g.icon} мимо`).join('');
-  $('gain').innerHTML = s ? explain(s) + idle : '';
+  const order = s?.rerolls ? ` · ${ORDER} +${s.rerolls} ${plural(s.rerolls, 'переброс', 'переброса', 'перебросов')}` : '';
+  $('gain').innerHTML = s ? explain(s) + idle + order : '';
 }
 
 // a few words from the player after a boss and at the end of a run go into the playtest log
@@ -1631,6 +1647,12 @@ function overlay() {
   const btn = (txt, fn, alt) => { const b = h('button', txt); b.className = 'btn' + (alt ? ' alt' : ''); b.onclick = () => { markTips(showing); fn(); }; return b; };
   showing = [];
   if (intro) { bossIntro(h, btn); return; }
+  if (run.phase === 'pick') {
+    h('h2', 'Новый забег');
+    h('p', 'Возьмите один амулет. Новый будет в начале каждого этапа.');
+    amuletPick(h, btn, card);
+    return;
+  }
   if (run.phase === 'over') {
     h('h2', 'Забег окончен');
     h('p', `Не хватило ${run.t.target - run.t.points}: ${run.t.points} из ${run.t.target}.`).className = 'miss';
@@ -1642,7 +1664,7 @@ function overlay() {
   }
   if (run.won === 3 && !shown.victory) {
     h('h2', 'Этап 1 пройден!');
-    h('p', 'Это вся серая коробка. Можно играть дальше: цели растут, пока не проиграете.');
+    h('p', 'Можно играть дальше: цели растут, пока не проиграете.');
     btn('Играть дальше', () => { shown.victory = true; render(); });
     btn('Новый забег', () => { run = fresh(); shown = { victory: false }; save(); render(); }, true);
     return;
@@ -1659,7 +1681,12 @@ function overlay() {
     btn('Дальше', () => { leaveShop(run); log.save(run); save(); render(); });
     return;
   }
-  h('p', 'Возьмите один амулет бесплатно.');
+  h('p', 'Новый этап: возьмите один амулет бесплатно.');
+  amuletPick(h, btn, card);
+}
+
+function amuletPick(h, btn, card) {
+  const ids = offer(run);
   tip(h, 'amulet');
   for (const id of ids) {
     const d = amuletById[id];

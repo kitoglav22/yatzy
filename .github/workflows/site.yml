@@ -41,7 +41,7 @@ jobs:
           git worktree add --detach site origin/gh-pages
           cd site
           git rm -rq --ignore-unmatch .
-          cp ../index.html ../sw.js ../icon.png .
+          cp ../index.html ../sw.js ../icon.png ../arcade.html .
           printf '# Яцзы: собранный сайт\n\nЭта ветка обновляется автоматически после тестов. Исходный код и описание в ветке [main](https://github.com/%s).\n' "$GITHUB_REPOSITORY" > README.md
           git add -A
           if git diff --cached --quiet; then echo "nothing to publish"; exit 0; fi

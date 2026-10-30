@@ -189,16 +189,24 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   --die: var(--paper); --pip: var(--ink); --held: var(--accent); --chips: var(--accent); --mult: #c23b22; --gold: #b36b00; --ok: #1f8a4c;
   color-scheme: light;
 }
+/* dark as the device is, unless Telegram sets the theme on <html> (ui/telegram.js) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0f1520; --paper: #182131; --rule: #2b384c; --accent: #6ea0ff; --on-accent: #0f1520; --accent-soft: #1f2f4d;
     --win-soft: #16301f; --shadow: rgba(0, 0, 0, .35);
     --ink: #e6ecf4; --muted: #93a1b5; --mult: #ff8a70; --gold: #f2b544; --ok: #5ccf8c;
     color-scheme: dark;
   }
 }
+:root[data-theme="dark"] {
+  --bg: #0f1520; --paper: #182131; --rule: #2b384c; --accent: #6ea0ff; --on-accent: #0f1520; --accent-soft: #1f2f4d;
+  --win-soft: #16301f; --shadow: rgba(0, 0, 0, .35);
+  --ink: #e6ecf4; --muted: #93a1b5; --mult: #ff8a70; --gold: #f2b544; --ok: #5ccf8c;
+  color-scheme: dark;
+}
 body { background: var(--bg); font-family: var(--body); }
-h2, .nums, .calc, .roll { font-family: var(--display); }
+h2, .nums, .roll { font-family: var(--display); }
+.calc { font-weight: 800; }
 .nums b { font-weight: 800; }
 
 /* the head of the table and the combinations are white cards, as the score sheet in the notebook */
@@ -245,6 +253,11 @@ h2, .nums, .calc, .roll { font-family: var(--display); }
 .note { background: var(--paper); border-color: var(--rule); color: var(--ink); }
 .tip { background: var(--win-soft); border-color: var(--ok); color: var(--ink); }
 .link { color: var(--accent); }
+
+/* inside Telegram, full screen: keep clear of its buttons on top and the home bar below */
+html.tgfull #app { padding-top: calc(12px + var(--tg-top, 0px)); padding-bottom: calc(12px + var(--tg-bottom, 0px)); }
+html.tgfull body::before { content: ""; position: fixed; left: 0; right: 0; top: 0; height: var(--tg-top, 0px); background: var(--bg); z-index: 5; }
+html.tgfull .overlay { padding-top: calc(16px + var(--tg-top, 0px)); padding-bottom: calc(16px + var(--tg-bottom, 0px)); }
 </style>
 </head>
 <body>
@@ -1094,6 +1107,44 @@ function firebaseSink() {
 return { firebaseSink };
 })();
 
+M["ui/telegram.js"] = (() => {
+// The notebook site opened as a Telegram Mini App: the notebook marks the tab (sessionStorage yatzy.tg, see src/telegram.js
+// in kitoglav22/yatzy), and the arcade page opened from it is still inside Telegram, full screen under Telegram's buttons.
+// Here: Telegram's script, its light or dark theme, room for its buttons, and its back button leading to the notebook.
+function telegram(home) {
+  let inTg = /tgWebApp(Data|Platform|Version)=/.test(location.hash);
+  try { inTg ||= sessionStorage.getItem('yatzy.tg') === '1'; } catch { /* no storage */ }
+  if (!inTg) return;
+  const s = document.createElement('script');
+  s.src = 'https://telegram.org/js/telegram-web-app.js';
+  s.onload = () => { const tg = window.Telegram?.WebApp; if (tg?.platform && tg.platform !== 'unknown') setup(tg, home); };
+  document.head.append(s);
+}
+
+function setup(tg, home) {
+  const has = v => tg.isVersionAtLeast?.(v), root = document.documentElement;
+  const theme = () => {
+    root.dataset.theme = tg.colorScheme === 'dark' ? 'dark' : 'light';
+    const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
+    try { if (has('6.1')) { tg.setHeaderColor(bg); tg.setBackgroundColor(bg); } if (has('7.10')) tg.setBottomBarColor(bg); } catch { /* old Telegram */ }
+  };
+  theme(); tg.onEvent('themeChanged', theme);
+  tg.ready(); tg.expand();
+  const insets = () => {
+    const a = tg.safeAreaInset || {}, c = tg.contentSafeAreaInset || {};
+    root.style.setProperty('--tg-top', (a.top || 0) + (c.top || 0) + 'px');
+    root.style.setProperty('--tg-bottom', (a.bottom || 0) + (c.bottom || 0) + 'px');
+    root.classList.toggle('tgfull', !!tg.isFullscreen);
+  };
+  if (has('8.0')) { ['safeAreaChanged', 'contentSafeAreaChanged', 'fullscreenChanged'].forEach(e => tg.onEvent(e, insets)); insets(); }
+  // a swipe down over the page must scroll it, not close the app
+  try { if (has('7.7')) tg.disableVerticalSwipes(); } catch { /* old Telegram */ }
+  if (has('6.1')) { tg.BackButton.onClick(() => { location.href = home; }); tg.BackButton.show(); }
+}
+
+return { telegram };
+})();
+
 M["ui/app.js"] = (() => {
 // Grey box screen: dice, rolls, combinations, step-by-step scoring and a free amulet after each won boss.
 // All rules live in src/; this file only draws the run and passes taps to it.
@@ -1105,6 +1156,7 @@ const { SHOP, TABLETS } = M["src/data/abilities.js"];
 const { applySaved, openTune, tuneChanges } = M["ui/tune.js"];
 const { makeLog, claudeSink } = M["ui/log.js"];
 const { firebaseSink } = M["ui/firebase.js"];
+const { telegram } = M["ui/telegram.js"];
 
 const $ = id => document.getElementById(id);
 const comboName = Object.fromEntries(COMBOS.map(c => [c.id, c.name]));
@@ -1112,7 +1164,7 @@ const KIND = { normal: 'обычный стол', hard: 'сложный стол
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 const KEY = 'arcade.run', BEST = 'arcade.best', BOSS_SEEN = 'arcade.bossSeen', TIPS = 'arcade.tips';
 // replaced by tools/build.mjs with the commit and date the page was built from
-const BUILD = "52f3734 2026-10-30 11:55";
+const BUILD = "15d9525 2026-10-30 12:05";
 // which page this is: 'notebook' for the friends' alpha on the notebook site, anything else is the claude.ai test page
 const TARGET = "notebook";
 const NOTEBOOK = TARGET === 'notebook';
@@ -1641,7 +1693,7 @@ $('new').addEventListener('click', () => {
 });
 
 // the friends' alpha: no balance panel, and a way back to the notebook
-if (NOTEBOOK) { $('tune').hidden = true; $('home').hidden = false; }
+if (NOTEBOOK) { $('tune').hidden = true; $('home').hidden = false; telegram('./'); }
 
 setCalc(0, 0, 0);
 save();

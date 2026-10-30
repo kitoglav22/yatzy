@@ -27,7 +27,7 @@ function render(){
     // on one device someone else's empty cell waits for their turn, with dice on screen or real ones; a written one can still be corrected.
     // In a room only your own empty cells open on your turn, to write what the dice give or cross the cell out
     const shut=net?!(v==null&&i===turn&&mine(i)&&c.id!=='joker'):v==null&&i!==turn;
-    return `<td class="cell${me(i)}"><button class="${cls}" data-p="${i}" data-c="${c.id}" ${shut?'disabled':''} aria-label="${esc(game.players[i].name)}: ${c.name}${v===0?', вычеркнуто':''}">${v==null?'—':v===0?'✕':v}</button></td>`};
+    return `<td class="cell${me(i)}"><button class="${cls}" data-p="${i}" data-c="${c.id}" ${shut?'disabled':''} aria-label="${esc(game.players[i].name)}: ${c.name}${v===0?', вычеркнуто':''}">${v==null?'—':v}</button></td>`};
   const row=c=>`<tr><td><button class="cat" data-help="${c.id}"><b>${c.name}</b><small>${c.hint}</small></button></td>${cols.map(i=>cell(i,c)).join('')}</tr>`;
   const need=t=>{if(t.bonus||!t.upFilled)return '';return t.par>=0?`<span class="need">с запасом +${t.par}</span>`:`<span class="need">отстаёт на ${-t.par}</span>`};
   const sec=t=>`<tr class="section"><td colspan="${n+1}">${t}</td></tr>`;

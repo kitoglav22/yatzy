@@ -424,11 +424,13 @@ function render(){
   // a score that has just come in flashes once
   const lm=lastMove(),L=(game.log||[]).length,fresh=seen.game===game.started&&L>seen.n?lm:null;seen.game=game.started;seen.n=L;
   const cell=(i,c)=>{const v=game.scores[i][c.id];
-    // only cells that score get a suggestion; a cell worth 0 stays a plain empty cell and a tap opens the picker,
-    // except right after the joker, when a 0 in any free cell is exactly what is due
+    // only cells that score get a suggestion; a cell worth 0 looks like a plain empty cell, but one tap on it crosses it out
+    // (shown as a 0 only right after the joker, when a 0 in any free cell is exactly what is due)
     if(v==null&&i===turn&&sug&&sug[c.id]!=null&&(sug[c.id]>0||game.roll&&game.roll.jokerTaken)&&mine(i)){const x=sug[c.id];
       return `<td class="cell${me(i)}"><button class="sug${x===0?' z':''}${x>0&&x===topSug?' best':''}" data-p="${i}" data-c="${c.id}" data-s="${x}" aria-label="${esc(game.players[i].name)}: ${c.name}, записать ${x}">${x}</button></td>`}
     const cls=(v==null?'empty':v===0?'zero':'')+(fresh&&fresh.i===i&&fresh.c.id===c.id?' flash':'');
+    if(v==null&&i===turn&&sug&&sug[c.id]===0&&mine(i))
+      return `<td class="cell${me(i)}"><button class="${cls}" data-p="${i}" data-c="${c.id}" data-s="0" aria-label="${esc(game.players[i].name)}: ${c.name}, вычеркнуть">—</button></td>`;
     // on one device someone else's empty cell waits for their turn, with dice on screen or real ones; a written one can still be corrected.
     // In a room only your own empty cells open on your turn, to write what the dice give or cross the cell out
     const shut=net?!(v==null&&i===turn&&mine(i)&&c.id!=='joker'):v==null&&i!==turn;
@@ -1075,7 +1077,7 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had){had=true;return}if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 // the release number under the page shows whether a new version has arrived
-{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 64';$('sync').after(v)}
+{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 65';$('sync').after(v)}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 // remind about a backup every 5 finished games, unless the Telegram cloud already keeps every game
 let cloudKeeps=false;

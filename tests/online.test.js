@@ -56,9 +56,7 @@ test('on your turn in a room a cell the dice give nothing for can be crossed out
   assert.ok(!(await A.$eval(`button[data-p="0"][data-c="${cid}"]`, b => b.disabled)));
   assert.ok(await B.$eval(`button[data-p="0"][data-c="${cid}"]`, b => b.disabled), 'not on the other device');
   assert.ok(await A.$eval('button[data-p="1"][data-c="u1"]', b => b.disabled), 'nor someone else\'s cell');
-  await A.click(`button[data-p="0"][data-c="${cid}"]`);
-  assert.deepEqual(await A.$$eval('.vals button', x => x.map(e => e.textContent)), ['0']);
-  await A.click('#cancel');
+  assert.equal(await A.$eval(`button[data-p="0"][data-c="${cid}"]`, b => b.dataset.s + b.textContent), '0—', 'one tap crosses it out, but no 0 is shown');
 });
 
 test('a score travels to the other device, undo only for your own move', async () => {

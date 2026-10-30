@@ -45,6 +45,7 @@ button:focus-visible,input:focus-visible,label:focus-within{outline:3px solid va
 #undo{white-space:normal;line-height:1.2;padding-block:8px;text-align:center}
 .btn:disabled{opacity:.45;cursor:default}
 .btn.small{min-height:40px;padding:0 12px;font-size:.9rem}
+a.btn{text-decoration:none;color:inherit}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 
 .card{background:var(--paper);border:1px solid var(--rule);border-radius:16px;overflow:hidden}
@@ -286,7 +287,10 @@ html.tgfull .sheet-bg{padding-top:var(--tg-top,0px)}
 <div class="wrap">
   <header>
     <h1><span class="pip" aria-hidden="true"><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i></span>Яцзы</h1>
-    <button class="btn small" id="players">Игроки</button>
+    <div class="row">
+      <a class="btn small" id="arcade" href="arcade.html" hidden>Аркада (альфа)</a>
+      <button class="btn small" id="players">Игроки</button>
+    </div>
   </header>
 
   <nav class="tabs" role="tablist">
@@ -1036,6 +1040,8 @@ function achGrid(st){
 load();render();setView(location.hash==='#stats'?'stats':'game');
 // GitHub Pages version only: file backup and offline cache
 $('sync').textContent='Всё хранится на этом устройстве';
+// the arcade alpha (arcade.html, built in the private yatzy-arcade repo) lives next to the site; the claude.ai page has none
+$('arcade').hidden=false;
 // share sheet first ("Save to Files" can replace the previous copy), plain download as a fallback
 function exportBackup(){
   const json=JSON.stringify({app:'yatzy',v:2,saved:Date.now(),roster,history,game},null,1);
@@ -1077,7 +1083,7 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had){had=true;return}if(reloaded||document.querySelector('.sheet'))return;reloaded=true;location.reload()});
 }
 // the release number under the page shows whether a new version has arrived
-{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 66';$('sync').after(v)}
+{const v=document.createElement('p');v.className='muted';v.id='ver';v.textContent='Версия 67';$('sync').after(v)}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 // remind about a backup every 5 finished games, unless the Telegram cloud already keeps every game
 let cloudKeeps=false;

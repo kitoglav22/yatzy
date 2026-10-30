@@ -20,6 +20,8 @@ test('the arcade page opens, can be played and leads back to the notebook', asyn
   await p.click('#arcade');
   await p.waitForURL(/arcade\.html$/);
   assert.equal(await p.title(), 'Аркада Яцзы (альфа)');
+  assert.match(await p.textContent('#seed'), /v\d+\.\d+$/, 'the version notebook.arcade is shown');
+  await p.click('#card button.alt'); // the run opens with a free amulet pick: skip it
   await p.click('#roll');
   assert.equal(await p.locator('.die.blank').count(), 0);
   assert.ok(await p.locator('#tune').isHidden(), 'no balance panel for friends');

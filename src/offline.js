@@ -1,5 +1,7 @@
 // GitHub Pages version only: file backup and offline cache
 $('sync').textContent='Всё хранится на этом устройстве';
+// the arcade alpha (arcade.html, built in the private yatzy-arcade repo) lives next to the site; the claude.ai page has none
+$('arcade').hidden=false;
 // share sheet first ("Save to Files" can replace the previous copy), plain download as a fallback
 function exportBackup(){
   const json=JSON.stringify({app:'yatzy',v:2,saved:Date.now(),roster,history,game},null,1);

@@ -1,0 +1,1655 @@
+<!doctype html>
+<!-- Аркада Яцзы (альфа): собрано в закрытом репозитории yatzy-arcade (npm run build → dist/notebook.html). Руками не править. -->
+
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Аркада Яцзы (альфа)</title>
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Manrope:wght@400;600;700;800&display=swap">
+<style>
+:root {
+  --felt: #12372a; --felt-2: #1a4a38; --line: #2f6b52; --ink: #f3efe2; --muted: #a9c2b5;
+  --die: #f7f2e3; --pip: #1d2a24; --held: #f2b544; --chips: #4fa3e0; --mult: #e8584c; --gold: #f2b544; --ok: #5cc28a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--felt); color: var(--ink);
+  font: 16px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent; user-select: none;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; touch-action: manipulation; }
+#app {
+  max-width: 480px; margin: 0 auto; padding: max(12px, env(safe-area-inset-top)) 16px max(12px, env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 10px; min-height: 100%;
+}
+
+.top { display: grid; gap: 6px; }
+.where { display: flex; justify-content: space-between; font-weight: 600; }
+.kind { color: var(--muted); font-weight: 500; }
+.kind.boss { color: var(--mult); }
+.boss-line { font-size: 13px; color: var(--muted); }
+.boss-line.now { font-size: 15px; font-weight: 600; color: var(--mult); }
+.die.void { opacity: .55; box-shadow: inset 0 0 0 2px var(--mult); }
+.boss-intro { text-align: center; }
+.boss-intro .ic { font-size: 56px; line-height: 1; }
+.card .rule { font-size: 20px; font-weight: 700; color: var(--mult); }
+.goal { display: grid; gap: 4px; }
+.goal { border-radius: 12px; padding: 4px; transition: box-shadow .3s; }
+.goal.last { box-shadow: 0 0 0 2px var(--mult); }
+.bar { height: 12px; background: var(--felt-2); border-radius: 6px; overflow: hidden; position: relative; }
+#bar { height: 100%; width: 0; background: var(--ok); transition: width .4s, background .4s; }
+.goal.warn #bar { background: var(--gold); }
+.goal.danger #bar { background: var(--mult); }
+.pace { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: .7; transition: left .4s; }
+.nums { font-size: 20px; text-align: center; }
+.need { text-align: center; font-size: 15px; color: var(--muted); min-height: 1.3em; }
+.need b { color: var(--ink); }
+.goal.danger .need b, .goal.last .need b { color: var(--mult); }
+.left { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; color: var(--muted); font-size: 14px; }
+.res { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.res b { color: var(--ink); }
+.pips { display: flex; flex-wrap: wrap; gap: 5px; max-width: 190px; }
+.pips i { width: 16px; height: 16px; border-radius: 50%; background: var(--ink); transition: opacity .3s, transform .3s; }
+.pips i.off { opacity: .18; transform: scale(.8); }
+.pips.small { gap: 3px; }
+.pips.small i { width: 9px; height: 9px; background: var(--gold); }
+
+.amulets { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.slot {
+  aspect-ratio: 1; border-radius: 12px; border: 1px dashed var(--line); display: grid; place-items: center;
+  font-size: 28px; position: relative;
+}
+.slot.full { border: 1px solid var(--line); background: var(--felt-2); }
+.slot.sel { outline: 2px solid var(--gold); }
+.slot.fire { animation: fire .3s; }
+.info { min-height: 2.6em; color: var(--muted); font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.info b { color: var(--ink); }
+.info .mv { padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); }
+
+.calc { display: flex; justify-content: center; align-items: baseline; gap: 8px; font-weight: 700; font-size: 26px; min-height: 40px; }
+.chips { color: var(--chips); } .mult { color: var(--mult); } .x, .eq { color: var(--muted); font-size: 20px; }
+.total { min-width: 3ch; }
+.calc .bump { animation: bump .18s; }
+.gain { text-align: center; font-size: 14px; color: var(--muted); min-height: 18px; margin-top: -6px; }
+.gain b { color: var(--gold); }
+.abil { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.abil .stars { color: var(--gold); font-weight: 700; margin-right: 4px; }
+.abil .hint { color: var(--muted); font-size: 14px; }
+.abil .ab { padding: 8px 12px; border-radius: 10px; background: var(--felt-2); border: 1px solid var(--gold); font-size: 15px; }
+.abil .ab.on { background: var(--gold); color: #2a1d05; font-weight: 700; }
+.abil .ab.alt { border-color: var(--line); }
+.abil .ab.closes { box-shadow: 0 0 0 2px var(--ok); border-color: var(--ok); }
+.abil .ab:disabled { opacity: .45; }
+.die.pickable { box-shadow: 0 0 0 2px var(--gold); }
+.die.picked { box-shadow: 0 0 0 3px var(--gold); transform: translateY(-3px); }
+.card h3 { margin: 4px 0 0; font-size: 18px; color: var(--gold); }
+.pick.buy:disabled { opacity: .5; }
+.pick .price { color: var(--gold); font-size: 14px; margin-left: 6px; }
+
+.dice { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.die {
+  aspect-ratio: 1; border-radius: 14%; background: var(--die); padding: 14%;
+  display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); box-shadow: 0 3px 0 #bcb59f;
+  transition: transform .15s;
+}
+.die.blank { background: var(--felt-2); box-shadow: none; }
+.die.held { transform: translateY(-8px); box-shadow: 0 0 0 3px var(--held), 0 3px 0 #bcb59f; }
+.die.score { animation: bump .25s; }
+.die { position: relative; }
+/* a rattling die glides from one jolt to the next (the time is set per jolt in animateRoll) */
+.die.shaking { transition: transform 45ms ease-in-out; will-change: transform; box-shadow: 0 8px 14px rgba(0, 0, 0, .25); }
+/* landing: a squash, a bounce and a ring that fades out */
+.die.land { animation: land .42s cubic-bezier(.2, 1.5, .4, 1); }
+.die.land::before { content: ""; position: absolute; inset: -4px; border-radius: 17%; border: 2px solid var(--gold); animation: ring .5s ease-out forwards; pointer-events: none; }
+.dice.shake { animation: shake .28s; }
+.dice.yatzy { animation: glow 1.6s ease-out; border-radius: 14px; }
+@keyframes land { 0% { transform: scale(1.18) rotate(-6deg); } 35% { transform: scale(1.08, .88); } 65% { transform: scale(.96, 1.05); } 100% { transform: none; } }
+@keyframes ring { from { opacity: .8; transform: scale(.9); } to { opacity: 0; transform: scale(1.35); } }
+@keyframes glow { 0% { box-shadow: 0 0 0 0 rgba(242, 181, 68, .7); } 100% { box-shadow: 0 0 0 22px transparent; } }
+@media (prefers-reduced-motion: reduce) { .die.land, .die.land::before, .dice.shake, .dice.yatzy { animation: none; } }
+.pip { width: 70%; aspect-ratio: 1; border-radius: 50%; background: var(--pip); place-self: center; visibility: hidden; }
+.pip.on { visibility: visible; }
+
+.roll {
+  padding: 14px; border-radius: 14px; background: var(--gold); color: #2a1d05; font-weight: 700; font-size: 18px;
+}
+.roll:disabled { background: var(--felt-2); color: var(--muted); }
+
+/* Бюрократ: a combination already played at this table */
+.combo.used span:first-child { text-decoration: line-through; }
+.combos { display: grid; gap: 4px; }
+.combo {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; text-align: left;
+  padding: 8px 12px; border-radius: 10px; background: var(--felt-2); font-size: 15px;
+}
+.combo:disabled { opacity: .45; }
+.combo .base { color: var(--muted); font-size: 13px; }
+.combo .pv { font-weight: 700; min-width: 4ch; text-align: right; }
+.combo.best { outline: 2px solid var(--gold); }
+.combo.best .pv::before { content: "▶ "; color: var(--gold); }
+
+.foot { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; margin-top: auto; }
+.link { text-decoration: underline; color: var(--muted); }
+
+/* a card taller than the screen scrolls inside the overlay; a short one stays centred (auto margins) */
+.overlay { position: fixed; inset: 0; background: rgba(5, 20, 14, .82); display: flex; flex-direction: column; overflow-y: auto; padding: 16px; }
+.card { margin: auto; width: 100%; max-width: 420px; background: var(--felt-2); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: grid; gap: 12px; }
+.card h2 { margin: 0; font-size: 22px; }
+.card p { margin: 0; color: var(--muted); }
+.pick { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-items: center; text-align: left; padding: 12px; border-radius: 12px; background: var(--felt); border: 1px solid var(--line); }
+.pick .ic { font-size: 32px; grid-row: span 2; }
+.pick small { color: var(--muted); }
+.note-box { display: grid; gap: 6px; padding: 10px; border-radius: 12px; background: rgba(242, 181, 68, .1); border: 1px solid var(--gold); }
+.note-box b { color: var(--gold); font-size: 15px; }
+.note { font: inherit; font-size: 15px; color: var(--ink); background: var(--felt); border: 1px solid var(--gold); border-radius: 10px; padding: 8px 10px; min-height: 84px; resize: vertical; user-select: text; }
+.btn { padding: 12px; border-radius: 12px; background: var(--gold); color: #2a1d05; font-weight: 700; }
+.btn.alt { background: none; border: 1px solid var(--line); color: var(--ink); }
+
+/* balance panel */
+.foot { flex-wrap: wrap; gap: 6px 12px; }
+.tune-box { place-items: start center; overflow-y: auto; }
+.tune { width: 100%; max-width: 480px; background: var(--felt-2); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: grid; gap: 10px; }
+.tune-head { display: flex; justify-content: space-between; align-items: center; }
+.tune h2 { margin: 0; font-size: 20px; }
+.tune p, .tune small { margin: 0; color: var(--muted); font-size: 13px; }
+.tune details { border-top: 1px solid var(--line); padding-top: 8px; }
+.tune summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.tune-grid { display: grid; grid-template-columns: 1fr 96px; gap: 6px 10px; align-items: center; padding: 6px 0; font-size: 14px; }
+.tune input, .tune textarea { font: inherit; color: var(--ink); background: var(--felt); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; width: 100%; }
+.tune input.diff { border-color: var(--gold); color: var(--gold); }
+.tune textarea { min-height: 120px; font-family: ui-monospace, monospace; font-size: 12px; }
+.tune-sim { display: grid; gap: 8px; }
+.tune-sim table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tune-sim th, .tune-sim td { padding: 3px 4px; text-align: right; }
+.tune-sim td:first-child { text-align: left; color: var(--muted); }
+
+@keyframes bump { 50% { transform: scale(1.18); } }
+@keyframes fire { 50% { transform: scale(1.15); background: var(--line); } }
+@keyframes shake { 25% { transform: translateX(-4px) rotate(-1deg); } 75% { transform: translateX(4px) rotate(1deg); } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+.tip { margin: 0; padding: 8px 10px; border-radius: 10px; background: rgba(110, 200, 140, .12); border: 1px solid rgba(110, 200, 140, .6); font-size: 14px; line-height: 1.35; text-align: left; }
+/* the end-of-run question: three answers, the chosen one lit */
+.luck-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.luck-row .btn { padding: 10px 4px; font-size: 15px; }
+.btn.alt.on { background: var(--gold); border-color: var(--gold); color: #2a1d05; }
+/* The notebook's look for the friends' alpha on the notebook site (tools/build.mjs adds it after style.css for dist/notebook.html):
+   the notebook's colours, fonts, white cards and dice (src/style.css in kitoglav22/yatzy). Only the look changes, the layout stays. */
+:root {
+  --bg: #eef2f5; --paper: #ffffff; --rule: #d3dbe4; --accent: #1f5fd1; --on-accent: #ffffff; --accent-soft: #e3ecfb;
+  --win-soft: #e2f3e8; --shadow: rgba(29, 42, 58, .12);
+  --display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --body: "Manrope", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --felt: var(--bg); --felt-2: var(--paper); --line: var(--rule); --ink: #1d2a3a; --muted: #5d6b80;
+  --die: var(--paper); --pip: var(--ink); --held: var(--accent); --chips: var(--accent); --mult: #c23b22; --gold: #b36b00; --ok: #1f8a4c;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1520; --paper: #182131; --rule: #2b384c; --accent: #6ea0ff; --on-accent: #0f1520; --accent-soft: #1f2f4d;
+    --win-soft: #16301f; --shadow: rgba(0, 0, 0, .35);
+    --ink: #e6ecf4; --muted: #93a1b5; --mult: #ff8a70; --gold: #f2b544; --ok: #5ccf8c;
+    color-scheme: dark;
+  }
+}
+body { background: var(--bg); font-family: var(--body); }
+h2, .nums, .calc, .roll { font-family: var(--display); }
+.nums b { font-weight: 800; }
+
+/* the head of the table and the combinations are white cards, as the score sheet in the notebook */
+.top { background: var(--paper); border: 1px solid var(--rule); border-radius: 16px; padding: 12px 14px; }
+.bar { background: var(--rule); }
+.pace { background: var(--ink); }
+.combos { gap: 0; background: var(--paper); border: 1px solid var(--rule); border-radius: 16px; overflow: hidden; }
+.combo { border-radius: 0; background: transparent; border-bottom: 1px solid var(--rule); min-height: 44px; }
+.combo:last-child { border-bottom: 0; }
+.combo.best { outline: 0; background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); }
+.combo.best .pv::before { color: var(--accent); }
+
+/* dice as in the notebook: white with a grey rim, a held die lifts and turns blue */
+.die { background: var(--paper); border: 2px solid var(--rule); border-radius: 14px; box-shadow: 0 3px 0 var(--rule); padding: 12%; }
+.die.blank { background: transparent; border-style: dashed; box-shadow: none; }
+.die.held { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-6px); box-shadow: 0 8px 0 color-mix(in srgb, var(--accent) 35%, transparent); }
+.die.shaking { box-shadow: 0 8px 14px var(--shadow); }
+.die.land::before { border-radius: 17px; border-color: var(--accent); }
+.die.pickable { box-shadow: 0 0 0 2px var(--gold); }
+.die.picked { box-shadow: 0 0 0 3px var(--gold); }
+.die.void { box-shadow: inset 0 0 0 2px var(--mult); }
+
+.roll { background: var(--accent); color: var(--on-accent); border-radius: 12px; font-weight: 800; font-size: 17px; min-height: 52px; }
+.roll:disabled { background: var(--rule); color: var(--muted); }
+.btn { background: var(--accent); color: var(--on-accent); font-weight: 800; }
+.btn.alt { background: var(--paper); border: 1.5px solid var(--rule); color: var(--ink); }
+.btn.alt.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+.slot { border-color: var(--rule); }
+.slot.full { background: var(--paper); border-color: var(--rule); }
+.slot.sel { outline-color: var(--accent); }
+.abil .ab { background: var(--paper); }
+.abil .ab.on { color: var(--paper); }
+.pips i { background: var(--ink); }
+.pips.small i { background: var(--gold); }
+.info .mv { border-color: var(--rule); }
+
+.overlay { background: rgba(15, 21, 32, .5); }
+.card { background: var(--paper); border-color: var(--rule); box-shadow: 0 12px 32px var(--shadow); }
+.card h3 { color: var(--accent); }
+.pick { background: var(--bg); border-color: var(--rule); }
+.note-box { background: var(--accent-soft); border-color: var(--accent); }
+.note-box b { color: var(--accent); }
+.note { background: var(--paper); border-color: var(--rule); color: var(--ink); }
+.tip { background: var(--win-soft); border-color: var(--ok); color: var(--ink); }
+.link { color: var(--accent); }
+</style>
+</head>
+<body>
+<main id="app">
+  <header class="top">
+    <div class="where"><span id="stage"></span><span id="kind" class="kind"></span></div>
+    <div id="bossLine" class="boss-line"></div>
+    <div class="goal" id="goal">
+      <div class="bar"><div id="bar"></div><div id="pace" class="pace"></div></div>
+      <div class="nums"><b id="points">0</b> / <span id="target"></span></div>
+      <div class="need" id="need"></div>
+    </div>
+    <div class="left">
+      <div class="res"><span>Ходы <b id="turnsN"></b></span><span id="turns" class="pips"></span></div>
+      <div class="res"><span>Перебросы <b id="rerollsN"></b></span><span id="rerolls" class="pips small"></span></div>
+    </div>
+  </header>
+
+  <section class="amulets" id="amulets" aria-label="Амулеты"></section>
+  <div class="info" id="info"></div>
+
+  <section class="calc" id="calc" aria-live="polite">
+    <span id="chips" class="chips">0</span><span class="x">×</span><span id="mult" class="mult">0</span><span class="eq">=</span><span id="total" class="total">0</span>
+  </section>
+  <div id="gain" class="gain" aria-live="polite"></div>
+
+  <section class="dice" id="dice" aria-label="Кубики"></section>
+  <button id="roll" class="roll">Бросить</button>
+  <section id="abil" class="abil" aria-label="Способности" hidden></section>
+
+  <section class="combos" id="combos" aria-label="Комбинации"></section>
+
+  <footer class="foot"><a id="home" class="link" href="./" hidden>← Блокнот</a><span id="seed"></span><button id="tune" class="link">⚙ Баланс</button><button id="new" class="link">Новый забег</button></footer>
+</main>
+
+<div id="overlay" class="overlay" hidden><div class="card" id="card"></div></div>
+<div id="tuneBox" class="overlay tune-box" hidden></div>
+
+<script>
+(() => {
+const M = {};
+M["src/data/combos.js"] = (() => {
+// Combinations: base chips and multiplier at level 1, and what each table level adds.
+// Chips for a played combination = base + the faces of the dice that make it (`dice` says which).
+// Edit numbers here, not in scoring.js. Status of these numbers in Docs/GDD.md: Г.
+const __default = [
+  { id: 'yatzy', name: 'Яцзы', chips: 100, mult: 10, level: { chips: 40, mult: 3 }, dice: 'five of a kind' },
+  { id: 'four', name: 'Каре', chips: 40, mult: 5, level: { chips: 30, mult: 3 }, dice: 'the four' },
+  { id: 'large', name: 'Большой стрит', chips: 40, mult: 6, level: { chips: 30, mult: 2 }, dice: 'all five' },
+  { id: 'house', name: 'Фулл-хаус', chips: 40, mult: 5, level: { chips: 25, mult: 2 }, dice: 'all five' },
+  { id: 'small', name: 'Малый стрит', chips: 30, mult: 3, level: { chips: 20, mult: 2 }, dice: 'the four in a row' },
+  { id: 'three', name: 'Тройка', chips: 30, mult: 3, level: { chips: 20, mult: 2 }, dice: 'the three' },
+  { id: 'twopair', name: 'Две пары', chips: 20, mult: 2, level: { chips: 20, mult: 1 }, dice: 'the four' },
+  { id: 'pair', name: 'Пара', chips: 10, mult: 2, level: { chips: 15, mult: 1 }, dice: 'the two' },
+  { id: 'chance', name: 'Шанс', chips: 0, mult: 1, level: { chips: 10, mult: 1 }, dice: 'all five' },
+];
+
+return { default: __default };
+})();
+
+M["src/data/tables.js"] = (() => {
+// A table: `turns` turns, each starts with a free roll; rerolls come from one pool for the whole table.
+// Rerolls never burn: each table adds `rerolls` to what is left, up to `maxRerolls`. Turns do not carry over.
+// Score targets: one row per stage, [normal, hard, boss]; after the last row each stage multiplies it by `growth`.
+// Status in Docs/GDD.md: Г — the main thing to tune after playtests.
+const __default = {
+  turns: 4,
+  rerolls: 8,
+  maxRerolls: 12,
+  growth: 1.95,
+  targets: [
+    [400, 500, 900],
+    [700, 1050, 1750],
+    [1450, 2100, 3750],
+  ],
+};
+
+return { default: __default };
+})();
+
+M["src/scoring.js"] = (() => {
+// Combinations and scoring: pure functions, no DOM, no randomness.
+// Score for a turn = chips × multiplier, built step by step so the screen can replay every step.
+const COMBOS = M["src/data/combos.js"].default;
+
+const comboById = Object.fromEntries(COMBOS.map(c => [c.id, c]));
+
+// indices of the dice showing each face, highest face first
+function byFace(dice) {
+  const at = {};
+  dice.forEach((f, i) => (at[f] ||= []).push(i));
+  return Object.entries(at).map(([f, idx]) => ({ face: +f, idx })).sort((a, b) => b.face - a.face);
+}
+
+// For every combination the dice make, the indices of the dice that score in it.
+// When there is a choice (two pairs among three, which run of four), the higher faces score.
+function detect(dice) {
+  const g = byFace(dice);
+  const n = k => g.find(x => x.idx.length >= k);
+  const all = dice.map((_, i) => i);
+  const out = { chance: all };
+  const p = n(2);
+  if (p) out.pair = p.idx.slice(0, 2);
+  const pairs = g.filter(x => x.idx.length >= 2);
+  if (pairs.length >= 2) out.twopair = [...pairs[0].idx.slice(0, 2), ...pairs[1].idx.slice(0, 2)];
+  const t = n(3);
+  if (t) out.three = t.idx.slice(0, 3);
+  if (t && (g.length === 1 || (g.length === 2 && g.every(x => x.idx.length >= 2)))) out.house = all;
+  const f = n(4);
+  if (f) out.four = f.idx.slice(0, 4);
+  if (n(5)) out.yatzy = all;
+  const has = v => g.some(x => x.face === v);
+  for (const lo of [3, 2, 1]) {
+    if ([0, 1, 2, 3].every(k => has(lo + k))) { out.small = [0, 1, 2, 3].map(k => g.find(x => x.face === lo + k).idx[0]); break; }
+  }
+  if (g.length === 5 && g[0].face - g[4].face === 4) out.large = all;
+  return out;
+}
+
+// A condition holds when every key in it holds. Keys allowed for each kind of effect are listed in
+// CONDITIONS; tests/data.test.js checks the amulet data against them.
+const CONDITIONS = { die: ['parity', 'face'], hand: ['combo'] };
+const dieMatches = (cond = {}, face) =>
+  (cond.parity === undefined || (cond.parity === 'even') === (face % 2 === 0))
+  && (cond.face === undefined || cond.face === face);
+const handMatches = (cond = {}, combo) => cond.combo === undefined || cond.combo.includes(combo);
+
+// ctx: { levels, amulets (definitions in slot order), faceChips (a boss's chips per face), turn: { rollsUsed, turnsLeft, rerolls }, history }.
+// turn and history are for amulets and bosses that depend on the run; run.js context() builds ctx.
+// Order of scoring (Docs/GDD.md, «Порядок подсчёта»):
+//   1. the combination's chips and multiplier for its level;
+//   2. scoring dice left to right: each adds its face, then every amulet's die effects fire, amulets left to right;
+//   3. amulets left to right: hand effects (add, then times, in the order written).
+function score(dice, comboId, { levels = {}, amulets = [], faceChips = {} } = {}) {
+  const idx = detect(dice)[comboId];
+  if (!idx) return null;
+  const c = comboById[comboId];
+  const lv = (levels[comboId] || 1) - 1;
+  let chips = c.chips + lv * c.level.chips, mult = c.mult + lv * c.level.mult;
+  const steps = [{ kind: 'combo', id: comboId, chips, mult }];
+  const apply = (e, src) => {
+    if (e.add) { chips += e.add.chips || 0; mult += e.add.mult || 0; }
+    if (e.times) mult *= e.times.mult || 1;
+    steps.push({ ...src, chips, mult });
+  };
+  for (const i of [...idx].sort((a, b) => a - b)) {
+    chips += faceChips[dice[i]] ?? dice[i];
+    steps.push({ kind: 'die', die: i, chips, mult });
+    amulets.forEach((a, slot) => a.effects.forEach(e => {
+      if (e.when === 'die' && dieMatches(e.if, dice[i])) apply(e, { kind: 'amulet', id: a.id, slot, die: i });
+    }));
+  }
+  amulets.forEach((a, slot) => a.effects.forEach(e => {
+    if (e.when === 'hand' && handMatches(e.if, comboId)) apply(e, { kind: 'amulet', id: a.id, slot });
+  }));
+  return { combo: comboId, dice: idx, chips, mult, total: chips * mult, steps };
+}
+
+// The most valuable combination for these dice, as the game suggests it (the player still chooses)
+function best(dice, opts) {
+  let top = null;
+  for (const id of Object.keys(detect(dice))) {
+    if (opts?.banned?.includes(id)) continue;
+    const s = score(dice, id, opts);
+    if (!top || s.total > top.total) top = s;
+  }
+  return top;
+}
+
+return { comboById, detect, CONDITIONS, score, best };
+})();
+
+M["src/rng.js"] = (() => {
+// Seeded random numbers: the same seed gives the same run, so a broken run can be replayed and balance checked
+// mulberry32; the state is one 32-bit number, so it fits in a save
+function makeRng(seed) {
+  let s = seed >>> 0;
+  const next = () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return {
+    next,
+    int: (a, b) => a + Math.floor(next() * (b - a + 1)),
+    get state() { return s; },
+    set state(v) { s = v >>> 0; },
+  };
+}
+
+// A seed from a short code like "K7Q2", so players can share a run
+function seedFromCode(code) {
+  let h = 2166136261;
+  for (const ch of String(code).toUpperCase()) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return h >>> 0;
+}
+
+// A seed for one purpose of one run, e.g. derive(seed, 'dice', stage, table).
+// Separate streams keep the shop and effects the same for everyone on a daily run,
+// whatever dice each player held.
+function derive(seed, ...parts) {
+  let h = (seed >>> 0) ^ 2166136261;
+  for (const ch of parts.join('/')) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  h ^= h >>> 16; h = Math.imul(h, 0x45d9f3b); h ^= h >>> 16;
+  return h >>> 0;
+}
+
+return { makeRng, seedFromCode, derive };
+})();
+
+M["src/data/amulets.js"] = (() => {
+// Amulets for the grey box (stage 1). Each effect is data, read by scoring.js:
+//   when: 'die'  — fires for every scoring die, right after that die adds its face
+//   when: 'hand' — fires once, after all dice, in amulet order left to right
+//   if:   { parity: 'even'|'odd' } | { face: n } (die effects), { combo: [ids] } (hand effects)
+//   add:  { chips, mult }    times: { mult }
+const __default = [
+  { id: 'abacus', desc: '+2 множителя', name: 'Счёты', icon: '🧮', price: 5, rarity: 'common', effects: [{ when: 'hand', add: { mult: 2 } }] },
+  { id: 'even', desc: '+1 множителя за каждый чётный кубик в комбинации', name: 'Чётный', icon: '⚖️', price: 5, rarity: 'common', effects: [{ when: 'die', if: { parity: 'even' }, add: { mult: 1 } }] },
+  { id: 'odd', desc: '+15 фишек за каждый нечётный кубик в комбинации', name: 'Нечётный', icon: '🌓', price: 5, rarity: 'common', effects: [{ when: 'die', if: { parity: 'odd' }, add: { chips: 15 } }] },
+  { id: 'sixer', desc: '+20 фишек за каждую шестёрку в комбинации', name: 'Шестёрочник', icon: '🎲', price: 4, rarity: 'common', effects: [{ when: 'die', if: { face: 6 }, add: { chips: 20 } }] },
+  { id: 'straight', desc: '×2 множителя на малом и большом стрите', name: 'Стритовик', icon: '🪜', price: 6, rarity: 'rare', effects: [{ when: 'hand', if: { combo: ['small', 'large'] }, times: { mult: 2 } }] },
+];
+
+return { default: __default };
+})();
+
+M["src/data/bosses.js"] = (() => {
+// Bosses: the third table of a stage, with one rule that bends the table. Which boss a stage gets depends on the seed.
+// rules: turns are added to the table's turns, rerolls to what the table adds to the pool;
+// faceChips gives a face its own chips when it scores; once: a combination can be played once per table (not Шанс).
+// The first stage's boss has no rule: the player meets one new thing at a time (FIRST).
+// Status in Docs/GDD.md: Г.
+const FIRST = { id: 'gate', name: 'Привратник', icon: '🚪', desc: 'без особых правил, просто большая цель', rules: {} };
+
+const __default = [
+  { id: 'rush', name: 'Спешка', icon: '⏳', desc: '−1 ход', rules: { turns: -1 } },
+  { id: 'miser', name: 'Скряга', icon: '🪙', desc: '+5 перебросов вместо +8', rules: { rerolls: -3 } },
+  { id: 'shadow', name: 'Тень', icon: '🌑', desc: 'шестёрки не дают фишек', rules: { faceChips: { 6: 0 } } },
+  // the author's idea (30.10.2026): classic Yatzy for one table; Шанс stays free so a turn can always be played
+  { id: 'clerk', name: 'Бюрократ', icon: '📋', desc: 'каждая комбинация один раз за стол, кроме Шанса', rules: { once: true } },
+];
+
+return { default: __default, FIRST };
+})();
+
+M["src/data/abilities.js"] = (() => {
+// One-shot abilities bought with stars before the boss (Docs/proposals/2026-10-30-abilities.md, minimal version).
+// Stars (variant «Д», Docs/proposals/2026-10-30-stars-and-wall.md): 1 for a won table, and the change —
+// 1 for every `change` rerolls that would pass the pool's cap on the next table.
+// Ва-банк (×2 or 0 after a reroll of all dice) is out: it hands the outcome back to luck (Docs/proposals/2026-10-30-core-review.md).
+// use: 'die' — applied to one die during a turn; 'hand' — switched on before the combination is played.
+// Status in Docs/GDD.md: Г.
+const SHOP = { slots: 2, offer: 3, change: 2 };
+// Tablets: +1 level to one combination for good, `offer` of them in the shop and after the boss
+const TABLETS = { price: 2, offer: 2 };
+
+const __default = [
+  { id: 'nudge', name: 'Подкрутка', icon: '🔧', price: 2, use: 'die', desc: '+1 или −1 к одному кубику' },
+  { id: 'flip', name: 'Переворот', icon: '🔄', price: 2, use: 'die', desc: 'кубик на противоположную грань: 1↔6, 2↔5, 3↔4' },
+  { id: 'single', name: 'Один кубик', icon: '🎯', price: 1, use: 'die', desc: 'перебросить один кубик, запас не тратится' },
+  { id: 'double', name: 'Дубль', icon: '✖️', price: 4, use: 'hand', desc: 'очки этого хода ×2' },
+];
+
+return { default: __default, SHOP, TABLETS };
+})();
+
+M["src/run.js"] = (() => {
+// A run: stages of three tables (normal, hard, boss), each with a score target and a few turns.
+// Plain state + functions so the run can be saved as JSON and tested without a screen.
+const TABLES = M["src/data/tables.js"].default;
+const { makeRng, derive } = M["src/rng.js"];
+const { score } = M["src/scoring.js"];
+const AMULETS = M["src/data/amulets.js"].default;
+const BOSSES = M["src/data/bosses.js"].default;
+const { FIRST } = M["src/data/bosses.js"];
+const ABILITIES = M["src/data/abilities.js"].default;
+const { SHOP, TABLETS } = M["src/data/abilities.js"];
+const COMBOS = M["src/data/combos.js"].default;
+
+const amuletById = Object.fromEntries(AMULETS.map(a => [a.id, a]));
+const abilityById = Object.fromEntries(ABILITIES.map(a => [a.id, a]));
+
+const SAVE_VERSION = 4;
+const KINDS = ['normal', 'hard', 'boss'];
+
+function targetFor(stage, kind) {
+  const t = TABLES.targets;
+  const k = KINDS.indexOf(kind);
+  if (k < 0) throw new Error(`unknown table kind ${kind}`);
+  if (stage < t.length) return t[stage][k];
+  return Math.round(t[t.length - 1][k] * TABLES.growth ** (stage - t.length + 1) / 50) * 50;
+}
+
+// The boss of a stage: known from the start of the stage, the same for the same seed.
+// Stage 1 has a plain boss; rules start with stage 2.
+function bossFor(run, stage = run.stage) {
+  if (stage === 0) return FIRST;
+  return BOSSES[makeRng(derive(run.seed, 'boss', stage)).int(0, BOSSES.length - 1)];
+}
+
+// Rules of the current table. Bosses, amulets and special dice will change them here, nowhere else.
+function rules(run) {
+  const base = { turns: TABLES.turns, rerolls: TABLES.rerolls, dice: 5, faceChips: {}, once: false };
+  if (run.table !== KINDS.length - 1) return base;
+  const b = bossFor(run).rules;
+  return { ...base, turns: base.turns + (b.turns || 0), rerolls: base.rerolls + (b.rerolls || 0), faceChips: b.faceChips || {}, once: !!b.once };
+}
+
+// Random streams by purpose: dice are reseeded for every table, effects run through the whole run.
+// A shop stream (derive(seed, 'shop', stage, table)) comes with the shop.
+function rng(run, name) {
+  const r = makeRng(0);
+  r.state = run.rng[name];
+  return { r, save: () => { run.rng[name] = r.state; } };
+}
+
+// Amulets are instances { id, n } in slot order: a save holds ids and counters, not definitions
+function newRun(seed, { amulets = [] } = {}) {
+  seed >>>= 0;
+  const run = {
+    v: SAVE_VERSION, seed, stage: 0, table: 0, phase: 'table', won: 0,
+    rng: { fx: derive(seed, 'fx') }, levels: {}, history: {},
+    amulets: amulets.map(id => ({ id, n: 0 })),
+    stars: 0, abilities: [], bought: [],
+  };
+  return startTable(run);
+}
+
+// rest: the rerolls left from the table before; the pool never burns, it only stops at maxRerolls
+function startTable(run, rest = 0) {
+  const kind = KINDS[run.table], R = rules(run);
+  run.rng.dice = derive(run.seed, 'dice', run.stage, run.table);
+  run.t = { kind, target: targetFor(run.stage, kind), points: 0, turns: R.turns, turnsLeft: R.turns, rerolls: Math.min(TABLES.maxRerolls, rest + R.rerolls), dice: null, held: Array(R.dice).fill(false), rolled: 0, armed: [], used: [] };
+  if (run.table === 0) run.bought = [];
+  run.phase = 'table';
+  return run;
+}
+
+// Roll the dice that are not held. The first roll of a turn is free and rolls all of them;
+// every reroll after it takes one from the table's pool, as many in one turn as the player likes.
+function roll(run) {
+  const t = run.t;
+  const first = !t.dice;
+  if (run.phase !== 'table' || (!first && t.rerolls <= 0)) return false;
+  const { r, save } = rng(run, 'dice');
+  if (first) t.held.fill(false);
+  else t.rerolls--;
+  t.dice = t.held.map((h, i) => (first || !h ? r.int(1, 6) : t.dice[i]));
+  t.rolled++;
+  save();
+  return true;
+}
+
+function hold(run, i) {
+  const t = run.t;
+  if (run.phase === 'table' && t.dice && t.rerolls > 0 && i >= 0 && i < t.held.length) t.held[i] = !t.held[i];
+}
+
+// What scoring needs to know about this moment of the run
+function context(run) {
+  return {
+    faceChips: rules(run).faceChips,
+    // combinations this table does not allow any more (Бюрократ)
+    banned: rules(run).once ? run.t.used.filter(id => id !== 'chance') : [],
+    levels: run.levels,
+    amulets: run.amulets.map(a => amuletById[a.id]),
+    turn: { rollsUsed: run.t.rolled, turnsLeft: run.t.turnsLeft, rerolls: run.t.rerolls },
+    history: run.history,
+  };
+}
+
+// Play a combination with the current dice. Returns the score, or null if the dice do not make it.
+// A won table opens the shop; leaveShop() moves on.
+function play(run, comboId) {
+  const t = run.t;
+  if (run.phase !== 'table' || !t.dice) return null;
+  const ctx = context(run);
+  if (ctx.banned.includes(comboId)) return null;
+  const s = score(t.dice, comboId, ctx);
+  if (!s) return null;
+  // abilities switched on for this hand act after everything else
+  for (const id of t.armed) {
+    if (id === 'double') s.mult *= 2;
+    s.total = s.chips * s.mult;
+    s.steps.push({ kind: 'ability', id, chips: s.chips, mult: s.mult });
+    run.abilities.splice(run.abilities.indexOf(id), 1);
+  }
+  run.history[comboId] = (run.history[comboId] || 0) + 1;
+  t.used.push(comboId);
+  t.points += s.total;
+  t.turnsLeft--;
+  t.dice = null; t.held.fill(false); t.rolled = 0; t.armed = [];
+  if (t.points >= t.target) { run.won++; t.change = changeFor(run); run.stars += 1 + t.change; run.phase = 'shop'; }
+  else if (t.turnsLeft === 0) run.phase = 'over';
+  return s;
+}
+
+// How many rerolls the next table starts with, shown on the won-table screen, and how many would pass the cap
+function nextPool(run) {
+  const table = (run.table + 1) % KINDS.length, stage = run.stage + (table === 0 ? 1 : 0);
+  const all = run.t.rerolls + rules({ ...run, table, stage }).rerolls;
+  return { rerolls: Math.min(TABLES.maxRerolls, all), over: Math.max(0, all - TABLES.maxRerolls) };
+}
+const nextRerolls = run => nextPool(run).rerolls;
+const overCap = run => nextPool(run).over;
+// The change: rerolls past the cap are not lost, every SHOP.change of them is a star
+const changeFor = run => (SHOP.change > 0 ? Math.floor(overCap(run) / SHOP.change) : 0);
+
+function leaveShop(run) {
+  if (run.phase !== 'shop') return;
+  const rest = run.t.rerolls;
+  run.table++;
+  if (run.table === KINDS.length) { run.table = 0; run.stage++; }
+  startTable(run, rest);
+}
+
+// Read a saved run. Returns null for a save this version cannot read.
+// Amulets that no longer exist are dropped, so an old save still loads.
+function load(json) {
+  let run;
+  try { run = typeof json === 'string' ? JSON.parse(json) : structuredClone(json); } catch { return null; }
+  // version 2 had three rolls per turn; the table in play gets a full pool
+  if (run?.v === 2 && run.t) {
+    run.t.rerolls = TABLES.rerolls; run.t.rolled = run.t.dice ? 1 : 0;
+    delete run.t.rollsLeft; run.v = 3;
+  }
+  // version 3 had no stars and abilities
+  if (run?.v === 3) { run.stars = 0; run.abilities = []; run.bought = []; if (run.t) run.t.armed = []; run.v = 4; }
+  if (!run || run.v !== SAVE_VERSION) return null;
+  run.t.turns ??= TABLES.turns;
+  run.abilities = run.abilities.filter(id => abilityById[id]);
+  run.t.armed = (run.t.armed || []).filter(id => abilityById[id]);
+  run.t.used ??= [];
+  run.amulets = run.amulets.filter(a => amuletById[a.id]);
+  return run;
+}
+
+// Grey box reward: after a won boss table the player may take one of two amulets for free
+// (after every table it made stages 1–4 trivial, playtest 30.10.2026).
+// The shop with coins replaces this on stage 2. The offer depends only on the seed and the table.
+const SLOTS = 5;
+const isBoss = run => run.table === KINDS.length - 1;
+function offer(run) {
+  if (run.phase !== 'shop' || !isBoss(run) || run.amulets.length >= SLOTS) return [];
+  const own = new Set(run.amulets.map(a => a.id));
+  const pool = AMULETS.map(a => a.id).filter(id => !own.has(id));
+  const r = makeRng(derive(run.seed, 'shop', run.stage, run.table));
+  for (let i = pool.length - 1; i > 0; i--) { const j = r.int(0, i); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  return pool.slice(0, 2);
+}
+
+function take(run, id) {
+  if (!offer(run).includes(id)) return false;
+  run.amulets.push({ id, n: 0 });
+  leaveShop(run);
+  return true;
+}
+
+// Amulets fire left to right, so the player may reorder them
+function moveAmulet(run, from, to) {
+  if (from < 0 || to < 0 || from >= run.amulets.length || to >= run.amulets.length) return;
+  const [a] = run.amulets.splice(from, 1);
+  run.amulets.splice(to, 0, a);
+}
+
+// The ability shop opens once a stage, after the hard table, before the boss.
+// Its offer depends only on the seed and the stage; each offered ability can be bought once.
+const shopOpen = run => run.phase === 'shop' && run.table === KINDS.length - 2;
+function abilityOffer(run) {
+  if (!shopOpen(run)) return [];
+  const pool = ABILITIES.map(a => a.id);
+  const r = makeRng(derive(run.seed, 'abilities', run.stage));
+  for (let i = pool.length - 1; i > 0; i--) { const j = r.int(0, i); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  return pool.slice(0, SHOP.offer);
+}
+function canBuy(run, id) {
+  return abilityOffer(run).includes(id) && !run.bought.includes(id)
+    && run.abilities.length < SHOP.slots && run.stars >= abilityById[id].price;
+}
+function buy(run, id) {
+  if (!canBuy(run, id)) return false;
+  run.stars -= abilityById[id].price;
+  run.abilities.push(id);
+  run.bought.push(id);
+  return true;
+}
+
+// Use the ability in slot k. Die abilities need the die (and for Подкрутка the direction, +1 or -1)
+// (Подкрутка, Переворот, Один кубик)
+// and do not spend a reroll; hand abilities are switched on for the next combination played
+// (a second tap switches them off and keeps them). Returns true if something changed.
+// Tablets: after the hard table and after the boss, TABLETS.offer combinations by seed; one tablet raises
+// a combination's level for the rest of the run. Each offered tablet can be bought once.
+const tabletsOpen = run => run.phase === 'shop' && (shopOpen(run) || isBoss(run));
+function tabletOffer(run) {
+  if (!tabletsOpen(run)) return [];
+  const pool = COMBOS.map(c => c.id).filter(id => id !== 'chance');
+  const r = makeRng(derive(run.seed, 'tablets', run.stage, run.table));
+  for (let i = pool.length - 1; i > 0; i--) { const j = r.int(0, i); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  return pool.slice(0, TABLETS.offer);
+}
+const tabletKey = (run, id) => `lv:${run.table}:${id}`;
+const tabletBought = (run, id) => run.bought.includes(tabletKey(run, id));
+function canBuyTablet(run, id) {
+  return tabletOffer(run).includes(id) && !tabletBought(run, id) && run.stars >= TABLETS.price;
+}
+function buyTablet(run, id) {
+  if (!canBuyTablet(run, id)) return false;
+  run.stars -= TABLETS.price;
+  run.levels[id] = (run.levels[id] || 1) + 1;
+  run.bought.push(tabletKey(run, id));
+  return true;
+}
+
+function useAbility(run, k, { die, by } = {}) {
+  const t = run.t, id = run.abilities[k], a = abilityById[id];
+  if (!a || run.phase !== 'table' || !t.dice) return false;
+  if (a.use === 'hand') {
+    t.armed = t.armed.includes(id) ? t.armed.filter(x => x !== id) : [...t.armed, id];
+    return true;
+  }
+  if (!(die >= 0 && die < t.dice.length)) return false;
+  if (id === 'nudge') {
+    const f = t.dice[die] + by;
+    if ((by !== 1 && by !== -1) || f < 1 || f > 6) return false;
+    t.dice[die] = f;
+  }
+  if (id === 'flip') t.dice[die] = 7 - t.dice[die];
+  if (id === 'single') {
+    const { r, save } = rng(run, 'dice');
+    t.dice[die] = r.int(1, 6);
+    save();
+  }
+  run.abilities.splice(k, 1);
+  return true;
+}
+
+return { amuletById, abilityById, SAVE_VERSION, targetFor, bossFor, rules, newRun, roll, hold, context, play, nextRerolls, overCap, changeFor, leaveShop, load, SLOTS, isBoss, offer, take, moveAmulet, shopOpen, abilityOffer, canBuy, buy, tabletsOpen, tabletOffer, tabletBought, canBuyTablet, buyTablet, useAbility };
+})();
+
+M["src/sim.js"] = (() => {
+// Faceless balance check: a greedy bot plays many runs and reports how far it gets.
+// It shows properties (too easy? an endless combo?), not fun: fun is checked by people.
+// Used by tools/sim.js and by the balance panel in the test build.
+const { newRun, roll, hold, play, leaveShop, context } = M["src/run.js"];
+const { best } = M["src/scoring.js"];
+
+// keep the dice of the most common face (higher face on a tie), roll the rest;
+// spends the reroll pool evenly: at most its share for the turns left
+function turn(run) {
+  roll(run);
+  const budget = Math.ceil(run.t.rerolls / run.t.turnsLeft);
+  for (let k = 0; k < budget && run.t.rerolls > 0; k++) {
+    const d = run.t.dice, cnt = {};
+    d.forEach(f => (cnt[f] = (cnt[f] || 0) + 1));
+    const keep = +Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a] || b - a)[0];
+    if (cnt[keep] === d.length) break;
+    d.forEach((f, i) => { if ((f === keep) !== run.t.held[i]) hold(run, i); });
+    roll(run);
+  }
+  play(run, best(run.t.dice, context(run)).combo);
+  if (run.phase === 'shop') leaveShop(run);
+}
+
+// Share of runs that clear each of the first `tables` tables, with these amulets and no shop
+function simulate({ runs = 2000, amulets = [], tables = 6 } = {}) {
+  const reached = [];
+  for (let k = 0; k < runs; k++) {
+    const run = newRun(k + 1, { amulets });
+    while (run.phase !== 'over' && run.won < tables) turn(run);
+    reached.push(run.won);
+  }
+  return Array.from({ length: tables }, (_, w) => reached.filter(x => x > w).length / runs);
+}
+
+return { simulate };
+})();
+
+M["ui/tune.js"] = (() => {
+// Balance panel for the test build: every number from src/data/ as an input that takes effect at once.
+// Changes are kept in this browser and can be copied as JSON to move into src/data/ for everyone.
+const COMBOS = M["src/data/combos.js"].default;
+const AMULETS = M["src/data/amulets.js"].default;
+const TABLES = M["src/data/tables.js"].default;
+const ABILITIES = M["src/data/abilities.js"].default;
+const { SHOP, TABLETS } = M["src/data/abilities.js"];
+const { simulate } = M["src/sim.js"];
+
+const KEY = 'arcade.tune';
+const KIND = ['обычный', 'сложный', 'босс'];
+
+// one field per number: a key, where it lives, and how it is shown
+function fields() {
+  const f = [];
+  const add = (group, key, label, obj, prop, step = 1) => f.push({ group, key, label, obj, prop, step, def: obj[prop] });
+  for (const c of COMBOS) {
+    add(c.name, `combo.${c.id}.chips`, 'фишки', c, 'chips');
+    add(c.name, `combo.${c.id}.mult`, 'множитель', c, 'mult');
+    add(c.name, `combo.${c.id}.level.chips`, '+фишки за уровень', c.level, 'chips');
+    add(c.name, `combo.${c.id}.level.mult`, '+множ. за уровень', c.level, 'mult');
+  }
+  for (const a of AMULETS) {
+    const g = `${a.icon} ${a.name}`;
+    add(g, `amulet.${a.id}.price`, 'цена', a, 'price');
+    a.effects.forEach((e, i) => {
+      for (const k of Object.keys(e.add || {})) add(g, `amulet.${a.id}.${i}.add.${k}`, k === 'chips' ? '+фишки' : '+множитель', e.add, k);
+      for (const k of Object.keys(e.times || {})) add(g, `amulet.${a.id}.${i}.times.${k}`, '×множитель', e.times, k, 0.5);
+    });
+  }
+  add('Стол', 'tables.turns', 'ходов', TABLES, 'turns');
+  add('Стол', 'tables.rerolls', 'перебросов на стол', TABLES, 'rerolls');
+  add('Стол', 'tables.maxRerolls', 'перебросов копится, не больше', TABLES, 'maxRerolls');
+  for (const a of ABILITIES) add('Способности', `ability.${a.id}.price`, `${a.icon} ${a.name}, цена ★`, a, 'price');
+  add('Звёзды', 'shop.change', 'лишних перебросов за ★ сдачи', SHOP, 'change');
+  add('Звёзды', 'tablets.price', 'табличка, цена ★', TABLETS, 'price');
+  add('Стол', 'tables.growth', 'рост цели после 3 этапа', TABLES, 'growth', 0.1);
+  TABLES.targets.forEach((row, s) => row.forEach((_, k) => add('Цели столов', `tables.targets.${s}.${k}`, `этап ${s + 1}, ${KIND[k]}`, row, k, 50)));
+  return f;
+}
+const FIELDS = fields();
+
+const read = store => { try { return JSON.parse(store.get(KEY)) || {}; } catch { return {}; } };
+
+// Apply the numbers saved in this browser; call before the run is loaded
+function applySaved(store) {
+  const saved = read(store);
+  for (const f of FIELDS) if (typeof saved[f.key] === 'number') f.obj[f.prop] = saved[f.key];
+  return Object.keys(saved).length;
+}
+
+function tuneChanges() {
+  const out = {};
+  for (const f of FIELDS) if (f.obj[f.prop] !== f.def) out[f.key] = f.obj[f.prop];
+  return out;
+}
+
+// el: the overlay to draw into; onChange: redraw the game; amulets: ids the player holds now
+function openTune(el, { store, onChange, onClose, amulets }) {
+  el.replaceChildren();
+  const card = document.createElement('div');
+  card.className = 'tune';
+  el.append(card);
+  el.hidden = false;
+
+  const head = document.createElement('div');
+  head.className = 'tune-head';
+  head.innerHTML = '<h2>Баланс</h2>';
+  const close = document.createElement('button');
+  close.className = 'btn alt'; close.textContent = 'Готово';
+  close.onclick = () => { el.hidden = true; onChange(); onClose?.(); };
+  head.append(close);
+  card.append(head);
+
+  const note = document.createElement('p');
+  note.textContent = 'Числа действуют сразу. Ходы, броски и цели — со следующего стола. Изменения хранятся только в этом браузере.';
+  card.append(note);
+
+  // the bot: how far a greedy player gets with these numbers
+  const simBox = document.createElement('div');
+  simBox.className = 'tune-sim';
+  const simBtn = document.createElement('button');
+  simBtn.className = 'btn'; simBtn.textContent = 'Прогнать бота';
+  const simOut = document.createElement('div');
+  simBtn.onclick = () => {
+    simOut.textContent = 'Считаю…';
+    setTimeout(() => {
+      const rows = [['без амулетов', simulate({ runs: 500 })]];
+      if (amulets.length) rows.push([`с вашими амулетами`, simulate({ runs: 500, amulets })]);
+      simOut.innerHTML = '<table><tr><th></th>' + ['1·об', '1·сл', '1·босс', '2·об', '2·сл', '2·босс'].map(h => `<th>${h}</th>`).join('') + '</tr>'
+        + rows.map(([n, r]) => `<tr><td>${n}</td>${r.map(p => `<td>${Math.round(p * 100)}%</td>`).join('')}</tr>`).join('') + '</table>'
+        + '<small>Доля из 500 забегов, прошедших стол. Бот держит самые частые кости, магазина нет.</small>';
+    }, 30);
+  };
+  simBox.append(simBtn, simOut);
+  card.append(simBox);
+
+  let group = null, box = null;
+  for (const f of FIELDS) {
+    if (f.group !== group) {
+      group = f.group;
+      const d = document.createElement('details');
+      d.innerHTML = `<summary>${group}</summary>`;
+      box = document.createElement('div'); box.className = 'tune-grid';
+      d.append(box); card.append(d);
+    }
+    const id = 't-' + f.key.replace(/\./g, '-');
+    const lab = document.createElement('label');
+    lab.htmlFor = id; lab.textContent = f.label;
+    const inp = document.createElement('input');
+    inp.id = id; inp.type = 'number'; inp.inputMode = 'decimal'; inp.step = f.step; inp.value = f.obj[f.prop];
+    inp.className = f.obj[f.prop] !== f.def ? 'diff' : '';
+    inp.oninput = () => {
+      const v = parseFloat(inp.value);
+      if (!Number.isFinite(v)) return;
+      f.obj[f.prop] = v;
+      inp.className = v !== f.def ? 'diff' : '';
+      store.set(KEY, JSON.stringify(tuneChanges()));
+      onChange();
+    };
+    box.append(lab, inp);
+  }
+
+  const out = document.createElement('textarea');
+  out.readOnly = true; out.hidden = true; out.id = 'tune-out';
+  const copy = document.createElement('button');
+  copy.className = 'btn'; copy.textContent = 'Скопировать изменения';
+  copy.onclick = async () => {
+    const txt = JSON.stringify(tuneChanges(), null, 1);
+    out.value = txt; out.hidden = false;
+    try { await navigator.clipboard.writeText(txt); copy.textContent = 'Скопировано'; }
+    catch { out.select(); copy.textContent = 'Выделено, скопируйте вручную'; }
+  };
+  const reset = document.createElement('button');
+  reset.className = 'btn alt'; reset.textContent = 'Вернуть числа из игры';
+  reset.onclick = () => {
+    for (const f of FIELDS) f.obj[f.prop] = f.def;
+    store.set(KEY, '{}');
+    onChange();
+    openTune(el, { store, onChange, onClose, amulets });
+  };
+  card.append(copy, out, reset);
+}
+
+return { applySaved, tuneChanges, openTune };
+})();
+
+M["ui/log.js"] = (() => {
+// Playtest log: every move of a run, with time, so a run can be read back and replayed from its seed.
+// Where the log goes besides this browser is a sink: { ready: Promise<boolean>, write(log): Promise }.
+// On the claude.ai test page (claudeSink) each run goes to the page's database (logs/<player>/runs/<run>),
+// where Claude reads it for playtest reviews; logs/<player> names the player's last run, so players can be listed.
+// On the notebook site, firebaseSink (ui/firebase.js) writes to the notebook's database. With no sink the log stays here.
+const KEY = 'arcade.log';
+
+function claudeSink() {
+  let db = null, uid = null, listed = null;
+  const ready = (async () => {
+    const use = window.claude?.use;
+    if (!use) return false;
+    const [d, u] = await Promise.all([use('db'), use('user')]);
+    uid = u && await u.id();
+    db = d;
+    return !!(d && uid);
+  })().catch(() => false);
+  return {
+    ready,
+    write(log) {
+      const id = log.id;
+      return db.collection(`logs/${uid}/runs`).doc(id).set(log)
+        .then(() => listed === id || db.collection('logs').doc(uid).set({ last: id, at: Date.now() }).then(() => { listed = id; }));
+    },
+  };
+}
+
+function makeLog(store, sink = claudeSink()) {
+  let log = null, live = false, writing = null, dirty = false;
+  try { log = JSON.parse(store.get(KEY)); } catch { log = null; }
+  // the first build kept one note per run and asked for it after stage 1 or at the end
+  if (log && !log.notes) { log.notes = log.note ? [{ won: Math.min(log.end?.won ?? 0, 3), text: log.note }] : []; delete log.note; }
+
+  // the database answers later or never; the game does not wait for it
+  sink?.ready.then(ok => { if (ok) { live = true; flush(); } });
+
+  function flush() {
+    if (!live || !log || writing) { dirty = !!log; return; }
+    dirty = false;
+    // a failed write is not retried at once (a database that refuses would be hammered): the next save writes the whole log again
+    writing = sink.write(log)
+      .catch(() => {}).finally(() => { writing = null; if (dirty) flush(); });
+  }
+  const keep = () => store.set(KEY, JSON.stringify(log));
+
+  return {
+    // a new run: seed, tuned numbers, and which build was played
+    start(run, tune, build) {
+      const t0 = Date.now();
+      log = { id: `${run.seed.toString(36)}-${t0.toString(36)}`, seed: run.seed, build, tune, started: new Date(t0).toISOString(), t0, ev: [], end: null, notes: [] };
+      keep(); flush();
+    },
+    // an event: [type, ...data]; time in seconds from the start goes first
+    add(type, ...data) {
+      if (!log) return;
+      log.ev.push([Math.round((Date.now() - log.t0) / 100) / 10, type, ...data]);
+      keep();
+    },
+    // write to the database at the end of a turn or a choice, not on every tap
+    save(run) {
+      if (!log) return;
+      log.end = { stage: run.stage, table: run.table, won: run.won, phase: run.phase, amulets: run.amulets.map(a => a.id) };
+      keep(); flush();
+    },
+    // a note from the player, one per moment of the run (after a boss, at the end): won tables say when
+    note(won, text) {
+      if (!log) return;
+      log.notes = log.notes.filter(n => n.won !== won);
+      if (text) log.notes.push({ won, text });
+      keep(); flush();
+    },
+    noteAt(won) { return log?.notes.find(n => n.won === won)?.text || ''; },
+    // the answer to «what decided the run: you or luck?» at its end
+    luck(v) {
+      if (!log) return;
+      log.luck = v;
+      keep(); flush();
+    },
+    get current() { return log; },
+  };
+}
+
+return { claudeSink, makeLog };
+})();
+
+M["ui/firebase.js"] = (() => {
+// The notebook site's sink for the playtest log: runs go to the notebook's Firebase database as arcade/<run>,
+// one JSON string each (the database drops empty arrays and refuses some keys, a string keeps the log as it is).
+// Sign-in is anonymous, as in the notebook; the database rules let a player write only their own runs.
+// The config is the notebook's public web config (src/online.js in kitoglav22/yatzy); the API key only works from the site.
+const FB = {
+  apiKey: 'AIzaSyCD5cYHREOmhXcU4_89V5TcMf4SOtNAddg',
+  authDomain: 'yatzy-654ba.firebaseapp.com',
+  databaseURL: 'https://yatzy-654ba-default-rtdb.europe-west1.firebasedatabase.app',
+  projectId: 'yatzy-654ba',
+  appId: '1:621596129875:web:808ef98d27ba240cf5a4a6',
+};
+const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-';
+
+function firebaseSink() {
+  let D = null, db = null, uid = null;
+  const ready = (async () => {
+    const [A, U, Dm] = await Promise.all(['app', 'auth', 'database'].map(m => import(SDK + m + '.js')));
+    const app = A.initializeApp(FB), auth = U.getAuth(app);
+    uid = await new Promise((ok, bad) => {
+      const off = U.onAuthStateChanged(auth, u => { if (u) { off(); ok(u.uid); } else U.signInAnonymously(auth).catch(bad); });
+    });
+    D = Dm; db = Dm.getDatabase(app);
+    return true;
+  })().catch(() => false);
+  return {
+    ready,
+    write: log => D.set(D.ref(db, `arcade/${log.id}`), { uid, at: Date.now(), log: JSON.stringify(log) }),
+  };
+}
+
+return { firebaseSink };
+})();
+
+M["ui/app.js"] = (() => {
+// Grey box screen: dice, rolls, combinations, step-by-step scoring and a free amulet after each won boss.
+// All rules live in src/; this file only draws the run and passes taps to it.
+const COMBOS = M["src/data/combos.js"].default;
+const TABLES = M["src/data/tables.js"].default;
+const { detect, score, best } = M["src/scoring.js"];
+const { newRun, roll, hold, play, load, context, rules, offer, take, leaveShop, nextRerolls, overCap, moveAmulet, amuletById, abilityById, targetFor, isBoss, bossFor, shopOpen, abilityOffer, canBuy, buy, useAbility, SLOTS, tabletsOpen, tabletOffer, tabletBought, canBuyTablet, buyTablet } = M["src/run.js"];
+const { SHOP, TABLETS } = M["src/data/abilities.js"];
+const { applySaved, openTune, tuneChanges } = M["ui/tune.js"];
+const { makeLog, claudeSink } = M["ui/log.js"];
+const { firebaseSink } = M["ui/firebase.js"];
+
+const $ = id => document.getElementById(id);
+const comboName = Object.fromEntries(COMBOS.map(c => [c.id, c.name]));
+const KIND = { normal: 'обычный стол', hard: 'сложный стол', boss: 'босс' };
+const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+const KEY = 'arcade.run', BEST = 'arcade.best', BOSS_SEEN = 'arcade.bossSeen', TIPS = 'arcade.tips';
+// replaced by tools/build.mjs with the commit and date the page was built from
+const BUILD = "52f3734 2026-10-30 11:55";
+// which page this is: 'notebook' for the friends' alpha on the notebook site, anything else is the claude.ai test page
+const TARGET = "notebook";
+const NOTEBOOK = TARGET === 'notebook';
+const fast = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const wait = ms => new Promise(r => setTimeout(r, fast ? 0 : ms));
+
+// storage can be missing (private mode, previews): the game still runs, it just does not resume
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* no storage */ } },
+};
+
+// One new thing at a time: each mechanic is explained once per player (not per run), the first time it shows up.
+// Stars stay off the screen until their tip is seen, amulet slots until the first amulet is offered.
+const TIP = {
+  stars: () => `Новое: звёзды. ★ за каждую победу. И сдача: перебросов больше ${TABLES.maxRerolls} не бывает, каждые ${SHOP.change} лишних становятся ★. Копите: перед боссом откроется лавка.`,
+  shop: () => `Новое: лавка. Способность — разовая помощь на любом столе, слотов ${SHOP.slots}. Табличка навсегда усиливает одну комбинацию.`,
+  amulet: 'Новое: амулеты. Работают сами, каждый ход. Срабатывают слева направо, порядок можно поменять.',
+  boss: 'Новое: с этого этапа у каждого босса своё правило.',
+};
+const seenTips = () => { try { return JSON.parse(store.get(TIPS)) || []; } catch { return []; } };
+const seen = id => seenTips().includes(id);
+const markTips = ids => { const s = seenTips(); store.set(TIPS, JSON.stringify([...new Set([...s, ...ids])])); };
+
+const tuned = applySaved(store);
+const log = makeLog(store, NOTEBOOK ? firebaseSink() : claudeSink());
+let run = load(store.get(KEY)) || fresh();
+if (log.current?.seed !== run.seed) log.start(run, tuneChanges(), BUILD);
+let sel = -1, busy = false, shown = { victory: run.won >= 3 };
+// an ability waiting for its die: { k: slot, die }
+let pick = null;
+
+function fresh() {
+  const seed = crypto.getRandomValues(new Uint32Array(1))[0];
+  const r = newRun(seed);
+  log.start(r, tuneChanges(), BUILD);
+  return r;
+}
+function save() {
+  store.set(KEY, JSON.stringify(run));
+  const b = +store.get(BEST) || 0;
+  if (run.won > b) store.set(BEST, String(run.won));
+}
+
+function dieEl(face, i) {
+  const b = document.createElement('button');
+  b.className = 'die' + (face ? '' : ' blank') + (face && run.t.held[i] ? ' held' : '') + (rules(run).faceChips[face] === 0 ? ' void' : '')
+    + (pick && face ? (pick.die === i ? ' picked' : ' pickable') : '');
+  b.dataset.i = i;
+  b.setAttribute('aria-label', face ? `Кубик ${face}${run.t.held[i] ? ', удержан' : ''}` : 'Кубик не брошен');
+  for (let k = 0; k < 9; k++) {
+    const p = document.createElement('span');
+    p.className = 'pip' + (face && PIPS[face].includes(k) ? ' on' : '');
+    b.append(p);
+  }
+  return b;
+}
+
+function render() {
+  const t = run.t;
+  $('stage').textContent = `Этап ${run.stage + 1} · стол ${run.table + 1} из 3`;
+  $('kind').textContent = KIND[t.kind];
+  $('kind').className = 'kind' + (t.kind === 'boss' ? ' boss' : '');
+  const boss = bossFor(run), bl = $('bossLine');
+  bl.textContent = isBoss(run) ? `${boss.icon} ${boss.name}: ${boss.desc}` : `Босс этапа: ${boss.icon} ${boss.name}, ${boss.desc}`;
+  bl.className = 'boss-line' + (isBoss(run) ? ' now' : '');
+  $('points').textContent = t.points;
+  $('target').textContent = t.target;
+  $('bar').style.width = Math.min(100, 100 * t.points / t.target) + '%';
+  danger();
+  pips($('turns'), t.turns, t.turnsLeft);
+  pips($('rerolls'), Math.max(rules(run).rerolls, t.rerolls), t.rerolls);
+  $('turnsN').textContent = t.turnsLeft;
+  $('rerollsN').textContent = t.rerolls;
+
+  const am = $('amulets');
+  am.replaceChildren();
+  am.hidden = $('info').hidden = !run.amulets.length && !seen('amulet');
+  for (let s = 0; s < SLOTS; s++) {
+    const a = run.amulets[s];
+    const b = document.createElement('button');
+    b.className = 'slot' + (a ? ' full' : '') + (s === sel ? ' sel' : '');
+    b.dataset.s = s;
+    if (a) { b.textContent = amuletById[a.id].icon; b.setAttribute('aria-label', amuletById[a.id].name); }
+    am.append(b);
+  }
+  const info = $('info');
+  info.replaceChildren();
+  if (sel >= 0 && run.amulets[sel]) {
+    const d = amuletById[run.amulets[sel].id];
+    info.innerHTML = `<span><b>${d.name}</b>: ${d.desc}</span>`;
+    if (run.amulets.length > 1) {
+      for (const [txt, to] of [['←', sel - 1], ['→', sel + 1]]) {
+        if (to < 0 || to >= run.amulets.length) continue;
+        const m = document.createElement('button');
+        m.className = 'mv'; m.textContent = txt; m.dataset.to = to;
+        info.append(m);
+      }
+    }
+  } else if (run.amulets.length) {
+    info.textContent = 'Амулеты срабатывают слева направо. Нажмите на амулет, чтобы прочитать и переставить.';
+  } else {
+    info.textContent = 'Победите босса, чтобы получить амулет.';
+  }
+
+  $('dice').replaceChildren(...(t.dice || Array(t.held.length).fill(0)).map(dieEl));
+  const r = $('roll');
+  r.disabled = busy || run.phase !== 'table' || (t.dice && t.rerolls === 0);
+  r.textContent = !t.dice ? 'Бросить' : t.rerolls ? `Перебросить (${t.rerolls})` : 'Выберите комбинацию';
+
+  abilityBar();
+  const ctx = context(run);
+  // while the dice still rattle the combinations do not give the result away
+  const dice = rolling ? null : t.dice;
+  const can = dice ? detect(dice) : {};
+  const top = dice ? best(dice, ctx) : null;
+  const list = $('combos');
+  list.replaceChildren();
+  for (const c of COMBOS) {
+    const lv = run.levels[c.id] || 1;
+    const b = document.createElement('button');
+    const used = ctx.banned.includes(c.id);
+    const s = can[c.id] && !used ? score(dice, c.id, ctx) : null;
+    b.className = 'combo' + (top && top.combo === c.id ? ' best' : '') + (used ? ' used' : '');
+    b.disabled = busy || !s;
+    b.dataset.c = c.id;
+    const ch = c.chips + (lv - 1) * c.level.chips, mu = c.mult + (lv - 1) * c.level.mult;
+    const pv = !s ? '' : t.armed.includes('double') ? s.total * 2 : s.total;
+    b.innerHTML = `<span>${c.name}${lv > 1 ? ` · ур. ${lv}` : ''}</span><span class="base">${ch}×${mu}</span><span class="pv">${pv}</span>`;
+    list.append(b);
+  }
+  $('seed').textContent = `Забег ${run.seed.toString(36).toUpperCase()} · рекорд: ${+store.get(BEST) || 0} ст.`;
+  $('tune').textContent = tunedNow() ? '⚙ Баланс (изменён)' : '⚙ Баланс';
+  overlay();
+}
+
+// Bought abilities under the roll button. A die ability asks for its die first (and Подкрутка for +1 or −1),
+// a hand ability is switched on for the next combination.
+function abilityBar() {
+  const bar = $('abil'), t = run.t;
+  bar.replaceChildren();
+  bar.hidden = !run.abilities.length && !(run.stars && seen('stars'));
+  const stars = document.createElement('span');
+  stars.className = 'stars'; stars.textContent = `★ ${run.stars}`;
+  stars.title = 'Звёзды: за победу на столе и сдачей за перебросы сверх 12. Тратятся в лавке и на таблички.';
+  bar.append(stars);
+  const usable = !busy && run.phase === 'table' && t.dice;
+  const add = (txt, fn, cls = '') => { const b = document.createElement('button'); b.className = 'ab ' + cls; b.textContent = txt; b.disabled = !usable; b.onclick = fn; bar.append(b); return b; };
+  if (pick && pick.die !== undefined) {
+    // each choice shows what it makes: the new face and the best combination with it
+    const f = t.dice[pick.die], id = run.abilities[pick.k];
+    const after = g => { const d = [...t.dice]; d[pick.die] = g; const b = best(d, context(run)); return `${f} → ${g} · ${comboName[b.combo]} ${b.total}`; };
+    if (id === 'flip') add(after(7 - f), () => applyAbility({ die: pick.die }));
+    if (id === 'nudge' && f > 1) add(after(f - 1), () => applyAbility({ die: pick.die, by: -1 }));
+    if (id === 'nudge' && f < 6) add(after(f + 1), () => applyAbility({ die: pick.die, by: 1 }));
+    add('Отмена', () => { pick = null; render(); }, 'alt');
+    return;
+  }
+  if (pick) {
+    const hint = document.createElement('span');
+    hint.className = 'hint'; hint.textContent = 'Нажмите на кубик';
+    bar.append(hint);
+    add('Отмена', () => { pick = null; render(); }, 'alt');
+    return;
+  }
+  run.abilities.forEach((id, k) => {
+    const a = abilityById[id];
+    const b = add(`${a.icon} ${a.name}`, () => {
+      if (a.use === 'hand') { useAbility(run, k); log.add('u', id, t.armed.includes(id)); save(); render(); return; }
+      pick = { k }; render();
+    }, t.armed.includes(id) ? 'on' : closes(id) ? 'closes' : '');
+    b.title = closes(id) ? `${a.desc}. Сейчас закрывает стол` : a.desc;
+  });
+}
+// Would this ability, used now, take the table to its target with the best combination?
+// (Один кубик is random, so it never promises that.)
+function closes(id) {
+  const t = run.t;
+  if (!t.dice || run.phase !== 'table') return false;
+  const ctx = context(run), need = t.target - t.points, now = best(t.dice, ctx).total;
+  if (now >= need) return false;
+  if (id === 'double') return now * 2 >= need;
+  const faces = i => id === 'flip' ? [7 - t.dice[i]] : id === 'nudge' ? [t.dice[i] - 1, t.dice[i] + 1].filter(f => f >= 1 && f <= 6) : [];
+  return t.dice.some((_, i) => faces(i).some(g => { const d = [...t.dice]; d[i] = g; return best(d, ctx).total >= need; }));
+}
+function applyAbility(arg) {
+  const id = run.abilities[pick.k];
+  if (useAbility(run, pick.k, arg)) { log.add('u', id, arg.die, arg.by ?? null, run.t.dice.join('')); save(); }
+  pick = null;
+  render();
+}
+
+// After a won table: stars and the change, what the reroll pool will be, the ability shop before the boss
+// and tablets before and after it
+function wonTable(h, btn) {
+  const t = run.t, change = t.change ?? 0, next = nextRerolls(run), over = overCap(run);
+  const rr = k => `${k} ${plural(k, 'переброс', 'переброса', 'перебросов')}`;
+  h('p', `★ +1 за победу${change ? `, ★ +${change} сдача` : ''}. Всего ★ ${run.stars}.`).className = 'carry';
+  tip(h, 'stars');
+  h('p', `На следующем столе ${rr(next)}: остаток ${t.rerolls} + новые, не больше ${TABLES.maxRerolls}.`
+    + (over ? ` Лишние ${over} — в сдачу, ${SHOP.change} за ★.` : '')).className = 'carry';
+  const shop = shopOpen(run);
+  if (shop) h('h3', 'Лавка перед боссом');
+  if (shop && !tip(h, 'shop')) h('p', `Способность тратится один раз, на любом столе. Слотов ${SHOP.slots}.`);
+  if (shop) abilityShop();
+  if (tabletsOpen(run)) tablets(h);
+}
+function abilityShop() {
+  const ids = abilityOffer(run);
+  for (const id of ids) {
+    const a = abilityById[id], bought = run.bought.includes(id);
+    const b = document.createElement('button');
+    b.className = 'pick buy';
+    b.disabled = !canBuy(run, id);
+    b.innerHTML = `<span class="ic">${a.icon}</span><b>${a.name} <span class="price">${bought ? 'куплено' : `★ ${a.price}`}</span></b><small>${a.desc}</small>`;
+    b.onclick = () => { if (buy(run, id)) { log.add('b', id, ids); log.save(run); save(); render(); } };
+    $('card').append(b);
+  }
+}
+// A tablet shows the combination's base before and after: no arithmetic for the player
+function tablets(h) {
+  h('h3', 'Таблички');
+  h('p', `+1 уровень комбинации до конца забега, ★ ${TABLETS.price}.` + (isBoss(run) ? ' Покупайте до выбора амулета.' : ''));
+  const ids = tabletOffer(run);
+  for (const id of ids) {
+    const c = COMBOS.find(x => x.id === id), lv = run.levels[id] || 1, bought = tabletBought(run, id);
+    const base = l => `${c.chips + (l - 1) * c.level.chips}×${c.mult + (l - 1) * c.level.mult}`;
+    const b = document.createElement('button');
+    b.className = 'pick buy';
+    b.disabled = !canBuyTablet(run, id);
+    b.innerHTML = `<span class="ic">📜</span><b>${c.name}, ур. ${lv + (bought ? 0 : 1)} <span class="price">${bought ? 'куплено' : `★ ${TABLETS.price}`}</span></b><small>${bought ? base(lv) : `${base(lv)} → ${base(lv + 1)}`}</small>`;
+    b.onclick = () => { if (buyTablet(run, id)) { log.add('l', id, ids); log.save(run); save(); render(); } };
+    $('card').append(b);
+  }
+}
+
+// 1 переброс, 2 переброса, 5 перебросов
+function plural(n, one, few, many) {
+  const d = n % 10, h = n % 100;
+  return d === 1 && h !== 11 ? one : d >= 2 && d <= 4 && (h < 12 || h > 14) ? few : many;
+}
+
+// n dots, the first `on` of them lit
+function pips(el, n, on) {
+  if (el.children.length !== n) el.replaceChildren(...Array.from({ length: n }, () => document.createElement('i')));
+  [...el.children].forEach((p, i) => p.classList.toggle('off', i >= on));
+  el.setAttribute('aria-label', `${on} из ${n}`);
+}
+
+// How much each remaining turn has to bring: the bar turns yellow and red as that grows past a fair share,
+// the mark shows where the points should be after this turn, the last turn gets a frame.
+function danger() {
+  const t = run.t, R = rules(run), g = $('goal');
+  const left = Math.max(0, t.target - t.points), turns = Math.max(1, t.turnsLeft);
+  const need = Math.ceil(left / turns / 10) * 10, fair = t.target / t.turns;
+  const playing = run.phase === 'table';
+  g.classList.toggle('warn', playing && need > fair * 1.15);
+  g.classList.toggle('danger', playing && need > fair * 1.6);
+  g.classList.toggle('last', playing && t.turnsLeft === 1);
+  $('pace').style.left = Math.min(100, 100 * (t.turns - t.turnsLeft + 1) / t.turns) + '%';
+  $('pace').hidden = !playing;
+  $('need').innerHTML = !playing ? '' : t.turnsLeft === 1 ? `Последний ход: нужно <b>${left}</b>` : `Нужно ~<b>${need}</b> за ход`;
+}
+
+function setCalc(chips, mult, total) {
+  for (const [id, v] of [['chips', chips], ['mult', mult], ['total', total]]) {
+    const el = $(id);
+    if (el.textContent !== String(v)) { el.textContent = v; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+  }
+}
+
+// Replays the scoring steps: dice and amulets light up in the order they count
+async function animate(s) {
+  const dEls = $('dice').children, aEls = $('amulets').children;
+  setCalc('', '', '');
+  for (const st of s.steps) {
+    if (st.kind === 'die') { dEls[st.die].classList.add('score'); }
+    if (st.kind === 'amulet') { aEls[st.slot].classList.remove('fire'); void aEls[st.slot].offsetWidth; aEls[st.slot].classList.add('fire'); }
+    setCalc(st.chips, Math.round(st.mult * 10) / 10, '');
+    await wait(st.kind === 'combo' ? 300 : 220);
+  }
+  setCalc(s.chips, s.mult, s.total);
+  await wait(700);
+}
+
+async function onPlay(id) {
+  if (busy) return;
+  const dice = [...run.t.dice];
+  busy = true; sel = -1; pick = null;
+  const gains = amuletGains(dice, id);
+  const s = play(run, id);
+  if (!s) { busy = false; return; }
+  log.add('p', id, s.total);
+  log.save(run);
+  save();
+  // draw the dice that scored, not the cleared table, while the score plays
+  $('dice').replaceChildren(...dice.map((f, i) => { const e = dieEl(f, i); e.classList.remove('held'); return e; }));
+  for (const b of $('combos').children) b.disabled = true;
+  $('roll').disabled = true;
+  await animate(s);
+  showGains(gains, s);
+  busy = false;
+  render();
+}
+
+// What each amulet added to this hand: the score with it minus the score without it.
+// A zero is shown too, so the player sees when an amulet did not fire.
+function amuletGains(dice, id) {
+  const ctx = context(run), full = score(dice, id, ctx).total;
+  return ctx.amulets.map((a, k) => ({ name: a.name, add: full - score(dice, id, { ...ctx, amulets: ctx.amulets.filter((_, j) => j !== k) }).total }));
+}
+function showGains(gains, s) {
+  const parts = gains.map(g => `${g.name} <b>${g.add > 0 ? '+' : ''}${g.add}</b>`);
+  for (const st of s?.steps || []) {
+    if (st.id === 'double') parts.push('Дубль <b>×2</b>');
+  }
+  $('gain').innerHTML = parts.join(' · ');
+}
+
+// a few words from the player after a boss and at the end of a run go into the playtest log
+function noteBox() {
+  const box = document.createElement('label'), t = document.createElement('textarea');
+  box.className = 'note-box';
+  box.innerHTML = '<b>✎ Пара слов для разбора</b>';
+  t.id = 'note'; t.className = 'note'; t.placeholder = 'Что понравилось, что мешало? Можно пропустить.';
+  t.value = log.noteAt(run.won);
+  t.onchange = () => log.note(run.won, t.value.trim());
+  box.append(t);
+  $('card').append(box);
+}
+
+// the question of the playtests: did the player feel the run was theirs or the dice's
+const LUCK = [['me', 'От меня'], ['both', 'Поровну'], ['luck', 'От удачи']];
+function luckBox() {
+  const box = document.createElement('div');
+  box.className = 'note-box luck';
+  box.innerHTML = '<b>От чего зависел исход?</b>';
+  const row = document.createElement('div');
+  row.className = 'luck-row';
+  for (const [v, txt] of LUCK) {
+    const b = document.createElement('button');
+    b.textContent = txt; b.dataset.v = v;
+    b.className = 'btn alt' + (log.current?.luck === v ? ' on' : '');
+    b.onclick = () => { log.luck(v); row.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); };
+    row.append(b);
+  }
+  box.append(row);
+  $('card').append(box);
+}
+
+// a tip the player has not read yet, inside the card that brings its mechanic
+let showing = [];
+function tip(h, id) {
+  if (seen(id)) return false;
+  h('p', typeof TIP[id] === 'function' ? TIP[id]() : TIP[id]).className = 'tip';
+  showing.push(id);
+  return true;
+}
+
+// The boss is announced once, before its first roll, with its rule in large print
+const bossKey = () => `${run.seed}:${run.stage}`;
+function bossIntro(h, btn) {
+  const b = bossFor(run), t = run.t;
+  $('card').className = 'card boss-intro';
+  h('div', b.icon).className = 'ic';
+  h('h2', `Босс: ${b.name}`);
+  h('p', b.desc[0].toUpperCase() + b.desc.slice(1)).className = 'rule';
+  if (Object.keys(b.rules).length) tip(h, 'boss');
+  h('p', `Цель ${t.target}. У вас ${t.turnsLeft} ${plural(t.turnsLeft, 'ход', 'хода', 'ходов')} и ${t.rerolls} ${plural(t.rerolls, 'переброс', 'переброса', 'перебросов')}.`);
+  btn('В бой', () => { store.set(BOSS_SEEN, bossKey()); render(); });
+}
+
+function overlay() {
+  const o = $('overlay'), card = $('card');
+  const intro = run.phase === 'table' && isBoss(run) && !run.t.dice && store.get(BOSS_SEEN) !== bossKey();
+  if (busy || (run.phase === 'table' && !intro)) { o.hidden = true; return; }
+  o.hidden = false;
+  card.replaceChildren();
+  card.className = 'card';
+  const h = (tag, txt) => { const e = document.createElement(tag); e.textContent = txt; card.append(e); return e; };
+  // leaving the card by any of its buttons marks its tips as read
+  const btn = (txt, fn, alt) => { const b = h('button', txt); b.className = 'btn' + (alt ? ' alt' : ''); b.onclick = () => { markTips(showing); fn(); }; return b; };
+  showing = [];
+  if (intro) { bossIntro(h, btn); return; }
+  if (run.phase === 'over') {
+    h('h2', 'Забег окончен');
+    h('p', `Не хватило ${run.t.target - run.t.points}: ${run.t.points} из ${run.t.target}.`).className = 'miss';
+    luckBox();
+    noteBox();
+    h('p', `Пройдено столов: ${run.won}. Рекорд: ${+store.get(BEST) || 0}.`);
+    btn('Новый забег', () => { run = fresh(); shown = { victory: false }; save(); render(); });
+    return;
+  }
+  if (run.won === 3 && !shown.victory) {
+    h('h2', 'Этап 1 пройден!');
+    h('p', 'Это вся серая коробка. Можно играть дальше: цели растут, пока не проиграете.');
+    btn('Играть дальше', () => { shown.victory = true; render(); });
+    btn('Новый забег', () => { run = fresh(); shown = { victory: false }; save(); render(); }, true);
+    return;
+  }
+  h('h2', isBoss(run) ? 'Босс побеждён' : 'Стол пройден');
+  const spare = run.t.turnsLeft;
+  h('p', `${run.t.points} из ${run.t.target}, ` + (spare ? `в запасе ${spare} ${plural(spare, 'ход', 'хода', 'ходов')}.` : 'на последнем ходу!'));
+  wonTable(h, btn);
+  if (!isBoss(run)) { btn('Дальше', () => { leaveShop(run); log.save(run); save(); render(); }); return; }
+  noteBox();
+  const ids = offer(run);
+  if (!ids.length) {
+    h('p', run.amulets.length >= SLOTS ? 'Все слоты амулетов заняты.' : 'Амулетов больше нет.');
+    btn('Дальше', () => { leaveShop(run); log.save(run); save(); render(); });
+    return;
+  }
+  h('p', 'Возьмите один амулет бесплатно.');
+  tip(h, 'amulet');
+  for (const id of ids) {
+    const d = amuletById[id];
+    const b = document.createElement('button');
+    b.className = 'pick';
+    b.innerHTML = `<span class="ic">${d.icon}</span><b>${d.name}</b><small>${d.desc}</small>`;
+    b.onclick = () => { markTips(showing); log.add('a', id, ids); take(run, id); log.save(run); save(); render(); };
+    card.append(b);
+  }
+  btn('Пропустить', () => { log.add('a', null, ids); leaveShop(run); log.save(run); save(); render(); }, true);
+}
+
+$('dice').addEventListener('click', e => {
+  const d = e.target.closest('.die');
+  if (!d || busy) return;
+  if (pick) {
+    if (!run.t.dice) return;
+    if (run.abilities[pick.k] === 'single') applyAbility({ die: +d.dataset.i }); else { pick.die = +d.dataset.i; render(); }
+    return;
+  }
+  hold(run, +d.dataset.i); log.add('h', +d.dataset.i); save(); render();
+});
+$('roll').addEventListener('click', () => {
+  if (busy || !roll(run)) return;
+  pick = null;
+  log.add('r', run.t.dice.join(''));
+  save(); setCalc(0, 0, 0); showGains([]);
+  // with reduced motion the result shows at once
+  if (fast) { render(); return; }
+  busy = rolling = true;
+  render();
+  animateRoll(run.t.held.map(h => !h));
+});
+
+// The result is already rolled and saved; the animation only reveals it (as in the notebook):
+// free dice rattle in place, calm down and land on their face one by one, each at its own moment.
+// Math.random() here is only for the look; the dice themselves come from the seeded run.
+let rolling = false;
+function setFace(el, f) { [...el.children].forEach((p, q) => p.classList.toggle('on', PIPS[f].includes(q))); }
+function animateRoll(free) {
+  const els = [...$('dice').children], order = free.map((f, k) => (f ? k : -1)).filter(k => k >= 0);
+  const span = 900 + Math.random() * 700, stopAt = {}, next = {}, face = {};
+  const shake = $('dice');
+  shake.classList.remove('shake'); void shake.offsetWidth; shake.classList.add('shake');
+  for (const k of order) { stopAt[k] = 350 + Math.random() * (span - 350); els[k].classList.add('shaking'); }
+  const t0 = performance.now(), j = a => (Math.random() * 2 - 1) * a;
+  const tick = now => {
+    const t = now - t0;
+    for (const k of order) {
+      const d = els[k];
+      if (!d.classList.contains('shaking')) continue;
+      if (t >= stopAt[k]) {
+        d.classList.remove('shaking'); d.style.transitionDuration = ''; d.style.transform = '';
+        setFace(d, run.t.dice[k]); void d.offsetWidth; d.classList.add('land');
+        try { navigator.vibrate?.(15); } catch { /* no vibration */ }
+        continue;
+      }
+      // a jolt: random offset and tilt, strong at first and calmer towards the stop, with a new face each time
+      const left = (stopAt[k] - t) / stopAt[k], gap = left > .6 ? 45 : left > .3 ? 85 : 150;
+      if (!next[k] || now >= next[k]) {
+        const a = 3 + 9 * left;
+        d.style.transitionDuration = gap + 'ms';
+        d.style.transform = `translate3d(${j(a)}px,${j(a) - a * .6}px,0) rotate(${j(8 + 22 * left)}deg) scale(${1 + .06 * left})`;
+        let f = 1 + Math.floor(Math.random() * 6); if (f === face[k]) f = f % 6 + 1;
+        face[k] = f; setFace(d, f); next[k] = now + gap;
+      }
+    }
+    if (t < Math.max(0, ...Object.values(stopAt)) + 450) { requestAnimationFrame(tick); return; }
+    busy = rolling = false;
+    render();
+    if (run.t.dice.every(f => f === run.t.dice[0])) {
+      shake.classList.remove('yatzy'); void shake.offsetWidth; shake.classList.add('yatzy');
+      try { navigator.vibrate?.([40, 60, 40, 60, 120]); } catch { /* no vibration */ }
+    }
+  };
+  requestAnimationFrame(tick);
+}
+$('combos').addEventListener('click', e => { const c = e.target.closest('.combo'); if (c && !c.disabled) onPlay(c.dataset.c); });
+$('amulets').addEventListener('click', e => {
+  const s = e.target.closest('.slot');
+  if (!s) return;
+  sel = +s.dataset.s === sel || !run.amulets[+s.dataset.s] ? -1 : +s.dataset.s;
+  render();
+});
+$('info').addEventListener('click', e => {
+  const m = e.target.closest('.mv');
+  if (!m) return;
+  log.add('m', sel, +m.dataset.to);
+  moveAmulet(run, sel, +m.dataset.to); sel = +m.dataset.to; save(); render();
+});
+const tunedNow = () => { try { return Object.keys(JSON.parse(store.get('arcade.tune')) || {}).length; } catch { return tuned; } };
+$('tune').addEventListener('click', () => {
+  if (busy) return;
+  openTune($('tuneBox'), {
+    store,
+    amulets: run.amulets.map(a => a.id),
+    onChange: () => { if (run.phase === 'table') run.t.target = targetFor(run.stage, run.t.kind); save(); render(); },
+    onClose: () => log.add('t', tuneChanges()),
+  });
+});
+
+// a second tap within 3 seconds confirms (confirm() is blocked inside some frames)
+let sure = 0;
+$('new').addEventListener('click', () => {
+  if (busy) return;
+  if (Date.now() - sure > 3000) {
+    sure = Date.now(); $('new').textContent = 'Точно? Нажмите ещё раз';
+    setTimeout(() => { $('new').textContent = 'Новый забег'; }, 3000);
+    return;
+  }
+  sure = 0; $('new').textContent = 'Новый забег';
+  run = fresh(); shown = { victory: false }; sel = -1; save(); setCalc(0, 0, 0); showGains([]); render();
+});
+
+// the friends' alpha: no balance panel, and a way back to the notebook
+if (NOTEBOOK) { $('tune').hidden = true; $('home').hidden = false; }
+
+setCalc(0, 0, 0);
+save();
+render();
+
+return {  };
+})();
+})();
+</script>
+</body>
+</html>

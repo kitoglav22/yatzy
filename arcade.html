@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Аркада Яцзы (альфа) v71.6: собрано в закрытом репозитории yatzy-arcade, ветка PR #62, коммит 34f0050 (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
+<!-- Аркада Яцзы (альфа) v71.7: собрано в закрытом репозитории yatzy-arcade, ветка PR #64, коммит f78adc2 (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -91,6 +91,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .card h3 { margin: 4px 0 0; font-size: 18px; color: var(--gold); }
 .pick.buy:disabled { opacity: .5; }
 .pick .price { color: var(--gold); font-size: 14px; margin-left: 6px; }
+.coin { display: inline-block; width: .8em; height: .8em; margin-right: .2em; vertical-align: -.08em; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffe9a8, var(--gold) 55%, #b9821c); box-shadow: inset 0 0 0 .09em rgba(80, 50, 0, .35); }
 
 .dice { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: min(100%, 330px); margin: 10px auto 0; }
 .die {
@@ -969,10 +970,10 @@ function fields() {
   add('Стол', 'tables.turns', 'ходов', TABLES, 'turns');
   add('Стол', 'tables.rerolls', 'перебросов на стол', TABLES, 'rerolls');
   add('Стол', 'tables.order.rerolls', 'перебросов за заказ стола', TABLES.order, 'rerolls');
-  for (const a of ABILITIES) add('Способности', `ability.${a.id}.price`, `${a.icon} ${a.name}, цена ★`, a, 'price');
-  add('Звёзды', 'shop.change', 'перебросов за ★ после стола', SHOP, 'change');
-  add('Звёзды', 'tablets.price', 'табличка, цена ★ за 2-й уровень', TABLETS, 'price');
-  add('Звёзды', 'tablets.step', 'табличка, +★ за каждый следующий уровень', TABLETS, 'step');
+  for (const a of ABILITIES) add('Способности', `ability.${a.id}.price`, `${a.icon} ${a.name}, цена в монетках`, a, 'price');
+  add('Монетки', 'shop.change', 'перебросов за монетку после стола', SHOP, 'change');
+  add('Монетки', 'tablets.price', 'табличка: цена 2-го уровня в монетках', TABLETS, 'price');
+  add('Монетки', 'tablets.step', 'табличка: +монеток за каждый следующий уровень', TABLETS, 'step');
   add('Стол', 'tables.growth', 'рост цели после последнего этапа таблицы', TABLES, 'growth', 0.1);
   TABLES.targets.forEach((row, s) => row.forEach((_, k) => add('Цели столов', `tables.targets.${s}.${k}`, `этап ${s + 1}, ${KIND[k]}`, row, k, 50)));
   return f;
@@ -1540,13 +1541,15 @@ const KIND = { normal: 'обычный стол', hard: 'сложный стол
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 const KEY = 'arcade.run', BEST = 'arcade.best', BOSS_SEEN = 'arcade.bossSeen', TIPS = 'arcade.tips', TUTOR = 'arcade.tutor', STREAK = 'arcade.tutorStreak';
 // replaced by tools/build.mjs with the commit and date the page was built from
-const BUILD = "22de632 2026-10-31 19:09";
-const VERSION = "71.6";
+const BUILD = "f78adc2 2026-10-31 19:37";
+const VERSION = "71.7";
 // which page this is: 'notebook' for the friends' alpha on the notebook site, anything else is the claude.ai test page
 const TARGET = "notebook";
 const NOTEBOOK = TARGET === 'notebook';
 // the mark of the table's order on its combination and in the breakdown: its rerolls as dots, like the reroll pips
 const dots = n => `<span class="dots" aria-label="${n}">${'<i></i>'.repeat(n)}</span>`;
+// the currency: «монетки» on screen (author, 31.10.2026), `stars` in the code; a coin drawn in CSS, since the 🪙 emoji is missing on older phones
+const COIN = '<i class="coin" aria-label="монетки"></i>';
 const ORDER = () => '+' + dots(TABLES.order.rerolls);
 const fast = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const wait = ms => new Promise(r => setTimeout(r, fast ? 0 : ms));
@@ -1562,7 +1565,7 @@ const TIPS_EVERY_RUN = true;
 // One new thing at a time: each mechanic is explained once per player (not per run), the first time it shows up.
 // Stars stay off the screen until their tip is seen, amulet slots until the first amulet is offered.
 const TIP = {
-  stars: 'Новое: звёзды ★. Даются за победу и за сэкономленные перебросы. Тратятся в лавке.',
+  stars: () => `Новое: монетки ${COIN}. Даются за победу и за сэкономленные перебросы. Тратятся в лавке.`,
   order: () => `Новое: заказ стола. На каждом столе одна комбинация отмечена ${ORDER()}. Сыграете её — +${TABLES.order.rerolls} ${plural(TABLES.order.rerolls, 'переброс', 'переброса', 'перебросов')} на этот стол.`,
   shop: () => `Новое: лавка. Способность — разовая помощь на любом столе, слотов ${SHOP.slots}. Табличка навсегда усиливает одну комбинацию. Передумали — нажмите на покупку ещё раз, пока не ушли из лавки.`,
   amulet: 'Новое: амулеты. Амулет — постоянный бонус к очкам.',
@@ -1809,8 +1812,8 @@ function abilityBar() {
   bar.replaceChildren();
   bar.hidden = !run.abilities.length && !(run.stars && seen('stars'));
   const stars = document.createElement('span');
-  stars.className = 'stars'; stars.textContent = `★ ${run.stars}`;
-  stars.title = `Звёзды: за победу на столе (каждые ${SHOP.win.every} этапа на 1 больше) и за каждые ${SHOP.change} несгоревших переброса стола. Тратятся в лавке и на таблички.`;
+  stars.className = 'stars'; stars.innerHTML = `${COIN}${run.stars}`;
+  stars.title = `Монетки: за победу на столе (каждые ${SHOP.win.every} этапа на 1 больше) и за каждые ${SHOP.change} несгоревших переброса стола. Тратятся в лавке и на таблички.`;
   // all slots full: nothing to buy until the shop, and three abilities need the whole row on a 390 px phone
   if (run.abilities.length < SHOP.slots) bar.append(stars);
   const usable = !busy && run.phase === 'table' && t.dice;
@@ -1859,12 +1862,14 @@ function applyAbility(arg) {
   render();
 }
 
-// After a won table: stars and the change, what the reroll pool will be, the ability shop before the boss
+// After a won table: coins (stars in the code) and the change, what the reroll pool will be, the ability shop before the boss
 // and tablets before and after it
 function wonTable(h, btn) {
   const t = run.t, change = t.change ?? 0, next = nextRerolls(run);
   const rr = k => `${k} ${plural(k, 'переброс', 'переброса', 'перебросов')}`;
-  h('p', `★ +${t.win ?? 1} за победу${change ? `, ★ +${change} за ${t.rerolls} ${plural(t.rerolls, 'несгоревший переброс', 'несгоревших переброса', 'несгоревших перебросов')}` : ''}. Всего ★ ${run.stars}.`).className = 'carry';
+  const carry = h('p', '');
+  carry.className = 'carry';
+  carry.innerHTML = `${COIN}+${t.win ?? 1} за победу${change ? `, ${COIN}+${change} за ${t.rerolls} ${plural(t.rerolls, 'несгоревший переброс', 'несгоревших переброса', 'несгоревших перебросов')}` : ''}. Всего ${COIN}${run.stars}.`;
   tip(h, 'stars');
   const take = run.table === 1 ? TABLES.rerolls - next : 0;
   h('p', `На следующем столе ${rr(next)}${take > 0 ? ` (${bossFor(run).name} забирает ${take})` : ''}.`).className = 'carry';
@@ -1883,7 +1888,7 @@ function abilityShop() {
     b.className = 'pick buy';
     const back = bought && canRefund(run, id);
     b.disabled = !canBuy(run, id) && !back;
-    b.innerHTML = `<span class="ic">${a.icon}</span><b>${a.name} <span class="price">${bought ? 'куплено' : `★ ${a.price}`}</span></b><small>${back ? 'Нажмите ещё раз, чтобы вернуть звёзды' : a.desc}</small>`;
+    b.innerHTML = `<span class="ic">${a.icon}</span><b>${a.name} <span class="price">${bought ? 'куплено' : `${COIN}${a.price}`}</span></b><small>${back ? 'Нажмите ещё раз, чтобы вернуть монетки' : a.desc}</small>`;
     b.onclick = () => {
       if (back ? refund(run, id) : buy(run, id)) { log.add(back ? 'v' : 'b', id, ids); log.save(run); save(); render(); }
     };
@@ -1902,7 +1907,7 @@ function tablets(h) {
     const b = document.createElement('button');
     b.className = 'pick buy';
     b.disabled = !canBuyTablet(run, id) && !bought;
-    b.innerHTML = `<span class="ic">📜</span><b>${c.name}, ур. ${lv + (bought ? 0 : 1)} <span class="price">${bought ? 'куплено' : `★ ${tabletPrice(run, id)}`}</span></b><small>${bought ? `${base(lv)}. Нажмите ещё раз, чтобы вернуть звёзды` : `${base(lv)} → ${base(lv + 1)}`}</small>`;
+    b.innerHTML = `<span class="ic">📜</span><b>${c.name}, ур. ${lv + (bought ? 0 : 1)} <span class="price">${bought ? 'куплено' : `${COIN}${tabletPrice(run, id)}`}</span></b><small>${bought ? `${base(lv)}. Нажмите ещё раз, чтобы вернуть монетки` : `${base(lv)} → ${base(lv + 1)}`}</small>`;
     b.onclick = () => {
       if (bought ? refundTablet(run, id) : buyTablet(run, id)) { log.add(bought ? 'v' : 'l', id, ids); log.save(run); save(); render(); }
     };

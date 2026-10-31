@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Аркада Яцзы (альфа) v71.2: собрано в закрытом репозитории yatzy-arcade, ветка PR #49, коммит fa20e9d (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
+<!-- Аркада Яцзы (альфа) v71.3: собрано в закрытом репозитории yatzy-arcade, ветка PR #51, коммит a57d361 (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -192,6 +192,11 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .gain .c { color: var(--chips); } .gain .m { color: var(--mult); }
 .combo .base i { font-style: normal; }
 .combo .base.live .c { color: var(--chips); } .combo .base.live .m { color: var(--mult); }
+/* combinations reference */
+.help-list { display: grid; gap: 8px; }
+.help-row { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; align-items: baseline; text-align: left; }
+.help-row small { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
+.help-row .base i { font-style: normal; } .help-row .c { color: var(--chips); } .help-row .m { color: var(--mult); }
 /* The notebook's look for the friends' alpha on the notebook site (tools/build.mjs adds it after style.css for dist/notebook.html):
    the notebook's colours, fonts, white cards and dice (src/style.css in kitoglav22/yatzy). Only the look changes, the layout stays. */
 :root {
@@ -304,7 +309,7 @@ html.tgfull .overlay { padding-top: calc(16px + var(--tg-top, 0px)); padding-bot
 
   <section class="combos" id="combos" aria-label="Комбинации"></section>
 
-  <footer class="foot"><a id="home" class="link" href="./" hidden>← Блокнот</a><span id="seed"></span><button id="tune" class="link">⚙ Баланс</button><button id="new" class="link">Новый забег</button></footer>
+  <footer class="foot"><a id="home" class="link" href="./" hidden>← Блокнот</a><span id="seed"></span><button id="help" class="link">Комбинации</button><button id="tune" class="link">⚙ Баланс</button><button id="new" class="link">Новый забег</button></footer>
 </main>
 
 <div id="overlay" class="overlay" hidden><div class="card" id="card"></div></div>
@@ -1213,7 +1218,7 @@ const COMBOS = M["src/data/combos.js"].default;
 const TABLES = M["src/data/tables.js"].default;
 const { detect, score, best } = M["src/scoring.js"];
 const { newRun, roll, hold, play, load, context, rules, offer, take, leaveShop, nextRerolls, orderFor, moveAmulet, amuletById, abilityById, targetFor, isBoss, bossFor, shopOpen, abilityOffer, canBuy, buy, useAbility, SLOTS, tabletsOpen, tabletOffer, tabletBought, tabletPrice, canBuyTablet, buyTablet } = M["src/run.js"];
-const { SHOP, TABLETS } = M["src/data/abilities.js"];
+const { SHOP } = M["src/data/abilities.js"];
 const { applySaved, openTune, tuneChanges } = M["ui/tune.js"];
 const { makeLog, claudeSink } = M["ui/log.js"];
 const { firebaseSink } = M["ui/firebase.js"];
@@ -1225,8 +1230,8 @@ const KIND = { normal: 'обычный стол', hard: 'сложный стол
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 const KEY = 'arcade.run', BEST = 'arcade.best', BOSS_SEEN = 'arcade.bossSeen', TIPS = 'arcade.tips';
 // replaced by tools/build.mjs with the commit and date the page was built from
-const BUILD = "fa20e9d 2026-10-31 12:33";
-const VERSION = "71.2";
+const BUILD = "a57d361 2026-10-31 13:58";
+const VERSION = "71.3";
 // which page this is: 'notebook' for the friends' alpha on the notebook site, anything else is the claude.ai test page
 const TARGET = "notebook";
 const NOTEBOOK = TARGET === 'notebook';
@@ -1241,14 +1246,40 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* no storage */ } },
 };
 
+// Tips again in every new run, not once per player: while the alpha is played by the author and friends (author, 31.10.2026)
+const TIPS_EVERY_RUN = true;
 // One new thing at a time: each mechanic is explained once per player (not per run), the first time it shows up.
 // Stars stay off the screen until their tip is seen, amulet slots until the first amulet is offered.
 const TIP = {
-  stars: () => `Новое: звёзды. ★ за каждую победу (с ${SHOP.win.every + 1}-го этапа больше), и каждые ${SHOP.change} несгоревших переброса стола тоже станут ★: сэкономили — заработали. Перебросы на следующий стол не переносятся. Звёзды тратятся в лавке и на таблички.`,
+  stars: 'Новое: звёзды ★. Даются за победу и за сэкономленные перебросы. Тратятся в лавке.',
   order: () => `Новое: заказ стола ${ORDER}. На каждом столе одна комбинация отмечена ${ORDER}. Сыграете её — +${TABLES.order.rerolls} ${plural(TABLES.order.rerolls, 'переброс', 'переброса', 'перебросов')} на этот стол.`,
   shop: () => `Новое: лавка. Способность — разовая помощь на любом столе, слотов ${SHOP.slots}. Табличка навсегда усиливает одну комбинацию.`,
-  amulet: 'Новое: амулеты. Работают сами, каждый ход. Срабатывают слева направо, порядок можно поменять.',
+  amulet: 'Новое: амулеты. Амулет — постоянный бонус к очкам. Возьмите любой, разберётесь по ходу.',
+  // the order of amulets matters only once there are two of them
+  amulets2: 'Новое: амулеты срабатывают слева направо. Нажмите на амулет на столе, чтобы переставить.',
+  // on the table after the first roll, in the line under the amulets, until the first hand is played
+  score: () => { const c = COMBOS.find(x => x.id === 'three'); return `Новое: очки = фишки × множитель. У Тройки ${c.chips}×${c.mult}: ${c.chips} плюс сумма трёх кубиков, всё умножить на ${c.mult}.`; },
   boss: 'Новое: с этого этапа у каждого босса своё правило.',
+};
+// How to play: the first card a new player sees, before the first amulet (playtest 31.10.2026: no rules anywhere)
+const HOWTO = turns => [
+  `Наберите очки до цели стола за ${turns} ${plural(turns, 'ход', 'хода', 'ходов')}.`,
+  'Бросьте кубики, нажмите на те, что хотите оставить, остальные перебросьте.',
+  'Потом выберите комбинацию внизу: чем она реже, тем больше очков.',
+  'Какие бывают комбинации — по ссылке «Комбинации» внизу экрана.',
+];
+// The combinations reference (author, 31.10.2026: «нужна справка по комбинациям»): what makes each one and an example;
+// dice after « · » do not count towards its chips
+const HELP = {
+  yatzy: ['пять одинаковых', '4 4 4 4 4'],
+  four: ['четыре одинаковых', '6 6 6 6 · 2'],
+  large: ['пять подряд', '1 2 3 4 5 или 2 3 4 5 6'],
+  house: ['три одинаковых и два одинаковых', '3 3 3 5 5'],
+  small: ['четыре подряд', '2 3 4 5 · 2'],
+  three: ['три одинаковых', '5 5 5 · 1 2'],
+  twopair: ['две разные пары', '2 2 6 6 · 3'],
+  pair: ['два одинаковых', '4 4 · 1 3 6'],
+  chance: ['любые кубики, считаются все пять', '1 3 4 5 6'],
 };
 const seenTips = () => { try { return JSON.parse(store.get(TIPS)) || []; } catch { return []; } };
 const seen = id => seenTips().includes(id);
@@ -1258,13 +1289,15 @@ const tuned = applySaved(store);
 const log = makeLog(store, NOTEBOOK ? firebaseSink() : claudeSink());
 let run = load(store.get(KEY)) || fresh();
 if (log.current?.seed !== run.seed) log.start(run, tuneChanges(), `${VERSION} ${BUILD}`);
-let sel = -1, busy = false, shown = { victory: run.won >= 3 };
+let sel = -1, busy = false, shown = { victory: run.won >= 3 }, help = false;
 // an ability waiting for its die: { k: slot, die }
 let pick = null;
 
 function fresh() {
   const seed = crypto.getRandomValues(new Uint32Array(1))[0];
   const r = newRun(seed, { pick: true });
+  // for now every run teaches again, so the author always sees what a new player sees (author, 31.10.2026)
+  if (TIPS_EVERY_RUN) store.set(TIPS, '[]');
   log.start(r, tuneChanges(), `${VERSION} ${BUILD}`);
   return r;
 }
@@ -1307,7 +1340,9 @@ function render() {
 
   const am = $('amulets');
   am.replaceChildren();
-  am.hidden = $('info').hidden = !run.amulets.length && !seen('amulet');
+  const scoreTip = t.dice && !seen('score');
+  am.hidden = !run.amulets.length && !seen('amulet');
+  $('info').hidden = am.hidden && !scoreTip;
   for (let s = 0; s < SLOTS; s++) {
     const a = run.amulets[s];
     const b = document.createElement('button');
@@ -1318,6 +1353,7 @@ function render() {
   }
   const info = $('info');
   info.replaceChildren();
+  info.className = 'info';
   if (sel >= 0 && run.amulets[sel]) {
     const d = amuletById[run.amulets[sel].id];
     info.innerHTML = `<span><b>${d.name}</b>: ${d.desc}</span>`;
@@ -1329,6 +1365,9 @@ function render() {
         info.append(m);
       }
     }
+  } else if (scoreTip) {
+    info.textContent = TIP.score();
+    info.className = 'info tip';
   } else if (run.amulets.length) {
     info.textContent = 'Нажмите на амулет, чтобы прочитать и переставить.';
   } else {
@@ -1455,7 +1494,8 @@ function abilityShop() {
 // A tablet shows the combination's base before and after: no arithmetic for the player
 function tablets(h) {
   h('h3', 'Таблички');
-  h('p', `+1 уровень комбинации до конца забега. Чем выше уровень, тем дороже: ★ ${TABLETS.price} за 2-й, дальше +★ ${TABLETS.step} за каждый.` );
+  const c3 = COMBOS.find(x => x.id === 'three');
+  h('p', `Табличка навсегда усиливает комбинацию: Тройка ${c3.chips}×${c3.mult} → ${c3.chips + c3.level.chips}×${c3.mult + c3.level.mult}.`);
   const ids = tabletOffer(run);
   for (const id of ids) {
     const c = COMBOS.find(x => x.id === id), lv = run.levels[id] || 1, bought = tabletBought(run, id);
@@ -1570,6 +1610,7 @@ async function onPlay(id) {
   const s = play(run, id);
   if (!s) { busy = false; return; }
   log.add('p', id, s.total);
+  markTips(['score']);
   log.save(run);
   save();
   // draw the dice that scored, not the cleared table, while the score plays
@@ -1635,6 +1676,23 @@ function tip(h, id) {
   return true;
 }
 
+// Every combination with its current level: what makes it, an example, chips × multiplier
+function combosHelp(h, btn) {
+  $('card').className = 'card help';
+  h('h2', 'Комбинации');
+  h('p', 'Очки = (фишки комбинации + сумма её кубиков) × множитель. Кубики после точки · не считаются.');
+  const list = h('div', '');
+  list.className = 'help-list';
+  for (const c of COMBOS) {
+    const lv = run.levels[c.id] || 1, [what, ex] = HELP[c.id];
+    const row = document.createElement('div');
+    row.className = 'help-row';
+    row.innerHTML = `<b>${c.name}</b><span class="base"><i class="c">${c.chips + (lv - 1) * c.level.chips}</i>×<i class="m">${c.mult + (lv - 1) * c.level.mult}</i></span><small>${what}: ${ex}</small>`;
+    list.append(row);
+  }
+  btn('Закрыть', () => { help = false; render(); });
+}
+
 // The boss is announced once, before its first roll, with its rule in large print
 const bossKey = () => `${run.seed}:${run.stage}`;
 function bossIntro(h, btn) {
@@ -1651,7 +1709,7 @@ function bossIntro(h, btn) {
 function overlay() {
   const o = $('overlay'), card = $('card');
   const intro = run.phase === 'table' && isBoss(run) && !run.t.dice && store.get(BOSS_SEEN) !== bossKey();
-  if (busy || (run.phase === 'table' && !intro)) { o.hidden = true; return; }
+  if (!help && (busy || (run.phase === 'table' && !intro))) { o.hidden = true; return; }
   o.hidden = false;
   card.replaceChildren();
   card.className = 'card';
@@ -1659,7 +1717,15 @@ function overlay() {
   // leaving the card by any of its buttons marks its tips as read
   const btn = (txt, fn, alt) => { const b = h('button', txt); b.className = 'btn' + (alt ? ' alt' : ''); b.onclick = () => { markTips(showing); fn(); }; return b; };
   showing = [];
+  if (help) { combosHelp(h, btn); return; }
   if (intro) { bossIntro(h, btn); return; }
+  if (run.phase === 'pick' && !seen('howto')) {
+    h('h2', 'Как играть');
+    for (const line of HOWTO(run.t.turns)) h('p', line);
+    showing.push('howto');
+    btn('Понятно', render);
+    return;
+  }
   if (run.phase === 'pick') {
     h('h2', 'Новый забег');
     h('p', 'Возьмите один амулет. Новый будет в начале каждого этапа.');
@@ -1701,7 +1767,7 @@ function overlay() {
 
 function amuletPick(h, btn, card) {
   const ids = offer(run);
-  tip(h, 'amulet');
+  if (!tip(h, 'amulet') && run.amulets.length) tip(h, 'amulets2');
   for (const id of ids) {
     const d = amuletById[id];
     const b = document.createElement('button');
@@ -1792,6 +1858,7 @@ $('info').addEventListener('click', e => {
   moveAmulet(run, sel, +m.dataset.to); sel = +m.dataset.to; save(); render();
 });
 const tunedNow = () => { try { return Object.keys(JSON.parse(store.get('arcade.tune')) || {}).length; } catch { return tuned; } };
+$('help').addEventListener('click', () => { if (busy) return; help = true; render(); });
 $('tune').addEventListener('click', () => {
   if (busy) return;
   openTune($('tuneBox'), {

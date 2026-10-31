@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Аркада Яцзы (альфа) v71.5: собрано в закрытом репозитории yatzy-arcade, ветка PR #56, коммит 2416dac (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
+<!-- Аркада Яцзы (альфа) v71.6: собрано в закрытом репозитории yatzy-arcade, ветка PR #62, коммит 34f0050 (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -78,10 +78,10 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .calc .bump { animation: bump .18s; }
 .gain { text-align: center; font-size: 14px; line-height: 1.35; color: var(--muted); min-height: 19px; margin-top: -6px; }
 .gain b { color: var(--gold); }
-.abil { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.abil .stars { color: var(--gold); font-weight: 700; margin-right: 4px; }
+.abil { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.abil .stars { color: var(--gold); font-weight: 700; margin-right: 2px; }
 .abil .hint { color: var(--muted); font-size: 14px; }
-.abil .ab { padding: 6px 12px; border-radius: 10px; background: var(--felt-2); border: 1px solid var(--gold); font-size: 15px; }
+.abil .ab { padding: 6px 6px; white-space: nowrap; border-radius: 10px; background: var(--felt-2); border: 1px solid var(--gold); font-size: 14px; }
 .abil .ab.on { background: var(--gold); color: #2a1d05; font-weight: 700; }
 .abil .ab.alt { border-color: var(--line); }
 .abil .ab.closes { box-shadow: 0 0 0 2px var(--ok); border-color: var(--ok); }
@@ -563,10 +563,12 @@ M["src/data/abilities.js"] = (() => {
 // use: 'die' — applied to one die during a turn; 'hand' — switched on before the combination is played.
 // Status in Docs/GDD.md: Г.
 // win: stars for a won table — `stars` on stages 1–2, +1 every `every` stages (1, 1, 2, 2, 3, 3…; step 2.3 of Docs/balance.md).
-const SHOP = { slots: 2, offer: 3, change: 2, win: { stars: 1, every: 2 } };
+// slots: 3 and a showcase of 3 tablets (author, 31.10.2026, card «3 таблички и 3 слота»; step 2.5 of Docs/balance.md):
+// with 2 of each the stars piled up unspent and a player took both tablets «just in case» — no choice.
+const SHOP = { slots: 3, offer: 3, change: 2, win: { stars: 1, every: 2 } };
 // Tablets: +1 level to one combination for good, `offer` of them in the shop and after the boss.
 // The price grows with the level: `price` for the 2nd level, +`step` for every level after it (playtest 8: one cheap combination levelled to 7).
-const TABLETS = { price: 2, step: 1, offer: 2 };
+const TABLETS = { price: 2, step: 1, offer: 3 };
 
 const __default = [
   { id: 'nudge', name: 'Подкрутка', icon: '🔧', price: 2, use: 'die', desc: '+1 или −1 к одному кубику' },
@@ -820,6 +822,18 @@ function buy(run, id) {
   run.bought.push(id);
   return true;
 }
+// A purchase can be taken back while the shop is still open (a mis-tap on a phone, friends' playtest 31.10.2026):
+// the stars come back and the offer can be bought again. After «Дальше» (leaveShop) it is final.
+function canRefund(run, id) {
+  return abilityOffer(run).includes(id) && run.bought.includes(id) && run.abilities.includes(id);
+}
+function refund(run, id) {
+  if (!canRefund(run, id)) return false;
+  run.abilities.splice(run.abilities.lastIndexOf(id), 1);
+  run.bought.splice(run.bought.indexOf(id), 1);
+  run.stars += abilityById[id].price;
+  return true;
+}
 
 // Use the ability in slot k. Die abilities need the die (and for Подкрутка the direction, +1 or -1)
 // (Подкрутка, Переворот, Один кубик)
@@ -849,6 +863,13 @@ function buyTablet(run, id) {
   run.bought.push(tabletKey(run, id));
   return true;
 }
+function refundTablet(run, id) {
+  if (!tabletOffer(run).includes(id) || !tabletBought(run, id)) return false;
+  if (--run.levels[id] === 1) delete run.levels[id];
+  run.stars += tabletPrice(run, id);
+  run.bought.splice(run.bought.indexOf(tabletKey(run, id)), 1);
+  return true;
+}
 
 function useAbility(run, k, { die, by } = {}) {
   const t = run.t, id = run.abilities[k], a = abilityById[id];
@@ -873,7 +894,7 @@ function useAbility(run, k, { die, by } = {}) {
   return true;
 }
 
-return { amuletById, abilityById, SAVE_VERSION, winStars, targetFor, bossFor, rules, newRun, orderFor, roll, hold, context, play, nextRerolls, changeFor, leaveShop, load, SLOTS, isBoss, offer, take, moveAmulet, shopOpen, abilityOffer, canBuy, buy, tabletsOpen, tabletOffer, tabletBought, tabletPrice, canBuyTablet, buyTablet, useAbility };
+return { amuletById, abilityById, SAVE_VERSION, winStars, targetFor, bossFor, rules, newRun, orderFor, roll, hold, context, play, nextRerolls, changeFor, leaveShop, load, SLOTS, isBoss, offer, take, moveAmulet, shopOpen, abilityOffer, canBuy, buy, canRefund, refund, tabletsOpen, tabletOffer, tabletBought, tabletPrice, canBuyTablet, buyTablet, refundTablet, useAbility };
 })();
 
 M["src/sim.js"] = (() => {
@@ -1446,6 +1467,47 @@ function handsWorth(run, played, change) {
   return sum / hands.length;
 }
 
+// The average points of one turn from a fresh roll, kept and rerolled for the most points, over every turn of a table
+// (no target, no order, no boss): what a tablet adds on average, by how often its combination comes when played for —
+// not by the last hands, where a rare Яцзы or Большой стрит counts as if it came every time (author, 31.10.2026:
+// «Сперва поправить бота», Docs/proposals/2026-10-31-stage2-tablets.md). rerolls: a turn's share of the pool.
+function turnWorth(run, change = c => c, rerolls = Math.round(TABLES.rerolls / TABLES.turns)) {
+  MOVES ??= buildMoves();
+  const c0 = context(run), ctx0 = change({ ...c0, banned: [], levels: { ...c0.levels }, amulets: [...c0.amulets] });
+  const first = OUT[5];
+  let sum = 0;
+  // amulets tell turns apart only by «last turn» and «no reroll» (scoring.js, lastTurn, firstRoll): one ordinary turn
+  // counts for all but the last, and both are counted only when an amulet asks
+  const asks = key => ctx0.amulets.some(a => a.effects.some(e => e.if?.[key] !== undefined));
+  const lastAsks = asks('lastTurn'), firstAsks = asks('firstRoll');
+  for (const left of TABLES.turns > 1 && lastAsks ? [2, 1] : [1]) {
+    const weight = lastAsks ? (left === 1 ? 1 : TABLES.turns - 1) : TABLES.turns;
+    const top = used => {
+      const v = new Float64Array(HANDS.length), ctx = { ...ctx0, turn: { rollsUsed: used, turnsLeft: left, rerolls } };
+      for (let i = 0; i < HANDS.length; i++) for (const id of Object.keys(detect(HANDS[i]))) v[i] = Math.max(v[i], score(HANDS[i], id, ctx).total);
+      return v;
+    };
+    const stop = top(2);
+    let below = stop;
+    for (let r = 1; r < rerolls; r++) {
+      const v = new Float64Array(HANDS.length);
+      for (let i = 0; i < HANDS.length; i++) {
+        let best = stop[i];
+        for (const m of MOVES[i]) { let e = 0; for (let j = 0; j < m.to.length; j++) e += m.p[j] * below[m.to[j]]; if (e > best) best = e; }
+        v[i] = best;
+      }
+      below = v;
+    }
+    const now = firstAsks ? top(1) : stop;
+    for (let i = 0; i < HANDS.length; i++) {
+      let best = now[i];
+      if (rerolls > 0) for (const m of MOVES[i]) { let e = 0; for (let j = 0; j < m.to.length; j++) e += m.p[j] * below[m.to[j]]; if (e > best) best = e; }
+      sum += weight * first[i].p * best;
+    }
+  }
+  return sum / TABLES.turns;
+}
+
 // the offered amulets from the most to the least they add per hand (gain: points, share: of the hand now)
 function rankAmulets(run, ids, played) {
   const now = handsWorth(run, played, c => c);
@@ -1455,7 +1517,7 @@ function rankAmulets(run, ids, played) {
   }).sort((a, b) => b.gain - a.gain);
 }
 
-return { PLAN, keyOf, warm, planner, budget, turnBudget, setHolds, advise, judge, handsWorth, rankAmulets };
+return { PLAN, keyOf, warm, planner, budget, turnBudget, setHolds, advise, judge, handsWorth, turnWorth, rankAmulets };
 })();
 
 M["ui/app.js"] = (() => {
@@ -1464,7 +1526,7 @@ M["ui/app.js"] = (() => {
 const COMBOS = M["src/data/combos.js"].default;
 const TABLES = M["src/data/tables.js"].default;
 const { detect, score, best } = M["src/scoring.js"];
-const { newRun, roll, hold, play, load, context, rules, offer, take, leaveShop, nextRerolls, orderFor, moveAmulet, amuletById, abilityById, targetFor, isBoss, bossFor, shopOpen, abilityOffer, canBuy, buy, useAbility, SLOTS, tabletsOpen, tabletOffer, tabletBought, tabletPrice, canBuyTablet, buyTablet } = M["src/run.js"];
+const { newRun, roll, hold, play, load, context, rules, offer, take, leaveShop, nextRerolls, orderFor, moveAmulet, amuletById, abilityById, targetFor, isBoss, bossFor, shopOpen, abilityOffer, canBuy, buy, canRefund, refund, useAbility, SLOTS, tabletsOpen, tabletOffer, tabletBought, tabletPrice, canBuyTablet, buyTablet, refundTablet } = M["src/run.js"];
 const { SHOP } = M["src/data/abilities.js"];
 const { applySaved, openTune, tuneChanges } = M["ui/tune.js"];
 const { makeLog, claudeSink } = M["ui/log.js"];
@@ -1478,8 +1540,8 @@ const KIND = { normal: 'обычный стол', hard: 'сложный стол
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 const KEY = 'arcade.run', BEST = 'arcade.best', BOSS_SEEN = 'arcade.bossSeen', TIPS = 'arcade.tips', TUTOR = 'arcade.tutor', STREAK = 'arcade.tutorStreak';
 // replaced by tools/build.mjs with the commit and date the page was built from
-const BUILD = "2416dac 2026-10-31 15:49";
-const VERSION = "71.5";
+const BUILD = "22de632 2026-10-31 19:09";
+const VERSION = "71.6";
 // which page this is: 'notebook' for the friends' alpha on the notebook site, anything else is the claude.ai test page
 const TARGET = "notebook";
 const NOTEBOOK = TARGET === 'notebook';
@@ -1502,7 +1564,7 @@ const TIPS_EVERY_RUN = true;
 const TIP = {
   stars: 'Новое: звёзды ★. Даются за победу и за сэкономленные перебросы. Тратятся в лавке.',
   order: () => `Новое: заказ стола. На каждом столе одна комбинация отмечена ${ORDER()}. Сыграете её — +${TABLES.order.rerolls} ${plural(TABLES.order.rerolls, 'переброс', 'переброса', 'перебросов')} на этот стол.`,
-  shop: () => `Новое: лавка. Способность — разовая помощь на любом столе, слотов ${SHOP.slots}. Табличка навсегда усиливает одну комбинацию.`,
+  shop: () => `Новое: лавка. Способность — разовая помощь на любом столе, слотов ${SHOP.slots}. Табличка навсегда усиливает одну комбинацию. Передумали — нажмите на покупку ещё раз, пока не ушли из лавки.`,
   amulet: 'Новое: амулеты. Амулет — постоянный бонус к очкам.',
   // the order of amulets matters only once there are two of them
   amulets2: 'Новое: амулеты срабатывают слева направо. Нажмите на амулет на столе, чтобы переставить.',
@@ -1749,7 +1811,8 @@ function abilityBar() {
   const stars = document.createElement('span');
   stars.className = 'stars'; stars.textContent = `★ ${run.stars}`;
   stars.title = `Звёзды: за победу на столе (каждые ${SHOP.win.every} этапа на 1 больше) и за каждые ${SHOP.change} несгоревших переброса стола. Тратятся в лавке и на таблички.`;
-  bar.append(stars);
+  // all slots full: nothing to buy until the shop, and three abilities need the whole row on a 390 px phone
+  if (run.abilities.length < SHOP.slots) bar.append(stars);
   const usable = !busy && run.phase === 'table' && t.dice;
   const add = (txt, fn, cls = '') => { const b = document.createElement('button'); b.className = 'ab ' + cls; b.textContent = txt; b.disabled = !usable; b.onclick = fn; bar.append(b); return b; };
   if (pick && pick.die !== undefined) {
@@ -1818,9 +1881,12 @@ function abilityShop() {
     const a = abilityById[id], bought = run.bought.includes(id);
     const b = document.createElement('button');
     b.className = 'pick buy';
-    b.disabled = !canBuy(run, id);
-    b.innerHTML = `<span class="ic">${a.icon}</span><b>${a.name} <span class="price">${bought ? 'куплено' : `★ ${a.price}`}</span></b><small>${a.desc}</small>`;
-    b.onclick = () => { if (buy(run, id)) { log.add('b', id, ids); log.save(run); save(); render(); } };
+    const back = bought && canRefund(run, id);
+    b.disabled = !canBuy(run, id) && !back;
+    b.innerHTML = `<span class="ic">${a.icon}</span><b>${a.name} <span class="price">${bought ? 'куплено' : `★ ${a.price}`}</span></b><small>${back ? 'Нажмите ещё раз, чтобы вернуть звёзды' : a.desc}</small>`;
+    b.onclick = () => {
+      if (back ? refund(run, id) : buy(run, id)) { log.add(back ? 'v' : 'b', id, ids); log.save(run); save(); render(); }
+    };
     $('card').append(b);
   }
 }
@@ -1835,9 +1901,11 @@ function tablets(h) {
     const base = l => `${c.chips + (l - 1) * c.level.chips}×${c.mult + (l - 1) * c.level.mult}`;
     const b = document.createElement('button');
     b.className = 'pick buy';
-    b.disabled = !canBuyTablet(run, id);
-    b.innerHTML = `<span class="ic">📜</span><b>${c.name}, ур. ${lv + (bought ? 0 : 1)} <span class="price">${bought ? 'куплено' : `★ ${tabletPrice(run, id)}`}</span></b><small>${bought ? base(lv) : `${base(lv)} → ${base(lv + 1)}`}</small>`;
-    b.onclick = () => { if (buyTablet(run, id)) { log.add('l', id, ids); log.save(run); save(); render(); } };
+    b.disabled = !canBuyTablet(run, id) && !bought;
+    b.innerHTML = `<span class="ic">📜</span><b>${c.name}, ур. ${lv + (bought ? 0 : 1)} <span class="price">${bought ? 'куплено' : `★ ${tabletPrice(run, id)}`}</span></b><small>${bought ? `${base(lv)}. Нажмите ещё раз, чтобы вернуть звёзды` : `${base(lv)} → ${base(lv + 1)}`}</small>`;
+    b.onclick = () => {
+      if (bought ? refundTablet(run, id) : buyTablet(run, id)) { log.add(bought ? 'v' : 'l', id, ids); log.save(run); save(); render(); }
+    };
     $('card').append(b);
   }
 }

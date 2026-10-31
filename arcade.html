@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Аркада Яцзы (альфа) v71.4: собрано в закрытом репозитории yatzy-arcade, ветка PR #52, коммит 2c22de0 (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
+<!-- Аркада Яцзы (альфа) v71.5: собрано в закрытом репозитории yatzy-arcade, ветка PR #56, коммит 2416dac (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -197,6 +197,16 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .help-row { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; align-items: baseline; text-align: left; }
 .help-row small { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
 .help-row .base i { font-style: normal; } .help-row .c { color: var(--chips); } .help-row .m { color: var(--mult); }
+/* the order's rerolls drawn as dots, like the reroll pips */
+.dots { display: inline-flex; gap: 2px; vertical-align: middle; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
+/* the tutorial: what the bot advises to tap next — dice to keep (or to let go), the reroll button, the combination to play */
+.die.adv { outline: 3px dashed var(--ink); outline-offset: 3px; animation: hint 1.2s ease-in-out infinite; }
+.roll.adv, .combo.adv, .pick.adv { outline: 3px solid var(--ink); outline-offset: 2px; animation: hint 1.2s ease-in-out infinite; }
+@keyframes hint { 50% { outline-color: transparent; } }
+@media (prefers-reduced-motion: reduce) { .die.adv, .roll.adv, .combo.adv, .pick.adv { animation: none; } }
+.tutor { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0 4px; font-size: 14px; color: var(--muted); text-align: left; }
+.tutor input { width: 20px; height: 20px; flex: none; accent-color: var(--gold); }
 /* The notebook's look for the friends' alpha on the notebook site (tools/build.mjs adds it after style.css for dist/notebook.html):
    the notebook's colours, fonts, white cards and dice (src/style.css in kitoglav22/yatzy). Only the look changes, the layout stays. */
 :root {
@@ -1211,6 +1221,243 @@ function setup(tg, home) {
 return { telegram };
 })();
 
+M["src/plan.js"] = (() => {
+// The turn planner of the smart bot (tools/bot.mjs) and its advice for the screen (the tutorial on the first table).
+// Exact odds over every hand of five dice: which dice to keep, a few rerolls ahead, and when to stop and play.
+// No document or window here: the bot runs it in Node, the page shows its advice.
+const { context, hold, amuletById } = M["src/run.js"];
+const { detect, score } = M["src/scoring.js"];
+const TABLES = M["src/data/tables.js"].default;
+const COMBOS = M["src/data/combos.js"].default;
+
+// combinations from the rarest (Яцзы) to the most common (Шанс), as listed in the data
+const RANK = COMBOS.map(c => c.id);
+
+// spread: a turn uses its share of the reroll pool; rerollCost: a reroll's price in table worth (leftovers are stars);
+// depth: rerolls planned ahead; orderValue: the order's rerolls in table worth
+const PLAN = { spread: 1, rerollCost: 0.012, depth: 3, orderValue: 0.06 };
+
+// Every hand of five dice as a sorted multiset (252 of them), and for each hand every way to keep dice
+// with the exact odds of each hand it can turn into: precomputed once, so a turn's plan is a few array passes.
+const OUT = [];
+for (let k = 0; k <= 5; k++) {
+  const map = new Map();
+  const walk = (left, acc) => {
+    if (!left) { const key = [...acc].sort((a, b) => a - b).join(''); map.set(key, (map.get(key) || 0) + 1); return; }
+    for (let f = 1; f <= 6; f++) walk(left - 1, [...acc, f]);
+  };
+  walk(k, []);
+  OUT.push([...map].map(([key, n]) => ({ faces: key ? key.split('').map(Number) : [], p: n / 6 ** k })));
+}
+const keyOf = d => [...d].sort((a, b) => a - b).join('');
+const HANDS = OUT[5].map(o => o.faces), INDEX = new Map(HANDS.map((h, i) => [h.join(''), i]));
+// built on first use: the page loads without waiting for it
+let MOVES = null;
+const buildMoves = () => HANDS.map(d => {
+  const seen = new Set(), out = [];
+  for (let mask = 0; mask < 31; mask++) {
+    const keep = d.filter((_, i) => mask & (1 << i)), hk = keep.join('');
+    if (seen.has(hk)) continue;
+    seen.add(hk);
+    const outs = OUT[5 - keep.length];
+    const to = new Int16Array(outs.length), p = new Float64Array(outs.length);
+    outs.forEach((o, j) => { to[j] = INDEX.get(keyOf([...keep, ...o.faces])); p[j] = o.p; });
+    out.push({ keep, to, p });
+  }
+  return out;
+});
+
+// the page builds the tables while the player reads the first card, so the first advice comes at once
+function warm() { MOVES ??= buildMoves(); }
+
+// The worth of hands for one turn of one table: V(hand, rerolls left) for every hand, filled as needed
+function planner(run, o) {
+  MOVES ??= buildMoves();
+  const t = run.t, base = context(run), need = Math.max(1, t.target - t.points), last = t.turnsLeft === 1;
+  const orderBonus = t.order ? o.orderValue * t.target * (TABLES.order.rerolls / 3) : 0;
+  // the best play for a hand; first: no reroll this turn yet (С первого раза)
+  const plays = [[], []];
+  const bestPlay = (i, first) => {
+    const c = plays[first ? 1 : 0];
+    if (c[i]) return c[i];
+    const d = HANDS[i], ctx = { ...base, turn: { ...base.turn, rollsUsed: first ? 1 : 2 } };
+    let top = null;
+    for (const id of Object.keys(detect(d))) {
+      if (ctx.banned.includes(id)) continue;
+      const s = score(d, id, ctx), v = s.total + (id === t.order ? orderBonus : 0);
+      if (!top || v > top.v) top = { id, total: s.total, v };
+    }
+    return (c[i] = top);
+  };
+  // last turn: only reaching the target counts; otherwise points up to what is still needed
+  const worth = p => (last ? (p.total >= need ? 1 : 0.2 * p.total / need) : Math.min(p.v, need) / need);
+  const cost = o.rerollCost * (last ? 0.3 : 1);
+  const levels = [];
+  const level = r => {
+    if (levels[r]) return levels[r];
+    const v = new Float64Array(HANDS.length);
+    if (r === 0) for (let i = 0; i < HANDS.length; i++) v[i] = worth(bestPlay(i, false));
+    else {
+      const below = level(r - 1), stop = level(0);
+      for (let i = 0; i < HANDS.length; i++) {
+        let top = stop[i];
+        for (const m of MOVES[i]) { let e = -cost; for (let j = 0; j < m.to.length; j++) e += m.p[j] * below[m.to[j]]; if (e > top) top = e; }
+        v[i] = top;
+      }
+    }
+    return (levels[r] = v);
+  };
+  // the value of a hand with r rerolls left and the move that gets it (null: play now)
+  const V = (key, r, first) => {
+    const i = INDEX.get(key);
+    let v = worth(bestPlay(i, first)), act = null;
+    if (r > 0) {
+      const below = level(r - 1);
+      for (const m of MOVES[i]) { let e = -cost; for (let j = 0; j < m.to.length; j++) e += m.p[j] * below[m.to[j]]; if (e > v) { v = e; act = m.keep; } }
+    }
+    return { v, act };
+  };
+  // the worth of the player's own move: playing combination id now, or keeping these faces and rerolling the rest
+  const playV = (key, first, id) => {
+    const d = HANDS[INDEX.get(key)], ctx = { ...base, turn: { ...base.turn, rollsUsed: first ? 1 : 2 } };
+    if (ctx.banned.includes(id) || !detect(d)[id]) return 0;
+    const s = score(d, id, ctx);
+    return worth({ total: s.total, v: s.total + (id === t.order ? orderBonus : 0) });
+  };
+  const keepV = (key, r, faces) => {
+    const m = MOVES[INDEX.get(key)].find(x => x.keep.join('') === keyOf(faces)), below = level(r - 1);
+    let e = -cost;
+    for (let j = 0; j < m.to.length; j++) e += m.p[j] * below[m.to[j]];
+    return e;
+  };
+  return { V, bestPlay: (key, first) => bestPlay(INDEX.get(key), first), playV, keepV, need, last };
+}
+
+// rerolls this turn may use: its share of the pool, all of it on the last turn, more when behind
+function budget(run, o) {
+  const t = run.t;
+  if (t.turnsLeft === 1) return t.rerolls;
+  if (o.spread === 0) return t.rerolls;
+  const behind = (t.target - t.points) / t.turnsLeft > t.target / t.turns;
+  return Math.min(t.rerolls, Math.ceil(t.rerolls / t.turnsLeft) + (behind ? 1 : 0));
+}
+
+// what is left of this turn's budget for the advice on screen: the budget the turn started with (as the bot sets it
+// before its first reroll) less the rerolls already made this turn — not a fresh share after every roll
+function turnBudget(run, o) {
+  const t = run.t, used = Math.max(0, (t.rolled || 1) - 1);
+  return Math.max(0, Math.min(t.rerolls, budget({ ...run, t: { ...t, rerolls: t.rerolls + used } }, o) - used));
+}
+
+function setHolds(run, keep) {
+  const want = [...keep], d = run.t.dice;
+  const target = d.map(f => { const i = want.indexOf(f); if (i >= 0) { want.splice(i, 1); return true; } return false; });
+  target.forEach((h, i) => { if (run.t.held[i] !== h) hold(run, i); });
+}
+
+// Advice for the player, from the same plan the bot plays by:
+//   { keep: [true/false per die], aim, odds } — keep these dice and reroll the rest; aim: the combination the turn goes for,
+//     odds: the chance to end this turn with it or a rarer one, playing on as advised;
+//   { play, total, enough } — play this combination now (enough: it reaches the target).
+function advise(run, opts = {}) {
+  const o = { ...PLAN, ...opts }, t = run.t;
+  if (run.phase !== 'table' || !t.dice) return null;
+  const plan = planner(run, o), first = t.rolled === 1, key = keyOf(t.dice);
+  const rLeft = Math.min(turnBudget(run, o), o.depth);
+  const { act } = plan.V(key, rLeft, first);
+  const now = plan.bestPlay(key, first);
+  if (!act || rLeft <= 0) return { play: now.id, total: now.total, enough: now.total >= plan.need };
+  const want = [...act];
+  const keep = t.dice.map(f => { const i = want.indexOf(f); if (i < 0) return false; want.splice(i, 1); return true; });
+  // how the turn ends if the advice is followed to its end: for each combination, its chance and the points it brings on average
+  const memo = new Map();
+  const ends = (k, r, fst) => {
+    const id = `${k}|${r}|${fst}`;
+    if (memo.has(id)) return memo.get(id);
+    const { act: a } = plan.V(k, r, fst), out = {};
+    if (!a || r <= 0) { const b = plan.bestPlay(k, fst); out[b.id] = { p: 1, pts: b.total }; }
+    else {
+      const m = MOVES[INDEX.get(k)].find(x => x.keep.join('') === a.join(''));
+      for (let j = 0; j < m.to.length; j++) {
+        for (const [c, e] of Object.entries(ends(HANDS[m.to[j]].join(''), r - 1, false))) {
+          const w = out[c] || (out[c] = { p: 0, pts: 0 });
+          w.p += m.p[j] * e.p; w.pts += m.p[j] * e.pts;
+        }
+      }
+    }
+    memo.set(id, out);
+    return out;
+  };
+  // the aim: the rarest combination (rarer than what the dice give now) that the turn reaches, it or a rarer one,
+  // at least a third of the time; odds: that chance
+  const rank = id => RANK.indexOf(id), end = ends(key, rLeft, first);
+  let aim = null, odds = 0, sum = 0;
+  for (const c of RANK) {
+    if (rank(c) >= rank(now.id)) break;
+    sum += end[c]?.p || 0;
+    if (end[c] && sum >= 1 / 3) { aim = c; odds = sum; break; }
+  }
+  return { keep, aim, odds };
+}
+
+// How much of the turn's worth the player's move gives away against the bot's best (0 — as good, 0.3 — 30% worse).
+// move: { play: id } or { keep: [true/false per die] } before a reroll. A player may spend more rerolls on a turn than
+// the bot would, so a reroll is judged with at least one reroll ahead.
+function judge(run, move, opts = {}) {
+  const o = { ...PLAN, ...opts }, t = run.t;
+  if (run.phase !== 'table' || !t.dice) return null;
+  const plan = planner(run, o), first = t.rolled === 1, key = keyOf(t.dice);
+  let best, mine;
+  if (move.play) {
+    best = plan.V(key, Math.min(turnBudget(run, o), o.depth), first).v;
+    mine = plan.playV(key, first, move.play);
+  } else {
+    const r = Math.min(Math.max(1, turnBudget(run, o)), o.depth, t.rerolls);
+    if (r <= 0) return null;
+    best = plan.V(key, r, first).v;
+    mine = plan.keepV(key, r, t.dice.filter((_, i) => move.keep[i]));
+  }
+  return best > 0 ? Math.max(0, (best - mine) / best) : 0;
+}
+
+// What an extra amulet or level would add to the hands played lately, or to stock hands before there are any:
+// a fixed sample of 60 hands (half kept for the most frequent face, half for a straight), the same every time —
+// a measuring sample, not the game's randomness, so it does not go through rng.js
+const STOCK = (() => {
+  const r = (s => () => (s = (s * 16807) % 2147483647) / 2147483647)(7), die = () => 1 + Math.floor(r() * 6), out = [];
+  for (let n = 0; n < 60; n++) {
+    let d = Array.from({ length: 5 }, die);
+    for (let k = 0; k < 2; k++) {
+      if (n % 2) { const c = {}; d.forEach(f => (c[f] = (c[f] || 0) + 1)); const top = +Object.keys(c).sort((a, b) => c[b] - c[a] || b - a)[0]; d = d.map(f => (f === top ? f : die())); }
+      else { const seen = new Set(); d = d.map(f => { if (f >= 2 && f <= 5 && !seen.has(f)) { seen.add(f); return f; } return die(); }); }
+    }
+    out.push({ dice: d, rollsUsed: n % 3 ? 2 : 1, turnsLeft: 1 + (n % 4) });
+  }
+  return out;
+})();
+function handsWorth(run, played, change) {
+  const hands = played?.length >= 20 ? played : STOCK, ctx0 = context(run), ctx = change({ ...ctx0, levels: { ...ctx0.levels }, amulets: [...ctx0.amulets] });
+  let sum = 0;
+  for (const h of hands) {
+    let top = 0;
+    for (const id of Object.keys(detect(h.dice))) top = Math.max(top, score(h.dice, id, { ...ctx, banned: [], turn: { rollsUsed: h.rollsUsed, turnsLeft: h.turnsLeft } }).total);
+    sum += top;
+  }
+  return sum / hands.length;
+}
+
+// the offered amulets from the most to the least they add per hand (gain: points, share: of the hand now)
+function rankAmulets(run, ids, played) {
+  const now = handsWorth(run, played, c => c);
+  return ids.map(id => {
+    const gain = handsWorth(run, played, c => ({ ...c, amulets: [...c.amulets, amuletById[id]] })) - now;
+    return { id, gain, share: now > 0 ? gain / now : 0 };
+  }).sort((a, b) => b.gain - a.gain);
+}
+
+return { PLAN, keyOf, warm, planner, budget, turnBudget, setHolds, advise, judge, handsWorth, rankAmulets };
+})();
+
 M["ui/app.js"] = (() => {
 // Grey box screen: dice, rolls, combinations, step-by-step scoring and a free amulet after each won boss.
 // All rules live in src/; this file only draws the run and passes taps to it.
@@ -1223,20 +1470,22 @@ const { applySaved, openTune, tuneChanges } = M["ui/tune.js"];
 const { makeLog, claudeSink } = M["ui/log.js"];
 const { firebaseSink } = M["ui/firebase.js"];
 const { telegram } = M["ui/telegram.js"];
+const { advise, judge, warm, rankAmulets } = M["src/plan.js"];
 
 const $ = id => document.getElementById(id);
 const comboName = Object.fromEntries(COMBOS.map(c => [c.id, c.name]));
 const KIND = { normal: 'обычный стол', hard: 'сложный стол', boss: 'босс' };
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
-const KEY = 'arcade.run', BEST = 'arcade.best', BOSS_SEEN = 'arcade.bossSeen', TIPS = 'arcade.tips';
+const KEY = 'arcade.run', BEST = 'arcade.best', BOSS_SEEN = 'arcade.bossSeen', TIPS = 'arcade.tips', TUTOR = 'arcade.tutor', STREAK = 'arcade.tutorStreak';
 // replaced by tools/build.mjs with the commit and date the page was built from
-const BUILD = "2c22de0 2026-10-31 14:54";
-const VERSION = "71.4";
+const BUILD = "2416dac 2026-10-31 15:49";
+const VERSION = "71.5";
 // which page this is: 'notebook' for the friends' alpha on the notebook site, anything else is the claude.ai test page
 const TARGET = "notebook";
 const NOTEBOOK = TARGET === 'notebook';
-// the mark of the table's order on its combination and in the breakdown
-const ORDER = '📌';
+// the mark of the table's order on its combination and in the breakdown: its rerolls as dots, like the reroll pips
+const dots = n => `<span class="dots" aria-label="${n}">${'<i></i>'.repeat(n)}</span>`;
+const ORDER = () => '+' + dots(TABLES.order.rerolls);
 const fast = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const wait = ms => new Promise(r => setTimeout(r, fast ? 0 : ms));
 
@@ -1252,29 +1501,88 @@ const TIPS_EVERY_RUN = true;
 // Stars stay off the screen until their tip is seen, amulet slots until the first amulet is offered.
 const TIP = {
   stars: 'Новое: звёзды ★. Даются за победу и за сэкономленные перебросы. Тратятся в лавке.',
-  order: () => `Новое: заказ стола ${ORDER}. На каждом столе одна комбинация отмечена ${ORDER}. Сыграете её — +${TABLES.order.rerolls} ${plural(TABLES.order.rerolls, 'переброс', 'переброса', 'перебросов')} на этот стол.`,
+  order: () => `Новое: заказ стола. На каждом столе одна комбинация отмечена ${ORDER()}. Сыграете её — +${TABLES.order.rerolls} ${plural(TABLES.order.rerolls, 'переброс', 'переброса', 'перебросов')} на этот стол.`,
   shop: () => `Новое: лавка. Способность — разовая помощь на любом столе, слотов ${SHOP.slots}. Табличка навсегда усиливает одну комбинацию.`,
-  amulet: 'Новое: амулеты. Амулет — постоянный бонус к очкам. Возьмите любой, разберётесь по ходу.',
+  amulet: 'Новое: амулеты. Амулет — постоянный бонус к очкам.',
   // the order of amulets matters only once there are two of them
   amulets2: 'Новое: амулеты срабатывают слева направо. Нажмите на амулет на столе, чтобы переставить.',
   // on the table after the first roll, in the line under the amulets, until the first hand is played
   score: () => { const c = COMBOS.find(x => x.id === 'three'); return `Новое: очки = фишки × множитель. У Тройки ${c.chips}×${c.mult}: ${c.chips} плюс сумма трёх кубиков, всё умножить на ${c.mult}.`; },
   boss: 'Новое: с этого этапа у каждого босса своё правило.',
 };
-// Step by step on the first table of a run: one line at the moment of each action, gone once it is done
-// (playtest 31.10.2026: a gamer read «Как играть» and still did not reroll for his first 19 turns).
-// Chips × multiplier wait for the second turn, so the first turn has one new thing at a time.
+// The tutorial (author, 31.10.2026): a checkbox on the «Как играть» card, on by default and remembered; off — no tips at all.
+const tutor = () => store.get(TUTOR) !== '0';
+// On the first table the smart bot advises after every roll, from what the player actually rolled: which dice to keep and why,
+// or which combination to play now. On the first turn only the advised taps work; after it the advice stays, the choice is free.
+// (Playtest 31.10.2026: a gamer read «Как играть» and still did not reroll for his first 19 turns.)
+// Chips × multiplier wait for the second table, so the first table has one new thing at a time.
 const firstTable = () => run.stage === 0 && run.table === 0 && run.phase === 'table';
-let scoreShown = false;
-function coach(t) {
-  if (!firstTable() || busy) return null;
-  const first = t.turnsLeft === t.turns;
-  if (first && !t.dice) return 'Нажмите «Бросить».';
-  if (first && t.rolled === 1) return t.held.some(Boolean)
-    ? 'Отмеченные кубики останутся. Нажмите «Перебросить» — остальные бросятся заново.'
-    : 'Нажмите на кубики, которые хотите оставить, и перебросьте остальные. Или сразу выберите комбинацию внизу — лучшая подсвечена.';
+const forced = t => tutor() && firstTable() && t.turnsLeft === t.turns;
+let scoreShown = false, adv = null, advKey = '';
+function advice(t) {
+  if (!tutor() || !firstTable() || !t.dice || rolling) return null;
+  const k = [t.dice, t.rerolls, t.turnsLeft, t.points, t.rolled, t.order].join('|');
+  if (k !== advKey) { advKey = k; adv = advise(run); }
+  return adv;
+}
+const heldAsAdvised = (t, a) => a.keep.every((k, i) => k === !!t.held[i]);
+// «сыграйте Тройку», «целимся в Пару»
+const ACC = { three: 'Тройку', pair: 'Пару' };
+const acc = id => ACC[id] || comboName[id];
+function adviceLine(t, a) {
+  const pts = n => `${n} ${plural(n, 'очко', 'очка', 'очков')}`;
+  if (a.play) return a.enough ? `Совет: сыграйте ${acc(a.play)} — ${pts(a.total)}, этого хватит до цели.`
+    : t.rerolls ? `Совет: сыграйте ${acc(a.play)} сейчас — ${pts(a.total)}. Перебросы приберегите для следующих ходов.`
+      : `Перебросов не осталось: сыграйте ${acc(a.play)} — ${pts(a.total)}.`;
+  // where the reroll goes, in words: no odds on the first table (author, 31.10.2026: percentages scare a new player off)
+  const aim = a.aim ? ` — целимся в ${acc(a.aim)}` : '';
+  if (heldAsAdvised(t, a)) return `Совет: нажмите «Перебросить»${aim}.`;
+  if (!a.keep.some(Boolean)) return `Совет: снимите отметки и перебросьте все кубики${aim}.`;
+  const faces = t.dice.filter((_, i) => a.keep[i]).sort((x, y) => x - y).join(' ');
+  return `Совет: оставьте ${faces} (нажмите на них) и перебросьте остальные${aim}.`;
+}
+function coach(t, a) {
+  if (!tutor() || !firstTable() || busy) return null;
+  if (a) return adviceLine(t, a);
+  if (t.turnsLeft === t.turns && !t.dice) return 'Нажмите «Бросить».';
   if (t.turnsLeft === t.turns - 1 && !t.dice) return `Ход сыгран: очки добавились к цели. Осталось ${t.turnsLeft} ${plural(t.turnsLeft, 'ход', 'хода', 'ходов')}, чтобы набрать ${t.target}.`;
   return null;
+}
+
+// After the first table the bot keeps quiet and speaks up only before a move that gives away a noticeable part of the turn
+// (author, 31.10.2026: «реже включается, если видит, что человек понимает»): 15%, or 30% after 3 good turns in a row.
+// A second tap does the move anyway. After 10 good turns in a row the tutorial switches itself off for good.
+const WARN = 0.15, WARN_CALM = 0.3, CALM_AFTER = 3, DONE_AFTER = 10;
+let warned = null, turnWarned = false, farewell = false;
+const streak = () => +store.get(STREAK) || 0;
+const stateKey = t => [t.dice, t.held, t.rerolls, t.turnsLeft, t.points].join('|');
+// true: go on with the move; false: a warning is shown instead (the same move again goes through)
+function watch(move) {
+  const t = run.t;
+  if (!tutor() || firstTable() || run.phase !== 'table' || !t.dice) return true;
+  const k = stateKey(t) + JSON.stringify(move);
+  if (warned?.k === k) { warned = null; return true; }
+  const loss = judge(run, move);
+  if (loss === null || loss <= (streak() >= CALM_AFTER ? WARN_CALM : WARN)) return true;
+  const a = advise(run), pts = n => `${n} ${plural(n, 'очко', 'очка', 'очков')}`;
+  const kept = a.keep && t.dice.filter((_, i) => a.keep[i]).sort((x, y) => x - y).join(' ');
+  const better = a.play ? `лучше сыграть ${acc(a.play)} — ${pts(a.total)}` : kept ? `лучше оставить ${kept} и перебросить остальные` : 'лучше перебросить все кубики';
+  const text = move.play
+    ? `Подсказка: ${comboName[move.play]} даст ${pts(score(t.dice, move.play, context(run)).total)}, а ${better}. Нажмите на ${acc(move.play)} ещё раз, чтобы всё же сыграть.`
+    : `Подсказка: ${better}. Нажмите «Перебросить» ещё раз, чтобы бросить как есть.`;
+  warned = { k, text, a };
+  turnWarned = true;
+  log.add('w', move.play || t.dice.filter((_, i) => move.keep[i]).join(''), Math.round(100 * loss));
+  render();
+  return false;
+}
+// a turn played: count the good ones in a row, switch the tutorial off after enough of them
+function turnDone() {
+  if (!tutor() || firstTable()) { turnWarned = false; return; }
+  const n = turnWarned ? 0 : streak() + 1;
+  turnWarned = false;
+  store.set(STREAK, String(n));
+  if (n >= DONE_AFTER) { store.set(TUTOR, '0'); store.set(STREAK, '0'); farewell = true; }
 }
 
 // How to play: the first card a new player sees, before the first amulet (playtest 31.10.2026: no rules anywhere)
@@ -1298,7 +1606,7 @@ const HELP = {
   chance: ['любые кубики, считаются все пять', '1 3 4 5 6'],
 };
 const seenTips = () => { try { return JSON.parse(store.get(TIPS)) || []; } catch { return []; } };
-const seen = id => seenTips().includes(id);
+const seen = id => !tutor() || seenTips().includes(id);
 const markTips = ids => { const s = seenTips(); store.set(TIPS, JSON.stringify([...new Set([...s, ...ids])])); };
 
 const tuned = applySaved(store);
@@ -1356,7 +1664,9 @@ function render() {
 
   const am = $('amulets');
   am.replaceChildren();
-  const lead = coach(t), scoreTip = !lead && t.dice && !seen('score') && !(firstTable() && t.turnsLeft === t.turns);
+  if (warned && !warned.k.startsWith(stateKey(t) + '{')) warned = null;
+  if (farewell && t.dice && t.rolled > 1) farewell = false;
+  const a = advice(t) || warned?.a, lead = warned?.text || (farewell ? 'Вы играете уверенно — подсказчик выключен. Включить можно в «Комбинациях».' : coach(t, a)), scoreTip = !lead && t.dice && !seen('score') && !firstTable();
   scoreShown = scoreTip;
   am.hidden = !run.amulets.length && !seen('amulet');
   $('info').hidden = am.hidden && !scoreTip && !lead;
@@ -1395,8 +1705,11 @@ function render() {
   }
 
   $('dice').replaceChildren(...(t.dice || Array(t.held.length).fill(0)).map(dieEl));
+  // the advised dice and button are marked; on the first turn only they work
+  if (a?.keep) [...$('dice').children].forEach((d, i) => d.classList.toggle('adv', a.keep[i] !== !!t.held[i]));
   const r = $('roll');
-  r.disabled = busy || run.phase !== 'table' || (t.dice && t.rerolls === 0);
+  r.disabled = busy || run.phase !== 'table' || (t.dice && t.rerolls === 0) || (forced(t) && t.dice && (!a?.keep || !heldAsAdvised(t, a)));
+  r.classList.toggle('adv', !!a?.keep && heldAsAdvised(t, a));
   r.textContent = !t.dice ? 'Бросить' : t.rerolls ? `Перебросить (${t.rerolls})` : 'Выберите комбинацию';
 
   abilityBar();
@@ -1412,14 +1725,14 @@ function render() {
     const b = document.createElement('button');
     const used = ctx.banned.includes(c.id);
     const s = can[c.id] && !used ? score(dice, c.id, ctx) : null;
-    b.className = 'combo' + (top && top.combo === c.id ? ' best' : '') + (used ? ' used' : '') + (t.order === c.id ? ' order' : '');
-    b.disabled = busy || !s;
+    b.className = 'combo' + (top && top.combo === c.id ? ' best' : '') + (used ? ' used' : '') + (t.order === c.id ? ' order' : '') + (a?.play === c.id ? ' adv' : '');
+    b.disabled = busy || !s || (forced(t) && !!a && a.play !== c.id);
     b.dataset.c = c.id;
     // with dice the row shows this hand's chips × multiplier, so the product on the right checks out
     const dbl = s && t.armed.includes('double');
     const ch = s ? s.chips : c.chips + (lv - 1) * c.level.chips, mu = s ? round1(s.mult) + (dbl ? '×2' : '') : c.mult + (lv - 1) * c.level.mult;
     const pv = !s ? '' : dbl ? s.total * 2 : s.total;
-    b.innerHTML = `<span class="nm">${c.name}${t.order === c.id ? ` <b class="ord" title="заказ стола: +${TABLES.order.rerolls} к перебросам стола">${ORDER}+${TABLES.order.rerolls}</b>` : ''}${lv > 1 ? ` <small>ур. ${lv}</small>` : ''}</span><span class="base${s ? ' live' : ''}"><i class="c">${ch}</i>×<i class="m">${mu}</i></span><span class="pv">${pv}</span>`;
+    b.innerHTML = `<span class="nm">${c.name}${t.order === c.id ? ` <b class="ord" title="заказ стола: +${TABLES.order.rerolls} к перебросам стола">${ORDER()}</b>` : ''}${lv > 1 ? ` <small>ур. ${lv}</small>` : ''}</span><span class="base${s ? ' live' : ''}"><i class="c">${ch}</i>×<i class="m">${mu}</i></span><span class="pv">${pv}</span>`;
     list.append(b);
   }
   $('seed').textContent = `Забег ${run.seed.toString(36).toUpperCase()} · рекорд: ${+store.get(BEST) || 0} ст. · v${VERSION}`;
@@ -1623,13 +1936,14 @@ async function animate(s) {
 }
 
 async function onPlay(id) {
-  if (busy) return;
+  if (busy || !watch({ play: id })) return;
   const dice = [...run.t.dice];
   busy = true; sel = -1; pick = null;
   const gains = amuletGains(dice, id);
   const s = play(run, id);
   if (!s) { busy = false; return; }
   log.add('p', id, s.total);
+  turnDone();
   if (scoreShown) markTips(['score']);
   log.save(run);
   save();
@@ -1652,7 +1966,7 @@ function amuletGains(dice, id) {
 // After the hand: its whole formula, the amulets that did not fire this time and the order's rerolls
 function showGains(gains, s) {
   const idle = gains.filter(g => !g.add).map(g => ` · ${g.icon} мимо`).join('');
-  const order = s?.rerolls ? ` · ${ORDER} +${s.rerolls} ${plural(s.rerolls, 'переброс', 'переброса', 'перебросов')}` : '';
+  const order = s?.rerolls ? ` · +${dots(s.rerolls)} ${plural(s.rerolls, 'переброс', 'переброса', 'перебросов')}` : '';
   $('gain').innerHTML = s ? explain(s) + idle + order : '';
 }
 
@@ -1691,7 +2005,9 @@ function luckBox() {
 let showing = [];
 function tip(h, id) {
   if (seen(id)) return false;
-  h('p', typeof TIP[id] === 'function' ? TIP[id]() : TIP[id]).className = 'tip';
+  const p = h('p', '');
+  p.innerHTML = typeof TIP[id] === 'function' ? TIP[id]() : TIP[id]; // our own texts: the order tip draws its dots
+  p.className = 'tip';
   showing.push(id);
   return true;
 }
@@ -1710,7 +2026,19 @@ function combosHelp(h, btn) {
     row.innerHTML = `<b>${c.name}</b><span class="base"><i class="c">${c.chips + (lv - 1) * c.level.chips}</i>×<i class="m">${c.mult + (lv - 1) * c.level.mult}</i></span><small>${what}: ${ex}</small>`;
     list.append(row);
   }
+  tutorBox($('card'));
   btn('Закрыть', () => { help = false; render(); });
+}
+
+// The tutorial switch: on the «Как играть» card and in the combinations reference (to switch it back on)
+function tutorBox(card) {
+  const l = document.createElement('label');
+  l.className = 'tutor';
+  l.innerHTML = '<input type="checkbox"> Обучение: бот подсказывает на первом столе, новое объясняется по ходу';
+  const c = l.querySelector('input');
+  c.checked = tutor();
+  c.onchange = () => { store.set(TUTOR, c.checked ? '1' : '0'); store.set(STREAK, '0'); if (c.checked) store.set(TIPS, '[]'); };
+  card.append(l);
 }
 
 // The boss is announced once, before its first roll, with its rule in large print
@@ -1742,6 +2070,7 @@ function overlay() {
   if (run.phase === 'pick' && !seen('howto')) {
     h('h2', 'Как играть');
     for (const line of HOWTO(run.t.turns)) h('p', line);
+    tutorBox(card);
     showing.push('howto');
     btn('Понятно', render);
     return;
@@ -1788,10 +2117,13 @@ function overlay() {
 function amuletPick(h, btn, card) {
   const ids = offer(run);
   if (!tip(h, 'amulet') && run.amulets.length) tip(h, 'amulets2');
+  // the start pick only: the bot names the amulet that adds most to ordinary hands; later picks are the player's own skill
+  const rec = tutor() && run.phase === 'pick' ? rankAmulets(run, ids)[0] : null;
+  if (rec) { const d = amuletById[rec.id]; h('p', `Совет: возьмите ${d.icon} ${d.name} — на обычных ходах прибавит больше других.`).className = 'tip'; }
   for (const id of ids) {
     const d = amuletById[id];
     const b = document.createElement('button');
-    b.className = 'pick';
+    b.className = 'pick' + (rec?.id === id ? ' adv' : '');
     b.innerHTML = `<span class="ic">${d.icon}</span><b>${d.name}</b><small>${d.desc}</small>`;
     b.onclick = () => { markTips(showing); log.add('a', id, ids); take(run, id, { stay: run.phase === 'shop' }); log.save(run); save(); render(); };
     card.append(b);
@@ -1807,10 +2139,14 @@ $('dice').addEventListener('click', e => {
     if (run.abilities[pick.k] === 'single') applyAbility({ die: +d.dataset.i }); else { pick.die = +d.dataset.i; render(); }
     return;
   }
-  hold(run, +d.dataset.i); log.add('h', +d.dataset.i); save(); render();
+  const i = +d.dataset.i, a = advice(run.t);
+  if (forced(run.t) && (!a?.keep || a.keep[i] === !!run.t.held[i])) return;
+  hold(run, i); log.add('h', i); save(); render();
 });
 $('roll').addEventListener('click', () => {
-  if (busy || !roll(run)) return;
+  if (busy || $('roll').disabled) return;
+  if (run.t.dice && !watch({ keep: run.t.held.map(Boolean) })) return;
+  if (!roll(run)) return;
   pick = null;
   log.add('r', run.t.dice.join(''));
   save(); setCalc(0, 0, 0); showGains([]);
@@ -1908,6 +2244,7 @@ if (NOTEBOOK) { $('tune').hidden = true; $('home').hidden = false; telegram('./'
 setCalc(0, 0, 0);
 save();
 render();
+if (tutor()) setTimeout(warm, 300);
 
 return {  };
 })();

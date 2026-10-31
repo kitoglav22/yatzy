@@ -14,6 +14,9 @@ assert tail in app and '/*JS*/' not in app and '/*STYLE*/' not in app
 # GitHub Pages; the release number is the service worker's cache name
 import re
 version = re.search(r"yatzy-v(\d+)", (root / 'sw.js').read_text(encoding='utf8')).group(1)
+# with the arcade alpha's own number after a dot (its header comment says «v71.1»), so a new arcade build shows here too
+arcade = re.search(r"v\d+\.(\d+)", (root / 'arcade.html').read_text(encoding='utf8')[:400])
+if arcade: version += '.' + arcade.group(1)
 s = app.replace('<!--EXTRA-->', js('backup.html')).replace(tail, tail[:-10] + js('offline.js') + js('online.js') + js('telegram.js') + '</script>\n')
 s = s.replace('/*VERSION*/', version)
 i = s.index('</style>') + len('</style>')

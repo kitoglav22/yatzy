@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Аркада Яцзы (альфа) v71.3: собрано в закрытом репозитории yatzy-arcade, ветка PR #51, коммит a57d361 (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
+<!-- Аркада Яцзы (альфа) v71.4: собрано в закрытом репозитории yatzy-arcade, ветка PR #52, коммит 2c22de0 (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -1230,8 +1230,8 @@ const KIND = { normal: 'обычный стол', hard: 'сложный стол
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 const KEY = 'arcade.run', BEST = 'arcade.best', BOSS_SEEN = 'arcade.bossSeen', TIPS = 'arcade.tips';
 // replaced by tools/build.mjs with the commit and date the page was built from
-const BUILD = "a57d361 2026-10-31 13:58";
-const VERSION = "71.3";
+const BUILD = "2c22de0 2026-10-31 14:54";
+const VERSION = "71.4";
 // which page this is: 'notebook' for the friends' alpha on the notebook site, anything else is the claude.ai test page
 const TARGET = "notebook";
 const NOTEBOOK = TARGET === 'notebook';
@@ -1261,6 +1261,22 @@ const TIP = {
   score: () => { const c = COMBOS.find(x => x.id === 'three'); return `Новое: очки = фишки × множитель. У Тройки ${c.chips}×${c.mult}: ${c.chips} плюс сумма трёх кубиков, всё умножить на ${c.mult}.`; },
   boss: 'Новое: с этого этапа у каждого босса своё правило.',
 };
+// Step by step on the first table of a run: one line at the moment of each action, gone once it is done
+// (playtest 31.10.2026: a gamer read «Как играть» and still did not reroll for his first 19 turns).
+// Chips × multiplier wait for the second turn, so the first turn has one new thing at a time.
+const firstTable = () => run.stage === 0 && run.table === 0 && run.phase === 'table';
+let scoreShown = false;
+function coach(t) {
+  if (!firstTable() || busy) return null;
+  const first = t.turnsLeft === t.turns;
+  if (first && !t.dice) return 'Нажмите «Бросить».';
+  if (first && t.rolled === 1) return t.held.some(Boolean)
+    ? 'Отмеченные кубики останутся. Нажмите «Перебросить» — остальные бросятся заново.'
+    : 'Нажмите на кубики, которые хотите оставить, и перебросьте остальные. Или сразу выберите комбинацию внизу — лучшая подсвечена.';
+  if (t.turnsLeft === t.turns - 1 && !t.dice) return `Ход сыгран: очки добавились к цели. Осталось ${t.turnsLeft} ${plural(t.turnsLeft, 'ход', 'хода', 'ходов')}, чтобы набрать ${t.target}.`;
+  return null;
+}
+
 // How to play: the first card a new player sees, before the first amulet (playtest 31.10.2026: no rules anywhere)
 const HOWTO = turns => [
   `Наберите очки до цели стола за ${turns} ${plural(turns, 'ход', 'хода', 'ходов')}.`,
@@ -1340,9 +1356,10 @@ function render() {
 
   const am = $('amulets');
   am.replaceChildren();
-  const scoreTip = t.dice && !seen('score');
+  const lead = coach(t), scoreTip = !lead && t.dice && !seen('score') && !(firstTable() && t.turnsLeft === t.turns);
+  scoreShown = scoreTip;
   am.hidden = !run.amulets.length && !seen('amulet');
-  $('info').hidden = am.hidden && !scoreTip;
+  $('info').hidden = am.hidden && !scoreTip && !lead;
   for (let s = 0; s < SLOTS; s++) {
     const a = run.amulets[s];
     const b = document.createElement('button');
@@ -1365,6 +1382,9 @@ function render() {
         info.append(m);
       }
     }
+  } else if (lead) {
+    info.textContent = lead;
+    info.className = 'info tip';
   } else if (scoreTip) {
     info.textContent = TIP.score();
     info.className = 'info tip';
@@ -1610,7 +1630,7 @@ async function onPlay(id) {
   const s = play(run, id);
   if (!s) { busy = false; return; }
   log.add('p', id, s.total);
-  markTips(['score']);
+  if (scoreShown) markTips(['score']);
   log.save(run);
   save();
   // draw the dice that scored, not the cleared table, while the score plays

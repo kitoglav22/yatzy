@@ -1,20 +1,23 @@
 <!doctype html>
+<!-- Аркада Яцзы (альфа) v71.9: собрано в закрытом репозитории yatzy-arcade, коммит f6ae4de (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Аркада Яцзы (альфа)</title>
 <link rel="icon" href="icon.png">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Manrope:wght@400;600;700;800&display=swap">
 <style>
 :root {
-  --felt: #12372a; --felt-2: #1a4a38; --line: #2f6b52; --ink: #f3efe2; --muted: #a9c2b5;
-  --die: #f7f2e3; --pip: #1d2a24; --held: #f2b544; --chips: #4fa3e0; --mult: #e8584c; --gold: #f2b544; --ok: #5cc28a;
+  --felt: #12372a; --felt-2: #1a4a38; --line: #2f6b52; --ink: #f3efe2; --muted: #b2c8bd;
+  --die: #f7f2e3; --pip: #1d2a24; --held: #f2b544; --chips: #82b1ff; --mult: #ff9985; --gold: #f2b544; --ok: #5cc28a;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+/* pinch zoom stays allowed (readability audit, П9); no double-tap zoom, no pull-to-refresh or scroll chaining (Yandex Games 1.10.2) */
+html { touch-action: manipulation; overscroll-behavior: none; }
 body {
   background: var(--felt); color: var(--ink);
   font: 16px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -23,16 +26,22 @@ body {
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; touch-action: manipulation; }
 #app {
-  max-width: 480px; margin: 0 auto; padding: max(12px, env(safe-area-inset-top)) 16px max(12px, env(safe-area-inset-bottom));
-  display: flex; flex-direction: column; gap: 8px; min-height: 100%;
+  /* the table is zoomed to fit the screen (app.js, fit): the notch and home-bar room stays the same in screen pixels */
+  max-width: 480px; margin: 0 auto; padding: calc(max(12px, env(safe-area-inset-top)) / var(--zoom, 1)) 16px calc(max(12px, env(safe-area-inset-bottom)) / var(--zoom, 1));
+  display: flex; flex-direction: column; gap: 6px; min-height: 100%;
 }
 
 .top { display: grid; gap: 4px; }
-.where { display: flex; justify-content: space-between; font-weight: 600; }
-.kind { color: var(--muted); font-weight: 500; }
+.where { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.where .st { display: grid; min-width: 0; }
+#stage { font-weight: 600; font-size: 17px; }
+.kind { color: var(--muted); font-weight: 500; font-size: 15px; }
+.help-btn { flex: none; min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--felt-2); font-size: 16px; font-weight: 600; }
+.help-btn::before { content: "?"; color: var(--gold); font-weight: 800; margin-right: 6px; }
 .kind.boss { color: var(--mult); }
-.boss-line { font-size: 13px; line-height: 1.25; color: var(--muted); }
-.boss-line.now { font-size: 15px; font-weight: 600; color: var(--mult); }
+.boss-line { font-size: 15px; line-height: 1.3; color: var(--muted); }
+.boss-line:not(.now) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.boss-line.now { font-size: 16px; font-weight: 600; color: var(--mult); }
 .die.void { opacity: .55; box-shadow: inset 0 0 0 2px var(--mult); }
 .boss-intro { text-align: center; }
 .boss-intro .ic { font-size: 56px; line-height: 1; }
@@ -46,11 +55,11 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .goal.danger #bar { background: var(--mult); }
 .pace { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: .7; transition: left .4s; }
 .goal-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.nums { font-size: 20px; }
-.need { text-align: right; font-size: 14px; color: var(--muted); min-height: 1.3em; }
+.nums { font-size: 20px; white-space: nowrap; }
+.need { text-align: right; font-size: 15px; color: var(--muted); min-height: 1.3em; }
 .need b { color: var(--ink); }
 .goal.danger .need b, .goal.last .need b { color: var(--mult); }
-.left { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 10px; color: var(--muted); font-size: 14px; }
+.left { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 10px; color: var(--muted); font-size: 15px; }
 .res { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
 .res b { color: var(--ink); }
 .pips { display: flex; flex-wrap: wrap; gap: 4px; max-width: 150px; }
@@ -66,32 +75,38 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 }
 .slot.full { border: 1px solid var(--line); background: var(--felt-2); }
 .slot.sel { outline: 2px solid var(--gold); }
+/* after a roll: bright — adds to the best combination on these dice, dim — does not */
+.slot.full.on { border-color: var(--gold); box-shadow: 0 0 8px var(--gold); }
+.slot.full.off { opacity: .35; }
 .slot.fire { animation: fire .3s; }
-.info { min-height: 1.4em; color: var(--muted); font-size: 13px; line-height: 1.3; display: flex; align-items: center; gap: 8px; }
+.info { min-height: 1.4em; color: var(--muted); font-size: 15px; line-height: 1.35; display: flex; align-items: center; gap: 8px; }
+.info small { font-size: 15px; }
 .info b { color: var(--ink); }
 
 .calc { display: flex; justify-content: center; align-items: baseline; gap: 8px; font-weight: 700; font-size: 22px; line-height: 1.2; min-height: 27px; }
 .chips { color: var(--chips); } .mult { color: var(--mult); } .x, .eq { color: var(--muted); font-size: 20px; }
 .total { min-width: 3ch; }
 .calc .bump { animation: bump .18s; }
-.gain { text-align: center; font-size: 14px; line-height: 1.35; color: var(--muted); min-height: 19px; margin-top: -6px; }
+.gain { text-align: center; font-size: 15px; line-height: 1.35; color: var(--muted); min-height: 20px; margin-top: -4px; }
 .gain b { color: var(--gold); }
-.abil { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+/* one row: up to three abilities (SHOP.slots) shrink and break their label into two lines on a narrow phone, never scroll sideways */
+.abil { display: flex; align-items: center; gap: 5px; }
 .abil .stars { color: var(--gold); font-weight: 700; margin-right: 2px; }
-.abil .hint { color: var(--muted); font-size: 14px; }
-.abil .ab { padding: 6px 6px; white-space: nowrap; border-radius: 10px; background: var(--felt-2); border: 1px solid var(--gold); font-size: 14px; }
+.abil .hint { color: var(--muted); font-size: 15px; }
+.abil .ab { flex: 0 1 auto; min-height: 44px; padding: 6px 10px; line-height: 1.2; border-radius: 10px; background: var(--felt-2); border: 1px solid var(--gold); font-size: 15px; }
 .abil .ab.on { background: var(--gold); color: #2a1d05; font-weight: 700; }
 .abil .ab.alt { border-color: var(--line); }
 .abil .ab.closes { box-shadow: 0 0 0 2px var(--ok); border-color: var(--ok); }
-.abil .ab:disabled { opacity: .45; }
+/* not usable now (before the roll, while scoring): grey text and border, still readable (readability audit, П2) */
+.abil .ab:disabled { color: var(--muted); border-color: var(--line); }
 .die.pickable { box-shadow: 0 0 0 2px var(--gold); }
 .die.picked { box-shadow: 0 0 0 3px var(--gold); transform: translateY(-3px); }
 .card h3 { margin: 4px 0 0; font-size: 18px; color: var(--gold); }
 .pick.buy:disabled { opacity: .5; }
-.pick .price { color: var(--gold); font-size: 14px; margin-left: 6px; }
+.pick .price { color: var(--gold); font-size: 16px; margin-left: 6px; }
 .coin { display: inline-block; width: .8em; height: .8em; margin-right: .2em; vertical-align: -.08em; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffe9a8, var(--gold) 55%, #b9821c); box-shadow: inset 0 0 0 .09em rgba(80, 50, 0, .35); }
 
-.dice { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: min(100%, 330px); margin: 10px auto 0; }
+.dice { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: min(100%, 330px); margin: 6px auto 0; }
 .die {
   aspect-ratio: 1; border-radius: 14%; background: var(--die); padding: 14%;
   display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); box-shadow: 0 3px 0 #bcb59f;
@@ -116,51 +131,58 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .pip.on { visibility: visible; }
 
 .roll {
-  padding: 11px; border-radius: 14px; background: var(--gold); color: #2a1d05; font-weight: 700; font-size: 18px;
+  min-height: 50px; padding: 11px; border-radius: 14px; background: var(--gold); color: #2a1d05; font-weight: 700; font-size: 18px;
 }
 .roll:disabled { background: var(--felt-2); color: var(--muted); }
 
 /* Бюрократ: a combination already played at this table */
 .combo.used span:first-child { text-decoration: line-through; }
-/* nine combinations as a 3 × 3 grid, so the whole table fits one phone screen: the name on top, chips × multiplier and the score under it */
+/* nine combinations as a 3 × 3 grid, so the whole table fits one phone screen: the name on top, chips × multiplier and the score under it;
+   a big score in a narrow cell moves down a line instead of sticking out of the cell */
 .combos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .combo {
-  display: grid; grid-template-columns: auto 1fr; grid-template-areas: "nm nm" "base pv"; gap: 2px 4px; align-items: baseline; text-align: left;
-  padding: 6px 8px; border-radius: 10px; background: var(--felt-2); font-size: 14px; min-height: 50px; min-width: 0;
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 4px; align-items: baseline; text-align: left;
+  padding: 6px 8px; border-radius: 10px; background: var(--felt-2); font-size: 14px; min-height: 52px; min-width: 0;
 }
-.combo:disabled { opacity: .45; }
-.combo .nm { grid-area: nm; font-size: 13px; line-height: 1.2; }
-.combo .nm small { color: var(--gold); font-size: 11px; }
-.combo .base { grid-area: base; color: var(--muted); font-size: 12px; white-space: nowrap; }
-.combo .pv { grid-area: pv; font-weight: 700; text-align: right; white-space: nowrap; }
+/* a combination the dice do not make stays readable, only quieter: grey text on a sunk cell, no score (readability audit, П2) */
+.combo:disabled { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+.combo:disabled .nm, .combo:disabled .base, .combo:disabled .base i { color: var(--muted); }
+.combo .nm { flex: 1 0 100%; font-size: 14px; font-weight: 600; line-height: 1.15; }
+.combo .nm small { color: var(--gold); font-size: 13px; font-weight: 700; }
+.combo .base { color: var(--muted); font-size: 14px; white-space: nowrap; }
+.combo .pv { margin-left: auto; font-size: 17px; font-weight: 700; text-align: right; white-space: nowrap; }
 /* small phones: narrower cells and smaller dice keep the table on one screen */
-@media (max-width: 370px) { .combo { padding: 5px 6px; } .combo .nm { font-size: 12px; } }
+@media (max-width: 370px) { .combo { padding: 6px; } .combo .nm { letter-spacing: -.01em; } }
 @media (max-height: 700px) { .dice { width: min(100%, 280px); } }
 .combo.best { outline: 2px solid var(--gold); }
 /* the table's order: its combination is framed, the mark says how much it adds */
 .combo.order { box-shadow: inset 0 0 0 1px var(--gold); }
-.combo .ord { color: var(--gold); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.combo.order:disabled { box-shadow: inset 0 0 0 2px var(--gold); }
+.combo .ord { color: var(--gold); font-size: 13px; font-weight: 700; white-space: nowrap; }
 .combo.best .pv::before { content: "▶"; color: var(--gold); font-size: .8em; margin-right: 2px; }
 
-.foot { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; margin-top: auto; }
 .link { text-decoration: underline; color: var(--muted); }
+/* the end of «Справка»: the run's number, record and version, new run, the way back to the notebook */
+.help-run { display: grid; gap: 8px; }
+.help-run small { color: var(--muted); font-size: 14px; }
+.help-run .link { min-height: 44px; display: inline-flex; align-items: center; font-size: 16px; }
 
 /* a card taller than the screen scrolls inside the overlay; a short one stays centred (auto margins) */
-.overlay { position: fixed; inset: 0; background: rgba(5, 20, 14, .82); display: flex; flex-direction: column; overflow-y: auto; padding: 16px; }
+.overlay { position: fixed; inset: 0; background: rgba(5, 20, 14, .82); display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding: 16px; }
 .card { margin: auto; width: 100%; max-width: 420px; background: var(--felt-2); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: grid; gap: 12px; }
 .card h2 { margin: 0; font-size: 22px; }
-.card p { margin: 0; color: var(--muted); }
+.card p { margin: 0; color: var(--muted); line-height: 1.45; }
 .pick { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-items: center; text-align: left; padding: 12px; border-radius: 12px; background: var(--felt); border: 1px solid var(--line); }
 .pick .ic { font-size: 32px; grid-row: span 2; }
-.pick small { color: var(--muted); }
+.pick b { font-size: 17px; }
+.pick small { color: var(--muted); font-size: 16px; line-height: 1.4; }
 .note-box { display: grid; gap: 6px; padding: 10px; border-radius: 12px; background: rgba(242, 181, 68, .1); border: 1px solid var(--gold); }
 .note-box b { color: var(--gold); font-size: 15px; }
-.note { font: inherit; font-size: 15px; color: var(--ink); background: var(--felt); border: 1px solid var(--gold); border-radius: 10px; padding: 8px 10px; min-height: 84px; resize: vertical; user-select: text; }
-.btn { padding: 12px; border-radius: 12px; background: var(--gold); color: #2a1d05; font-weight: 700; }
+.note { font: inherit; font-size: 16px; color: var(--ink); background: var(--felt); border: 1px solid var(--gold); border-radius: 10px; padding: 8px 10px; min-height: 84px; resize: vertical; user-select: text; }
+.btn { min-height: 48px; padding: 12px; border-radius: 12px; background: var(--gold); color: #2a1d05; font-weight: 700; }
 .btn.alt { background: none; border: 1px solid var(--line); color: var(--ink); }
 
 /* balance panel */
-.foot { flex-wrap: wrap; gap: 6px 12px; }
 .tune-box { place-items: start center; overflow-y: auto; }
 .tune { width: 100%; max-width: 480px; background: var(--felt-2); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: grid; gap: 10px; }
 .tune-head { display: flex; justify-content: space-between; align-items: center; }
@@ -181,10 +203,11 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 @keyframes fire { 50% { transform: scale(1.15); background: var(--line); } }
 @keyframes shake { 25% { transform: translateX(-4px) rotate(-1deg); } 75% { transform: translateX(4px) rotate(1deg); } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
-.tip { margin: 0; padding: 8px 10px; border-radius: 10px; background: rgba(110, 200, 140, .12); border: 1px solid rgba(110, 200, 140, .6); font-size: 14px; line-height: 1.35; text-align: left; }
+.tip { margin: 0; padding: 8px 10px; border-radius: 10px; background: rgba(110, 200, 140, .12); border: 1px solid rgba(110, 200, 140, .6); font-size: 16px; line-height: 1.4; text-align: left; }
+.info.tip { font-size: 15px; }
 /* the end-of-run question: three answers, the chosen one lit */
 .luck-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.luck-row .btn { padding: 10px 4px; font-size: 15px; }
+.luck-row .btn { padding: 10px 4px; font-size: 16px; }
 .btn.alt.on { background: var(--gold); border-color: var(--gold); color: #2a1d05; }
 
 /* under the calculation: the formula of the hand, chips blue, multiplier red */
@@ -194,20 +217,20 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 /* combinations reference */
 .help-list { display: grid; gap: 8px; }
 .help-row { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; align-items: baseline; text-align: left; }
-.help-row small { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
+.help-row small { grid-column: 1 / -1; color: var(--muted); font-size: 15px; }
 .help-row .base i { font-style: normal; } .help-row .c { color: var(--chips); } .help-row .m { color: var(--mult); }
-.help-item { text-align: left; font-size: 14px; }
-.help-item small { display: block; color: var(--muted); font-size: 13px; }
+.help-item { text-align: left; font-size: 16px; line-height: 1.4; }
+.help-item small { display: block; color: var(--muted); font-size: 15px; }
 /* the order's rerolls drawn as dots, like the reroll pips */
 .dots { display: inline-flex; gap: 2px; vertical-align: middle; }
-.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
+.dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
 /* the tutorial: what the bot advises to tap next — dice to keep (or to let go), the reroll button, the combination to play */
 .die.adv { outline: 3px dashed var(--ink); outline-offset: 3px; animation: hint 1.2s ease-in-out infinite; }
 .roll.adv, .combo.adv, .pick.adv { outline: 3px solid var(--ink); outline-offset: 2px; animation: hint 1.2s ease-in-out infinite; }
 @keyframes hint { 50% { outline-color: transparent; } }
 @media (prefers-reduced-motion: reduce) { .die.adv, .roll.adv, .combo.adv, .pick.adv { animation: none; } }
-.tutor { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0 4px; font-size: 14px; color: var(--muted); text-align: left; }
-.tutor input { width: 20px; height: 20px; flex: none; accent-color: var(--gold); }
+.tutor { display: flex; gap: 10px; align-items: center; min-height: 44px; margin: 12px 0 4px; font-size: 15px; color: var(--muted); text-align: left; }
+.tutor input { width: 24px; height: 24px; flex: none; accent-color: var(--gold); }
 /* The notebook's look for the friends' alpha on the notebook site (tools/build.mjs adds it after style.css for dist/notebook.html):
    the notebook's colours, fonts, white cards and dice (src/style.css in kitoglav22/yatzy). Only the look changes, the layout stays. */
 :root {
@@ -215,8 +238,8 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   --win-soft: #e2f3e8; --shadow: rgba(29, 42, 58, .12);
   --display: "Unbounded", "Arial Black", system-ui, sans-serif;
   --body: "Manrope", -apple-system, "Segoe UI", system-ui, sans-serif;
-  --felt: var(--bg); --felt-2: var(--paper); --line: var(--rule); --ink: #1d2a3a; --muted: #5d6b80;
-  --die: var(--paper); --pip: var(--ink); --held: var(--accent); --chips: var(--accent); --mult: #c23b22; --gold: #b36b00; --ok: #1f8a4c;
+  --felt: var(--bg); --felt-2: var(--paper); --line: var(--rule); --ink: #1d2a3a; --muted: #4f5d72;
+  --die: var(--paper); --pip: var(--ink); --held: var(--accent); --chips: var(--accent); --mult: #b8381f; --gold: #975a00; --ok: #1f8a4c;
   color-scheme: light;
 }
 /* dark as the device is, unless Telegram sets the theme on <html> (ui/telegram.js) */
@@ -245,8 +268,8 @@ h2, .nums, .roll { font-family: var(--display); }
 .pace { background: var(--ink); }
 .combos { gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 16px; overflow: hidden; }
 .combo { border-radius: 0; background: var(--paper); }
-/* a combination the dice do not make fades its text, not its cell, so the grid lines stay even */
-.combo:disabled { opacity: 1; } .combo:disabled > * { opacity: .45; }
+/* a combination the dice do not make: grey cell, grey text, still readable (readability audit, П2) */
+.combo:disabled { background: var(--bg); box-shadow: none; }
 .combo.best { outline: 0; background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); }
 .combo.best .pv::before { color: var(--accent); }
 
@@ -260,7 +283,9 @@ h2, .nums, .roll { font-family: var(--display); }
 .die.picked { box-shadow: 0 0 0 3px var(--gold); }
 .die.void { box-shadow: inset 0 0 0 2px var(--mult); }
 
-.roll { background: var(--accent); color: var(--on-accent); border-radius: 12px; font-weight: 800; font-size: 17px; min-height: 46px; }
+.roll { background: var(--accent); color: var(--on-accent); border-radius: 12px; font-weight: 800; font-size: 17px; min-height: 50px; }
+.help-btn { background: var(--paper); border-color: var(--rule); color: var(--ink); }
+.help-btn::before { color: var(--accent); }
 .roll:disabled { background: var(--rule); color: var(--muted); }
 .btn { background: var(--accent); color: var(--on-accent); font-weight: 800; }
 .btn.alt { background: var(--paper); border: 1.5px solid var(--rule); color: var(--ink); }
@@ -285,7 +310,7 @@ h2, .nums, .roll { font-family: var(--display); }
 .link { color: var(--accent); }
 
 /* inside Telegram, full screen: keep clear of its buttons on top and the home bar below */
-html.tgfull #app { padding-top: calc(12px + var(--tg-top, 0px)); padding-bottom: calc(12px + var(--tg-bottom, 0px)); }
+html.tgfull #app { padding-top: calc((12px + var(--tg-top, 0px)) / var(--zoom, 1)); padding-bottom: calc((12px + var(--tg-bottom, 0px)) / var(--zoom, 1)); }
 html.tgfull body::before { content: ""; position: fixed; left: 0; right: 0; top: 0; height: var(--tg-top, 0px); background: var(--bg); z-index: 5; }
 html.tgfull .overlay { padding-top: calc(16px + var(--tg-top, 0px)); padding-bottom: calc(16px + var(--tg-bottom, 0px)); }
 </style>
@@ -293,7 +318,7 @@ html.tgfull .overlay { padding-top: calc(16px + var(--tg-top, 0px)); padding-bot
 <body>
 <main id="app">
   <header class="top">
-    <div class="where"><span id="stage"></span><span id="kind" class="kind"></span></div>
+    <div class="where"><div class="st"><span id="stage"></span><span id="kind" class="kind"></span></div><button id="help" class="help-btn">Справка</button></div>
     <div id="bossLine" class="boss-line"></div>
     <div class="goal" id="goal">
       <div class="bar"><div id="bar"></div><div id="pace" class="pace"></div></div>
@@ -319,7 +344,6 @@ html.tgfull .overlay { padding-top: calc(16px + var(--tg-top, 0px)); padding-bot
 
   <section class="combos" id="combos" aria-label="Комбинации"></section>
 
-  <footer class="foot"><a id="home" class="link" href="./" hidden>← Блокнот</a><span id="seed"></span><button id="help" class="link">Справка</button><button id="tune" class="link">⚙ Баланс</button><button id="new" class="link">Новый забег</button></footer>
 </main>
 
 <div id="overlay" class="overlay" hidden><div class="card" id="card"></div></div>
@@ -522,18 +546,20 @@ M["src/data/amulets.js"] = (() => {
 //   add:  { chips, mult }    times: { mult }
 // example: the hand the screen counts with and without the amulet, so the player sees what it gives without knowing
 // chips and multiplier yet (Docs/research/2026-11-01-hints-audit.md, П2); `when` is said next to it. Different combinations,
-// so the examples do not all point at Тройка. The wording says «множитель +2» / «множитель ×2»: «+» and «×» are the difference.
+// so the examples do not all point at Тройка.
+// desc: the condition first, then what it gives («Всегда: +2 к множителю»). «×2» is said in words («множитель удваивается»):
+// on a phone «+2» and «×2» look alike (author, 01.11.2026: «+ и x не путаются перед глазами?»).
 const OFFER = 3;
 
 const __default = [
-  { id: 'abacus', desc: 'множитель +2', example: { combo: 'house', dice: [3, 3, 3, 5, 5] }, name: 'Счёты', icon: '🧮', price: 5, rarity: 'common', effects: [{ when: 'hand', add: { mult: 2 } }] },
-  { id: 'even', desc: 'множитель +1 за каждый чётный кубик комбинации', example: { combo: 'three', dice: [4, 4, 4, 1, 3] }, name: 'Чётный', icon: '⚖️', price: 5, rarity: 'common', effects: [{ when: 'die', if: { parity: 'even' }, add: { mult: 1 } }] },
-  { id: 'odd', desc: '+15 фишек за каждый нечётный кубик комбинации', example: { combo: 'small', dice: [1, 2, 3, 4, 6] }, name: 'Нечётный', icon: '🌓', price: 5, rarity: 'common', effects: [{ when: 'die', if: { parity: 'odd' }, add: { chips: 15 } }] },
-  { id: 'sixer', desc: '+20 фишек за каждую шестёрку комбинации', example: { combo: 'four', dice: [6, 6, 6, 6, 2] }, name: 'Шестёрочник', icon: '🎲', price: 4, rarity: 'common', effects: [{ when: 'die', if: { face: 6 }, add: { chips: 20 } }] },
-  { id: 'first', desc: 'множитель +3, если ход сыгран без перебросов', example: { combo: 'small', dice: [2, 3, 4, 5, 2], when: 'без перебросов' }, name: 'С первого раза', icon: '⚡', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { firstRoll: true }, add: { mult: 3 } }] },
-  { id: 'last', desc: 'множитель ×2 на последнем ходу стола', example: { combo: 'house', dice: [3, 3, 3, 5, 5], when: 'на последнем ходу' }, name: 'Последний шанс', icon: '⏳', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { lastTurn: true }, times: { mult: 2 } }] },
-  { id: 'twins', desc: 'множитель ×2 на Паре и Двух парах', example: { combo: 'twopair', dice: [2, 2, 6, 6, 3] }, name: 'Двойняшки', icon: '👯', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { combo: ['pair', 'twopair'] }, times: { mult: 2 } }] },
-  { id: 'straight', desc: 'множитель ×2 на Малом и Большом стрите', example: { combo: 'large', dice: [2, 3, 4, 5, 6] }, name: 'Стритовик', icon: '🪜', price: 6, rarity: 'rare', effects: [{ when: 'hand', if: { combo: ['small', 'large'] }, times: { mult: 2 } }] },
+  { id: 'abacus', desc: 'Всегда: +2 к множителю', example: { combo: 'house', dice: [3, 3, 3, 5, 5] }, name: 'Счёты', icon: '🧮', price: 5, rarity: 'common', effects: [{ when: 'hand', add: { mult: 2 } }] },
+  { id: 'even', desc: 'Каждый чётный кубик комбинации: +1 к множителю', example: { combo: 'three', dice: [4, 4, 4, 1, 3] }, name: 'Чётный', icon: '⚖️', price: 5, rarity: 'common', effects: [{ when: 'die', if: { parity: 'even' }, add: { mult: 1 } }] },
+  { id: 'odd', desc: 'Каждый нечётный кубик комбинации: +15 фишек', example: { combo: 'small', dice: [1, 2, 3, 4, 6] }, name: 'Нечётный', icon: '🌓', price: 5, rarity: 'common', effects: [{ when: 'die', if: { parity: 'odd' }, add: { chips: 15 } }] },
+  { id: 'sixer', desc: 'Каждая шестёрка комбинации: +20 фишек', example: { combo: 'four', dice: [6, 6, 6, 6, 2] }, name: 'Шестёрочник', icon: '🎲', price: 4, rarity: 'common', effects: [{ when: 'die', if: { face: 6 }, add: { chips: 20 } }] },
+  { id: 'first', desc: 'Ход без перебросов: +3 к множителю', example: { combo: 'small', dice: [2, 3, 4, 5, 2], when: 'без перебросов' }, name: 'С первого раза', icon: '⚡', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { firstRoll: true }, add: { mult: 3 } }] },
+  { id: 'last', desc: 'Последний ход стола: множитель удваивается', example: { combo: 'house', dice: [3, 3, 3, 5, 5], when: 'на последнем ходу' }, name: 'Последний шанс', icon: '⏳', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { lastTurn: true }, times: { mult: 2 } }] },
+  { id: 'twins', desc: 'Пара и Две пары: множитель удваивается', example: { combo: 'twopair', dice: [2, 2, 6, 6, 3] }, name: 'Двойняшки', icon: '👯', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { combo: ['pair', 'twopair'] }, times: { mult: 2 } }] },
+  { id: 'straight', desc: 'Малый и Большой стрит: множитель удваивается', example: { combo: 'large', dice: [2, 3, 4, 5, 6] }, name: 'Стритовик', icon: '📈', price: 6, rarity: 'rare', effects: [{ when: 'hand', if: { combo: ['small', 'large'] }, times: { mult: 2 } }] },
 ];
 
 return { default: __default, OFFER };
@@ -549,7 +575,7 @@ const FIRST = { id: 'gate', name: 'Привратник', icon: '🚪', desc: '�
 
 const __default = [
   { id: 'rush', name: 'Спешка', icon: '⏳', desc: '−1 ход', rules: { turns: -1 } },
-  { id: 'miser', name: 'Скряга', icon: '🪙', desc: 'забирает 3 переброса у стола', rules: { rerolls: -3 } },
+  { id: 'miser', name: 'Скряга', icon: '💰', desc: 'забирает 3 переброса у стола', rules: { rerolls: -3 } },
   { id: 'shadow', name: 'Тень', icon: '🌑', desc: 'шестёрки не дают своих 6 фишек, амулеты на них работают', rules: { faceChips: { 6: 0 } } },
   // the author's idea (30.10.2026): classic Yatzy for one table; Шанс stays free so a turn can always be played
   { id: 'clerk', name: 'Бюрократ', icon: '📋', desc: 'каждая комбинация один раз за стол, кроме Шанса', rules: { once: true } },
@@ -1237,6 +1263,8 @@ function setup(tg, home) {
     root.style.setProperty('--tg-top', (a.top || 0) + (c.top || 0) + 'px');
     root.style.setProperty('--tg-bottom', (a.bottom || 0) + (c.bottom || 0) + 'px');
     root.classList.toggle('tgfull', !!tg.isFullscreen);
+    // less room under Telegram's buttons: the page fits the table to the screen again (readability audit, П6)
+    dispatchEvent(new Event('resize'));
   };
   if (has('8.0')) { ['safeAreaChanged', 'contentSafeAreaChanged', 'fullscreenChanged'].forEach(e => tg.onEvent(e, insets)); insets(); }
   // a swipe down over the page must scroll it, not close the app
@@ -1737,7 +1765,52 @@ function tableTail(run, k) {
   return (x, r) => { if (x <= 0) return 1; if (k <= 0) return 0; const tl = tail(r), j = Math.ceil(x / step); return j < tl.length ? tl[j] : 0; };
 }
 
-return { PLAN, keyOf, HANDS, scores, warm, planner, budget, turnBudget, setHolds, advise, judge, handsWorth, turnWorth, rankAmulets, tableTail };
+// What one use of a die ability adds to an average turn, in points (the scale of turnWorth): the turn may use it once,
+// at any point, on any die (Один кубик rerolls one die without spending a reroll). The bot's shop weighs abilities by it.
+const APPS = {};
+function apps(id) {
+  if (APPS[id]) return APPS[id];
+  const idx = d => INDEX.get(keyOf(d));
+  // for every hand: what each way to use the ability turns it into (a list of hands, all equally likely)
+  return (APPS[id] = HANDS.map(h => {
+    const out = [];
+    for (let i = 0; i < 5; i++) {
+      if (i > 0 && h[i] === h[i - 1]) continue;
+      const faces = id === 'nudge' ? [h[i] - 1, h[i] + 1].filter(f => f >= 1 && f <= 6) : id === 'flip' ? [7 - h[i]] : null;
+      if (faces) for (const f of faces) { const d = [...h]; d[i] = f; out.push([idx(d)]); }
+      else out.push([1, 2, 3, 4, 5, 6].map(f => { const d = [...h]; d[i] = f; return idx(d); }));
+    }
+    return out;
+  }));
+}
+const ABILITY_WORTH = new Map();
+function abilityWorth(run, id, rerolls = Math.round(TABLES.rerolls / TABLES.turns)) {
+  MOVES ??= buildMoves();
+  const ctx = { ...context(run), banned: [] }, key = `${id}|${scoreKey(ctx)}|${rerolls}`;
+  const hit = ABILITY_WORTH.get(key);
+  if (hit !== undefined) return hit;
+  const stop = topTotals({ ...ctx, turn: { rollsUsed: 2, turnsLeft: 2, rerolls } }), A = apps(id);
+  const use = (i, L) => { let b = -1; for (const to of A[i]) { let e = 0; for (const j of to) e += L[j]; e /= to.length; if (e > b) b = e; } return b; };
+  // W: the turn without the ability; WA: with it, still unused
+  let W = stop, WA = Float64Array.from(stop, (v, i) => Math.max(v, use(i, stop)));
+  for (let r = 1; r <= rerolls; r++) {
+    const E = expect(W, 0), EA = expect(WA, 0), w = new Float64Array(HANDS.length), wa = new Float64Array(HANDS.length);
+    for (let i = 0; i < HANDS.length; i++) {
+      let b = stop[i], ba = stop[i];
+      for (const m of MOVES[i]) { if (E[m.k] > b) b = E[m.k]; if (EA[m.k] > ba) ba = EA[m.k]; }
+      w[i] = b; wa[i] = ba;
+    }
+    for (let i = 0; i < HANDS.length; i++) wa[i] = Math.max(wa[i], use(i, w));
+    W = w; WA = wa;
+  }
+  let gain = 0;
+  OUT[5].forEach((o, i) => { gain += o.p * (WA[i] - W[i]); });
+  if (ABILITY_WORTH.size >= 5000) ABILITY_WORTH.clear();
+  ABILITY_WORTH.set(key, gain);
+  return gain;
+}
+
+return { PLAN, keyOf, HANDS, scores, warm, planner, budget, turnBudget, setHolds, advise, judge, handsWorth, turnWorth, rankAmulets, tableTail, abilityWorth };
 })();
 
 M["ui/app.js"] = (() => {
@@ -1760,8 +1833,8 @@ const KIND = { normal: 'обычный стол', hard: 'сложный стол
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 const KEY = 'arcade.run', BEST = 'arcade.best', BOSS_SEEN = 'arcade.bossSeen', TIPS = 'arcade.tips', TUTOR = 'arcade.tutor', STREAK = 'arcade.tutorStreak';
 // replaced by tools/build.mjs with the commit and date the page was built from
-const BUILD = "86b6137 2026-11-01 11:56";
-const VERSION = "71.8";
+const BUILD = "f6ae4de 2026-11-01 13:09";
+const VERSION = "71.9";
 // which page this is: 'notebook' for the friends' alpha on the notebook site, anything else is the claude.ai test page
 const TARGET = "notebook";
 const NOTEBOOK = TARGET === 'notebook';
@@ -1792,6 +1865,8 @@ const TIP = {
   // on the table after the first roll, in the line under the amulets, until the first hand is played
   score: () => { const c = COMBOS.find(x => x.id === 'three'); return `Новое: очки = фишки × множитель. У Тройки ${c.chips}×${c.mult}: ${c.chips} плюс сумма трёх кубиков, всё умножить на ${c.mult}.`; },
   boss: 'Новое: с этого этапа у каждого босса своё правило.',
+  // on the table, the first time an amulet goes dim after a roll
+  dim: 'Новое: тусклый амулет на этих кубиках не сработает. Яркий прибавит очки к лучшей комбинации.',
 };
 // The tutorial (author, 31.10.2026): a checkbox on the «Как играть» card, on by default and remembered; off — no tips at all.
 const tutor = () => store.get(TUTOR) !== '0';
@@ -1801,7 +1876,7 @@ const tutor = () => store.get(TUTOR) !== '0';
 // Chips × multiplier wait for the second table, so the first table has one new thing at a time.
 const firstTable = () => run.stage === 0 && run.table === 0 && run.phase === 'table';
 const forced = t => tutor() && firstTable() && t.turnsLeft === t.turns;
-let scoreShown = false, orderShown = false, adv = null, advKey = '';
+let scoreShown = false, orderShown = false, dimShown = false, adv = null, advKey = '';
 function advice(t) {
   if (!tutor() || !firstTable() || !t.dice || rolling) return null;
   const k = [t.dice, t.rerolls, t.turnsLeft, t.points, t.rolled, t.order].join('|');
@@ -1821,8 +1896,8 @@ function adviceLine(t, a) {
   const aim = a.aim ? ` — целимся в ${acc(a.aim)}` : '';
   if (heldAsAdvised(t, a)) return `Совет: нажмите «Перебросить»${aim}.`;
   if (!a.keep.some(Boolean)) return `Совет: снимите отметки и перебросьте все кубики${aim}.`;
-  const faces = t.dice.filter((_, i) => a.keep[i]).sort((x, y) => x - y).join(' ');
-  return `Совет: оставьте ${faces} (нажмите на них) и перебросьте остальные${aim}.`;
+  const kept = t.dice.filter((_, i) => a.keep[i]).sort((x, y) => x - y);
+  return `Совет: оставьте ${kept.join(' ')} (нажмите на ${kept.length > 1 ? 'них' : 'него'}) и перебросьте остальные${aim}.`;
 }
 function coach(t, a) {
   if (!tutor() || !firstTable() || busy) return null;
@@ -1873,7 +1948,7 @@ const HOWTO = turns => [
   `Наберите очки до цели стола за ${turns} ${plural(turns, 'ход', 'хода', 'ходов')}.`,
   'Бросьте кубики, нажмите на те, что хотите оставить, остальные перебросьте.',
   'Потом выберите комбинацию внизу: чем она реже, тем больше очков.',
-  'Какие бывают комбинации и что делают ваши амулеты — по ссылке «Справка» внизу экрана.',
+  'Какие бывают комбинации и что делают ваши амулеты — по кнопке «Справка» вверху экрана.',
 ];
 // The combinations reference (author, 31.10.2026: «нужна справка по комбинациям»): what makes each one and an example;
 // dice after « · » do not count towards its chips
@@ -1947,8 +2022,8 @@ function render() {
   $('kind').textContent = KIND[t.kind];
   $('kind').className = 'kind' + (t.kind === 'boss' ? ' boss' : '');
   const boss = bossFor(run), bl = $('bossLine');
-  bl.textContent = isBoss(run) ? `${boss.icon} ${boss.name}: ${boss.desc}` : `Босс этапа: ${boss.icon} ${boss.name}, ${boss.desc}`;
   bl.className = 'boss-line' + (isBoss(run) ? ' now' : '');
+  bl.textContent = isBoss(run) ? `${boss.icon} ${boss.name}: ${boss.desc}` : `Босс этапа: ${boss.icon} ${boss.name}, ${boss.desc}`;
   $('points').textContent = t.points;
   $('target').textContent = t.target;
   $('bar').style.width = Math.min(100, 100 * t.points / t.target) + '%';
@@ -1965,13 +2040,16 @@ function render() {
   const a = advice(t) || warned?.a, lead = warned?.text || (farewell ? 'Вы играете уверенно — подсказчик выключен. Включить можно в «Справке».' : coach(t, a)), scoreTip = !lead && t.dice && !seen('score') && !firstTable();
   // the order is told on the table where it first shows, before the roll, not in the shop card (hints audit, П7)
   const orderTip = !lead && !t.dice && run.phase === 'table' && !!t.order && !seen('order');
-  scoreShown = scoreTip; orderShown = orderTip;
+  // after a roll each amulet shows whether it adds to the best combination on these dice: bright if it does, dim if not
+  const lit = run.phase === 'table' && t.dice && !rolling && !busy ? litAmulets(t.dice) : null;
+  const dimTip = !lead && !scoreTip && !!lit?.includes(false) && !seen('dim');
+  scoreShown = scoreTip; orderShown = orderTip; dimShown = dimTip;
   am.hidden = !run.amulets.length && !seen('amulet');
   $('info').hidden = am.hidden && !scoreTip && !orderTip && !lead;
   for (let s = 0; s < SLOTS; s++) {
     const a = run.amulets[s];
     const b = document.createElement('button');
-    b.className = 'slot' + (a ? ' full' : '') + (s === sel ? ' sel' : '');
+    b.className = 'slot' + (a ? ' full' : '') + (a && lit ? (lit[s] ? ' on' : ' off') : '') + (s === sel ? ' sel' : '');
     b.dataset.s = s;
     if (a) { b.textContent = amuletById[a.id].icon; b.setAttribute('aria-label', amuletById[a.id].name); }
     am.append(b);
@@ -1981,7 +2059,7 @@ function render() {
   info.className = 'info';
   if (sel >= 0 && run.amulets[sel]) {
     const d = amuletById[run.amulets[sel].id];
-    info.innerHTML = `<span><b>${d.name}</b>: ${d.desc}. <small>${amuletExample(d)}</small></span>`;
+    info.innerHTML = `<span><b>${d.name}</b>. ${d.desc}. <small>${amuletExample(d)}</small></span>`;
   } else if (lead) {
     info.textContent = lead;
     info.className = 'info tip';
@@ -1990,6 +2068,9 @@ function render() {
     info.className = 'info tip';
   } else if (orderTip) {
     info.innerHTML = `<span>${TIP.order()}</span>`; // our own text: it draws the order's dots; one span, the line is a flex row
+    info.className = 'info tip';
+  } else if (dimTip) {
+    info.textContent = TIP.dim;
     info.className = 'info tip';
   } else if (run.amulets.length) {
     info.textContent = 'Нажмите на амулет, чтобы прочитать.';
@@ -2028,10 +2109,37 @@ function render() {
     b.innerHTML = `<span class="nm">${c.name}${t.order === c.id ? ` <b class="ord" title="заказ стола: +${TABLES.order.rerolls} к перебросам стола">${ORDER()}</b>` : ''}${lv > 1 ? ` <small>ур. ${lv}</small>` : ''}</span><span class="base${s ? ' live' : ''}"><i class="c">${ch}</i>×<i class="m">${mu}</i></span><span class="pv">${pv}</span>`;
     list.append(b);
   }
-  $('seed').textContent = `Забег ${run.seed.toString(36).toUpperCase()} · рекорд: ${+store.get(BEST) || 0} ст. · v${VERSION}`;
-  $('tune').textContent = tunedNow() ? '⚙ Баланс (изменён)' : '⚙ Баланс';
   overlay();
+  fit();
+  // on an ordinary table the stage boss takes one line: a rule that does not fit waits in «Справка» (readability audit, П5)
+  const short = Object.keys(boss.rules).length ? [' · правило в «Справке»', ' · см. «Справку»'] : [', без особых правил', ''];
+  for (const tail of short) if (!isBoss(run) && bl.scrollWidth > bl.clientWidth) bl.textContent = `Босс этапа: ${boss.icon} ${boss.name}${tail}`;
 }
+
+// The table fits the screen without scrolling (Yandex Games 1.10.4) and grows on a tall screen (readability audit, П6):
+// the largest zoom from 0.9 to 1.25 at which nothing scrolls. Worked out anew for a new screen size, table or phase;
+// within one table it only shrinks (a long tip), so the table does not change size with every tap.
+// Lower than 0.9 it does not go: on a very low screen the page scrolls, as before. No CSS zoom (old Firefox) — no fitting.
+const ZOOM = [0.9, 1.25], canZoom = typeof CSS !== 'undefined' && CSS.supports?.('zoom', '1');
+let fitKey = '', zoom = 1;
+function fit() {
+  if (!canZoom) return;
+  const app = $('app'), doc = document.scrollingElement || document.documentElement;
+  const set = k => { app.style.zoom = k; app.style.setProperty('--zoom', k); app.style.minHeight = Math.floor(innerHeight / k) + 'px'; };
+  const fits = k => { set(k); return doc.scrollHeight <= innerHeight + 1; };
+  const key = [innerWidth, innerHeight, run.stage, run.table, run.phase].join('|');
+  if (key === fitKey && fits(zoom)) return;
+  let lo = ZOOM[0], hi = key === fitKey ? zoom : ZOOM[1];
+  fitKey = key;
+  if (fits(hi)) { zoom = hi; return; }
+  if (!fits(lo)) { zoom = lo; return; }
+  for (let i = 0; i < 8; i++) { const m = (lo + hi) / 2; if (fits(m)) lo = m; else hi = m; }
+  zoom = lo; // not rounded: a rounded-up zoom can break a tip into one more line and scroll again
+  set(zoom);
+}
+addEventListener('resize', () => { fitKey = ''; render(); });
+// a web font that arrives late changes the text's height: fit again
+document.fonts?.addEventListener?.('loadingdone', () => { fitKey = ''; fit(); });
 
 // Bought abilities under the roll button. A die ability asks for its die first (and Подкрутка for +1 or −1),
 // a hand ability is switched on for the next combination.
@@ -2260,6 +2368,7 @@ async function onPlay(id) {
   log.add('p', id, s.total);
   turnDone();
   if (scoreShown) markTips(['score']);
+  if (dimShown) markTips(['dim']);
   log.save(run);
   save();
   // draw the dice that scored, not the cleared table, while the score plays
@@ -2277,6 +2386,11 @@ async function onPlay(id) {
 function amuletGains(dice, id) {
   const ctx = context(run), full = score(dice, id, ctx).total;
   return ctx.amulets.map((a, k) => ({ name: a.name, icon: a.icon, add: full - score(dice, id, { ...ctx, amulets: ctx.amulets.filter((_, j) => j !== k) }).total }));
+}
+// Before the hand: which amulets add to the best combination on these dice (the one the list marks)
+function litAmulets(dice) {
+  const top = best(dice, context(run));
+  return top ? amuletGains(dice, top.combo).map(g => g.add > 0) : null;
 }
 // After the hand: its whole formula, the amulets that did not fire this time and the order's rerolls
 function showGains(gains, s) {
@@ -2348,19 +2462,38 @@ function combosHelp(h, btn) {
     if (!rows.length) return;
     h('h3', title);
     if (note) h('p', note);
+    // an amulet's desc starts with its condition («Всегда: …»), so it follows the name after a full stop, not a second colon
     for (const [ic, name, desc, ex] of rows) {
       const row = h('div', '');
       row.className = 'help-item';
-      row.innerHTML = `<b>${ic} ${name}</b>: ${desc}${ex ? `<small>${ex}</small>` : ''}`;
+      row.innerHTML = `<b>${ic} ${name}</b>${/^[А-ЯЁ]/.test(desc) ? '.' : ':'} ${desc}${ex ? `<small>${ex}</small>` : ''}`;
     }
   };
-  items('Ваши амулеты', 'Срабатывают слева направо; игра сама ставит их в самом выгодном порядке.',
+  items('Ваши амулеты', 'Срабатывают слева направо; игра сама ставит их в самом выгодном порядке. После броска яркий амулет прибавит очки к лучшей комбинации, тусклый — нет.',
     run.amulets.map(a => amuletById[a.id]).map(d => [d.icon, d.name, d.desc, amuletExample(d)]));
   items('Ваши способности', '', run.abilities.map(id => abilityById[id]).map(a => [a.icon, a.name, a.desc]));
+  const b = bossFor(run);
+  h('h3', 'Босс этапа');
+  const bi = h('div', '');
+  bi.className = 'help-item';
+  bi.innerHTML = `<b>${b.icon} ${b.name}</b>: ${b.desc}`; // our own data
   h('h3', 'Монетки');
   h('p', `Даются за победу на столе (каждые ${SHOP.win.every} ${plural(SHOP.win.every, 'этап', 'этапа', 'этапов')} на 1 больше) и за каждые ${SHOP.change} ${plural(SHOP.change, 'несгоревший переброс', 'несгоревших переброса', 'несгоревших перебросов')} стола. Тратятся в лавке на способности и таблички.`);
   tutorBox($('card'));
+  runBox($('card'));
   btn('Закрыть', () => { help = false; render(); });
+}
+
+// The end of «Справка» (readability audit, П4: the table has no footer): a new run, the balance panel on the test page,
+// the way back to the notebook on the notebook site, the run's number, the record and the version
+function runBox(card) {
+  const box = document.createElement('div'), add = (tag, id, cls, txt) => { const e = document.createElement(tag); e.id = id; e.className = cls; e.textContent = txt; box.append(e); return e; };
+  box.className = 'help-run';
+  add('button', 'new', 'btn alt', 'Новый забег').onclick = newRunTap;
+  if (!NOTEBOOK) add('button', 'tune', 'btn alt', tunedNow() ? '⚙ Баланс (изменён)' : '⚙ Баланс').onclick = openBalance;
+  if (NOTEBOOK) add('a', 'home', 'link', '← Блокнот').href = './';
+  add('small', 'seed', '', `Забег ${run.seed.toString(36).toUpperCase()} · рекорд: ${+store.get(BEST) || 0} ${plural(+store.get(BEST) || 0, 'стол', 'стола', 'столов')} · v${VERSION}`);
+  card.append(box);
 }
 
 // The tutorial switch: on the «Как играть» card and in the combinations reference (to switch it back on)
@@ -2543,7 +2676,7 @@ $('amulets').addEventListener('click', e => {
 });
 const tunedNow = () => { try { return Object.keys(JSON.parse(store.get('arcade.tune')) || {}).length; } catch { return tuned; } };
 $('help').addEventListener('click', () => { if (busy) return; help = true; render(); });
-$('tune').addEventListener('click', () => {
+function openBalance() {
   if (busy) return;
   openTune($('tuneBox'), {
     store,
@@ -2551,23 +2684,24 @@ $('tune').addEventListener('click', () => {
     onChange: () => { if (run.phase === 'table') run.t.target = targetFor(run.stage, run.t.kind); save(); render(); },
     onClose: () => log.add('t', tuneChanges()),
   });
-});
+}
 
-// a second tap within 3 seconds confirms (confirm() is blocked inside some frames)
+// «Новый забег» in «Справка»: a second tap within 3 seconds confirms (confirm() is blocked inside some frames)
 let sure = 0;
-$('new').addEventListener('click', () => {
+function newRunTap(e) {
+  const b = e.currentTarget;
   if (busy) return;
   if (Date.now() - sure > 3000) {
-    sure = Date.now(); $('new').textContent = 'Точно? Нажмите ещё раз';
-    setTimeout(() => { $('new').textContent = 'Новый забег'; }, 3000);
+    sure = Date.now(); b.textContent = 'Точно? Нажмите ещё раз';
+    setTimeout(() => { b.textContent = 'Новый забег'; }, 3000);
     return;
   }
-  sure = 0; $('new').textContent = 'Новый забег';
+  sure = 0; help = false;
   run = fresh(); shown = { victory: false }; sel = -1; save(); setCalc(0, 0, 0); showGains([]); render();
-});
+}
 
-// the friends' alpha: no balance panel, and a way back to the notebook
-if (NOTEBOOK) { $('tune').hidden = true; $('home').hidden = false; telegram('./'); }
+// the friends' alpha: Telegram's look and back button when opened from the notebook inside Telegram
+if (NOTEBOOK) telegram('./');
 
 setCalc(0, 0, 0);
 save();

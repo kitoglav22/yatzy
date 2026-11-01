@@ -1,5 +1,4 @@
 <!doctype html>
-<!-- Аркада Яцзы (альфа) v71.7: собрано в закрытом репозитории yatzy-arcade, ветка PR #64, коммит f78adc2 (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -70,7 +69,6 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .slot.fire { animation: fire .3s; }
 .info { min-height: 1.4em; color: var(--muted); font-size: 13px; line-height: 1.3; display: flex; align-items: center; gap: 8px; }
 .info b { color: var(--ink); }
-.info .mv { padding: 4px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); }
 
 .calc { display: flex; justify-content: center; align-items: baseline; gap: 8px; font-weight: 700; font-size: 22px; line-height: 1.2; min-height: 27px; }
 .chips { color: var(--chips); } .mult { color: var(--mult); } .x, .eq { color: var(--muted); font-size: 20px; }
@@ -198,6 +196,8 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .help-row { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; align-items: baseline; text-align: left; }
 .help-row small { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
 .help-row .base i { font-style: normal; } .help-row .c { color: var(--chips); } .help-row .m { color: var(--mult); }
+.help-item { text-align: left; font-size: 14px; }
+.help-item small { display: block; color: var(--muted); font-size: 13px; }
 /* the order's rerolls drawn as dots, like the reroll pips */
 .dots { display: inline-flex; gap: 2px; vertical-align: middle; }
 .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
@@ -273,7 +273,6 @@ h2, .nums, .roll { font-family: var(--display); }
 .abil .ab.on { color: var(--paper); }
 .pips i { background: var(--ink); }
 .pips.small i { background: var(--gold); }
-.info .mv { border-color: var(--rule); }
 
 .overlay { background: rgba(15, 21, 32, .5); }
 .card { background: var(--paper); border-color: var(--rule); box-shadow: 0 12px 32px var(--shadow); }
@@ -320,7 +319,7 @@ html.tgfull .overlay { padding-top: calc(16px + var(--tg-top, 0px)); padding-bot
 
   <section class="combos" id="combos" aria-label="Комбинации"></section>
 
-  <footer class="foot"><a id="home" class="link" href="./" hidden>← Блокнот</a><span id="seed"></span><button id="help" class="link">Комбинации</button><button id="tune" class="link">⚙ Баланс</button><button id="new" class="link">Новый забег</button></footer>
+  <footer class="foot"><a id="home" class="link" href="./" hidden>← Блокнот</a><span id="seed"></span><button id="help" class="link">Справка</button><button id="tune" class="link">⚙ Баланс</button><button id="new" class="link">Новый забег</button></footer>
 </main>
 
 <div id="overlay" class="overlay" hidden><div class="card" id="card"></div></div>
@@ -521,17 +520,20 @@ M["src/data/amulets.js"] = (() => {
 //   when: 'hand' — fires once, after all dice, in amulet order left to right
 //   if:   { parity: 'even'|'odd' } | { face: n } (die effects), { combo: [ids] } | { firstRoll: true } | { lastTurn: true } (hand effects)
 //   add:  { chips, mult }    times: { mult }
+// example: the hand the screen counts with and without the amulet, so the player sees what it gives without knowing
+// chips and multiplier yet (Docs/research/2026-11-01-hints-audit.md, П2); `when` is said next to it. Different combinations,
+// so the examples do not all point at Тройка. The wording says «множитель +2» / «множитель ×2»: «+» and «×» are the difference.
 const OFFER = 3;
 
 const __default = [
-  { id: 'abacus', desc: '+2 множителя', name: 'Счёты', icon: '🧮', price: 5, rarity: 'common', effects: [{ when: 'hand', add: { mult: 2 } }] },
-  { id: 'even', desc: '+1 множителя за каждый чётный кубик в комбинации', name: 'Чётный', icon: '⚖️', price: 5, rarity: 'common', effects: [{ when: 'die', if: { parity: 'even' }, add: { mult: 1 } }] },
-  { id: 'odd', desc: '+15 фишек за каждый нечётный кубик в комбинации', name: 'Нечётный', icon: '🌓', price: 5, rarity: 'common', effects: [{ when: 'die', if: { parity: 'odd' }, add: { chips: 15 } }] },
-  { id: 'sixer', desc: '+20 фишек за каждую шестёрку в комбинации', name: 'Шестёрочник', icon: '🎲', price: 4, rarity: 'common', effects: [{ when: 'die', if: { face: 6 }, add: { chips: 20 } }] },
-  { id: 'first', desc: '+3 множителя, если ход сыгран без перебросов', name: 'С первого раза', icon: '⚡', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { firstRoll: true }, add: { mult: 3 } }] },
-  { id: 'last', desc: '×2 множителя на последнем ходу стола', name: 'Последний шанс', icon: '⏳', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { lastTurn: true }, times: { mult: 2 } }] },
-  { id: 'twins', desc: '×2 множителя на паре и двух парах', name: 'Двойняшки', icon: '👯', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { combo: ['pair', 'twopair'] }, times: { mult: 2 } }] },
-  { id: 'straight', desc: '×2 множителя на малом и большом стрите', name: 'Стритовик', icon: '🪜', price: 6, rarity: 'rare', effects: [{ when: 'hand', if: { combo: ['small', 'large'] }, times: { mult: 2 } }] },
+  { id: 'abacus', desc: 'множитель +2', example: { combo: 'house', dice: [3, 3, 3, 5, 5] }, name: 'Счёты', icon: '🧮', price: 5, rarity: 'common', effects: [{ when: 'hand', add: { mult: 2 } }] },
+  { id: 'even', desc: 'множитель +1 за каждый чётный кубик комбинации', example: { combo: 'three', dice: [4, 4, 4, 1, 3] }, name: 'Чётный', icon: '⚖️', price: 5, rarity: 'common', effects: [{ when: 'die', if: { parity: 'even' }, add: { mult: 1 } }] },
+  { id: 'odd', desc: '+15 фишек за каждый нечётный кубик комбинации', example: { combo: 'small', dice: [1, 2, 3, 4, 6] }, name: 'Нечётный', icon: '🌓', price: 5, rarity: 'common', effects: [{ when: 'die', if: { parity: 'odd' }, add: { chips: 15 } }] },
+  { id: 'sixer', desc: '+20 фишек за каждую шестёрку комбинации', example: { combo: 'four', dice: [6, 6, 6, 6, 2] }, name: 'Шестёрочник', icon: '🎲', price: 4, rarity: 'common', effects: [{ when: 'die', if: { face: 6 }, add: { chips: 20 } }] },
+  { id: 'first', desc: 'множитель +3, если ход сыгран без перебросов', example: { combo: 'small', dice: [2, 3, 4, 5, 2], when: 'без перебросов' }, name: 'С первого раза', icon: '⚡', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { firstRoll: true }, add: { mult: 3 } }] },
+  { id: 'last', desc: 'множитель ×2 на последнем ходу стола', example: { combo: 'house', dice: [3, 3, 3, 5, 5], when: 'на последнем ходу' }, name: 'Последний шанс', icon: '⏳', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { lastTurn: true }, times: { mult: 2 } }] },
+  { id: 'twins', desc: 'множитель ×2 на Паре и Двух парах', example: { combo: 'twopair', dice: [2, 2, 6, 6, 3] }, name: 'Двойняшки', icon: '👯', price: 5, rarity: 'common', effects: [{ when: 'hand', if: { combo: ['pair', 'twopair'] }, times: { mult: 2 } }] },
+  { id: 'straight', desc: 'множитель ×2 на Малом и Большом стрите', example: { combo: 'large', dice: [2, 3, 4, 5, 6] }, name: 'Стритовик', icon: '🪜', price: 6, rarity: 'rare', effects: [{ when: 'hand', if: { combo: ['small', 'large'] }, times: { mult: 2 } }] },
 ];
 
 return { default: __default, OFFER };
@@ -548,7 +550,7 @@ const FIRST = { id: 'gate', name: 'Привратник', icon: '🚪', desc: '�
 const __default = [
   { id: 'rush', name: 'Спешка', icon: '⏳', desc: '−1 ход', rules: { turns: -1 } },
   { id: 'miser', name: 'Скряга', icon: '🪙', desc: 'забирает 3 переброса у стола', rules: { rerolls: -3 } },
-  { id: 'shadow', name: 'Тень', icon: '🌑', desc: 'шестёрки не дают фишек', rules: { faceChips: { 6: 0 } } },
+  { id: 'shadow', name: 'Тень', icon: '🌑', desc: 'шестёрки не дают своих 6 фишек, амулеты на них работают', rules: { faceChips: { 6: 0 } } },
   // the author's idea (30.10.2026): classic Yatzy for one table; Шанс stays free so a turn can always be played
   { id: 'clerk', name: 'Бюрократ', icon: '📋', desc: 'каждая комбинация один раз за стол, кроме Шанса', rules: { once: true } },
 ];
@@ -573,9 +575,9 @@ const TABLETS = { price: 2, step: 1, offer: 3 };
 
 const __default = [
   { id: 'nudge', name: 'Подкрутка', icon: '🔧', price: 2, use: 'die', desc: '+1 или −1 к одному кубику' },
-  { id: 'flip', name: 'Переворот', icon: '🔄', price: 2, use: 'die', desc: 'кубик на противоположную грань: 1↔6, 2↔5, 3↔4' },
+  { id: 'flip', name: 'Переворот', icon: '🔄', price: 2, use: 'die', desc: 'кубик переворачивается: 1 станет 6, 2 — 5, 3 — 4 и обратно' },
   { id: 'single', name: 'Один кубик', icon: '🎯', price: 1, use: 'die', desc: 'перебросить один кубик, переброс стола не тратится' },
-  { id: 'double', name: 'Дубль', icon: '✖️', price: 4, use: 'hand', desc: 'очки этого хода ×2' },
+  { id: 'double', name: 'Дубль', icon: '✖️', price: 4, use: 'hand', desc: 'очки одного хода ×2: включите перед выбором комбинации' },
 ];
 
 return { default: __default, SHOP, TABLETS };
@@ -643,7 +645,7 @@ function newRun(seed, { amulets = [], pick = false } = {}) {
   const run = {
     v: SAVE_VERSION, seed, stage: 0, table: 0, phase: 'table', won: 0,
     rng: { fx: derive(seed, 'fx') }, levels: {}, history: {},
-    amulets: amulets.map(id => ({ id, n: 0 })),
+    amulets: sortAmulets(amulets.map(id => ({ id, n: 0 }))),
     stars: 0, abilities: [], bought: [],
   };
   startTable(run);
@@ -766,7 +768,7 @@ function load(json) {
   // saves from before the table's own pool keep what the table in play has; the next table starts its own
   if (!('pool' in run.t)) run.t.pool = run.t.rerolls;
   if (!('order' in run.t)) run.t.order = orderFor(run);
-  run.amulets = run.amulets.filter(a => amuletById[a.id]);
+  run.amulets = sortAmulets(run.amulets.filter(a => amuletById[a.id]));
   return run;
 }
 
@@ -789,17 +791,19 @@ function offer(run) {
 // stay: after a boss the shop stays open, so tablets can still be bought after the amulet (the screen; the bot moves on at once)
 function take(run, id, { stay = false } = {}) {
   if (!offer(run).includes(id)) return false;
-  run.amulets.push({ id, n: 0 });
+  run.amulets = sortAmulets([...run.amulets, { id, n: 0 }]);
   if (stay && run.phase === 'shop') { run.t.took = id; return true; }
   leaveShop(run);
   return true;
 }
 
-// Amulets fire left to right, so the player may reorder them
-function moveAmulet(run, from, to) {
-  if (from < 0 || to < 0 || from >= run.amulets.length || to >= run.amulets.length) return;
-  const [a] = run.amulets.splice(from, 1);
-  run.amulets.splice(to, 0, a);
+// Amulets fire left to right, and the game puts them in the order that always scores most: multipliers that add («+2»)
+// before multipliers that multiply («×2»); chips and die effects do not depend on the order. With these amulets the best
+// order is always the same, so it was a trap, not a choice (author, 01.11.2026: «Авто, без ручного»; Docs/research/2026-11-01-hints-audit.md).
+// Taking an amulet keeps the order it was taken in otherwise (a stable sort).
+const isTimes = a => amuletById[a.id]?.effects.some(e => e.times);
+function sortAmulets(list) {
+  return [...list.filter(a => !isTimes(a)), ...list.filter(isTimes)];
 }
 
 // The ability shop opens once a stage, after the hard table, before the boss.
@@ -895,7 +899,7 @@ function useAbility(run, k, { die, by } = {}) {
   return true;
 }
 
-return { amuletById, abilityById, SAVE_VERSION, winStars, targetFor, bossFor, rules, newRun, orderFor, roll, hold, context, play, nextRerolls, changeFor, leaveShop, load, SLOTS, isBoss, offer, take, moveAmulet, shopOpen, abilityOffer, canBuy, buy, canRefund, refund, tabletsOpen, tabletOffer, tabletBought, tabletPrice, canBuyTablet, buyTablet, refundTablet, useAbility };
+return { amuletById, abilityById, SAVE_VERSION, winStars, targetFor, bossFor, rules, newRun, orderFor, roll, hold, context, play, nextRerolls, changeFor, leaveShop, load, SLOTS, isBoss, offer, take, sortAmulets, shopOpen, abilityOffer, canBuy, buy, canRefund, refund, tabletsOpen, tabletOffer, tabletBought, tabletPrice, canBuyTablet, buyTablet, refundTablet, useAbility };
 })();
 
 M["src/sim.js"] = (() => {
@@ -1248,7 +1252,7 @@ M["src/plan.js"] = (() => {
 // Exact odds over every hand of five dice: which dice to keep, a few rerolls ahead, and when to stop and play.
 // No document or window here: the bot runs it in Node, the page shows its advice.
 const { context, hold, amuletById } = M["src/run.js"];
-const { detect, score } = M["src/scoring.js"];
+const { detect, score, CONDITIONS } = M["src/scoring.js"];
 const TABLES = M["src/data/tables.js"].default;
 const COMBOS = M["src/data/combos.js"].default;
 
@@ -1256,8 +1260,11 @@ const COMBOS = M["src/data/combos.js"].default;
 const RANK = COMBOS.map(c => c.id);
 
 // spread: a turn uses its share of the reroll pool; rerollCost: a reroll's price in table worth (leftovers are stars);
-// depth: rerolls planned ahead; orderValue: the order's rerolls in table worth
-const PLAN = { spread: 1, rerollCost: 0.012, depth: 3, orderValue: 0.06 };
+// depth: rerolls planned ahead; orderValue: the order's rerolls in table worth.
+// table: the strong bot (bot audit, Docs/research/2026-11-01-bot-audit.md; second bot, off by default): no share of the pool
+// per turn; stopping is worth the chance to win the table with the points and rerolls left, plus tableKeep per reroll kept
+// (leftovers are coins); the whole pool is planned ahead.
+const PLAN = { spread: 1, rerollCost: 0.012, depth: 3, orderValue: 0.06, table: 0, tableKeep: 0.004 };
 
 // Every hand of five dice as a sorted multiset (252 of them), and for each hand every way to keep dice
 // with the exact odds of each hand it can turn into: precomputed once, so a turn's plan is a few array passes.
@@ -1272,22 +1279,96 @@ for (let k = 0; k <= 5; k++) {
   OUT.push([...map].map(([key, n]) => ({ faces: key ? key.split('').map(Number) : [], p: n / 6 ** k })));
 }
 const keyOf = d => [...d].sort((a, b) => a - b).join('');
-const HANDS = OUT[5].map(o => o.faces), INDEX = new Map(HANDS.map((h, i) => [h.join(''), i]));
-// built on first use: the page loads without waiting for it
-let MOVES = null;
-const buildMoves = () => HANDS.map(d => {
-  const seen = new Set(), out = [];
-  for (let mask = 0; mask < 31; mask++) {
-    const keep = d.filter((_, i) => mask & (1 << i)), hk = keep.join('');
-    if (seen.has(hk)) continue;
-    seen.add(hk);
-    const outs = OUT[5 - keep.length];
-    const to = new Int16Array(outs.length), p = new Float64Array(outs.length);
-    outs.forEach((o, j) => { to[j] = INDEX.get(keyOf([...keep, ...o.faces])); p[j] = o.p; });
-    out.push({ keep, to, p });
+const HANDS = OUT[5].map(o => o.faces);
+const INDEX = new Map(HANDS.map((h, i) => [h.join(''), i]));
+// built on first use: the page loads without waiting for it.
+// KEEPS: every multiset of 0–4 kept dice (462 of them) with the hands it rolls into and their odds; MOVES[i]: the distinct
+// keeps of hand i, each pointing at its KEEPS entry (k). A hand's expected worth after a keep depends only on what is kept,
+// so a level of the plan sums each keep once (expect) instead of once for every hand that can keep it.
+// IDS[i]: the combinations hand i makes, in detect() order.
+let MOVES = null, KEEPS = null, IDS = null;
+const buildMoves = () => {
+  const byKey = new Map();
+  KEEPS = [];
+  IDS = HANDS.map(d => Object.keys(detect(d)));
+  return HANDS.map(d => {
+    const seen = new Set(), out = [];
+    for (let mask = 0; mask < 31; mask++) {
+      const keep = d.filter((_, i) => mask & (1 << i)), hk = keep.join('');
+      if (seen.has(hk)) continue;
+      seen.add(hk);
+      let k = byKey.get(hk);
+      if (k === undefined) {
+        const outs = OUT[5 - keep.length];
+        const to = new Int16Array(outs.length), p = new Float64Array(outs.length);
+        outs.forEach((o, j) => { to[j] = INDEX.get(keyOf([...keep, ...o.faces])); p[j] = o.p; });
+        byKey.set(hk, k = KEEPS.length);
+        KEEPS.push({ to, p });
+      }
+      out.push({ keep, k, to: KEEPS[k].to, p: KEEPS[k].p });
+    }
+    return out;
+  });
+};
+// the expected worth of every keep when the next roll lands on a hand worth below[·], starting the sum at init
+// (the same additions in the same order as summing hand by hand, so the numbers are the same to the last bit);
+// cached per array and init
+const EXPECT = new WeakMap();
+function expect(below, init) {
+  let byInit = EXPECT.get(below);
+  if (!byInit) EXPECT.set(below, byInit = new Map());
+  let e = byInit.get(init);
+  if (!e) {
+    e = new Float64Array(KEEPS.length);
+    for (let k = 0; k < KEEPS.length; k++) {
+      const { to, p } = KEEPS[k];
+      let x = init;
+      for (let j = 0; j < to.length; j++) x += p[j] * below[to[j]];
+      e[k] = x;
+    }
+    byInit.set(init, e);
   }
-  return out;
-});
+  return e;
+}
+
+// Points of every combination for every hand under one scoring context, filled as needed and kept between turns and runs.
+// One column per combination; its key holds everything score() (scoring.js) reads for that combination: its own numbers
+// (so a number changed in memory — npm run balance, the balance panel — gets a fresh column) and level, the boss's chips
+// per face, and the amulets' effects in slot order that can fire on it — every die effect, and the hand effects whose
+// condition is met (a hand effect for other combinations, or for «no reroll yet» / «last turn» when the turn is not that,
+// never fires). Conditions other than the ones in CONDITIONS.hand put the whole turn into the key.
+// tests/plan.test.js checks the cached points against score() itself.
+const comboById = Object.fromEntries(COMBOS.map(c => [c.id, c]));
+const KNOWN = ['combo', 'firstRoll', 'lastTurn'], SIMPLE = CONDITIONS.hand.every(k => KNOWN.includes(k));
+const fires = (e, id, turn) => e.when !== 'hand' || !e.if || !Object.keys(e.if).every(k => KNOWN.includes(k))
+  || ((e.if.combo === undefined || e.if.combo.includes(id))
+    && (e.if.firstRoll === undefined || e.if.firstRoll === (turn?.rollsUsed === 1))
+    && (e.if.lastTurn === undefined || e.if.lastTurn === (turn?.turnsLeft === 1)));
+const plain = ctx => SIMPLE && ctx.amulets.every(a => a.effects.every(e => e.when !== 'hand' || !e.if || Object.keys(e.if).every(k => KNOWN.includes(k))));
+const columnKey = (ctx, id) => JSON.stringify([id, comboById[id], ctx.levels[id] || 1, ctx.faceChips,
+  ctx.amulets.map(a => a.effects.filter(e => fires(e, id, ctx.turn))), plain(ctx) ? 0 : ctx.turn]);
+// a whole scoring context but the turn, for caches of things built from all the columns
+const scoreKey = ctx => JSON.stringify([COMBOS, ctx.levels, ctx.faceChips, ctx.amulets.map(a => a.effects)]);
+const COLUMNS = new Map();
+function scores(ctx) {
+  const cols = {};
+  const column = id => {
+    const key = columnKey(ctx, id);
+    let c = COLUMNS.get(key);
+    if (!c) {
+      if (COLUMNS.size >= 20000) COLUMNS.clear();
+      COLUMNS.set(key, c = new Float64Array(HANDS.length).fill(NaN));
+    }
+    return (cols[id] = c);
+  };
+  return (i, id) => { const c = cols[id] || column(id); let v = c[i]; if (v !== v) v = c[i] = score(HANDS[i], id, ctx).total; return v; };
+}
+// the most points hand i scores, for every hand (no combination banned; 0 if none scores above it)
+function topTotals(ctx, banned = []) {
+  const pts = scores(ctx), v = new Float64Array(HANDS.length);
+  for (let i = 0; i < HANDS.length; i++) for (const id of IDS[i]) { if (banned.includes(id)) continue; v[i] = Math.max(v[i], pts(i, id)); }
+  return v;
+}
 
 // the page builds the tables while the player reads the first card, so the first advice comes at once
 function warm() { MOVES ??= buildMoves(); }
@@ -1299,31 +1380,70 @@ function planner(run, o) {
   const orderBonus = t.order ? o.orderValue * t.target * (TABLES.order.rerolls / 3) : 0;
   // the best play for a hand; first: no reroll this turn yet (С первого раза)
   const plays = [[], []];
+  // points under this table's context, before the first reroll (С первого раза) and after
+  const pts = [scores({ ...base, turn: { ...base.turn, rollsUsed: 2 } }), scores({ ...base, turn: { ...base.turn, rollsUsed: 1 } })];
   const bestPlay = (i, first) => {
     const c = plays[first ? 1 : 0];
     if (c[i]) return c[i];
-    const d = HANDS[i], ctx = { ...base, turn: { ...base.turn, rollsUsed: first ? 1 : 2 } };
+    const at = pts[first ? 1 : 0];
     let top = null;
-    for (const id of Object.keys(detect(d))) {
-      if (ctx.banned.includes(id)) continue;
-      const s = score(d, id, ctx), v = s.total + (id === t.order ? orderBonus : 0);
-      if (!top || v > top.v) top = { id, total: s.total, v };
+    for (const id of IDS[i]) {
+      if (base.banned.includes(id)) continue;
+      const total = at(i, id), v = total + (id === t.order ? orderBonus : 0);
+      if (!top || v > top.v) top = { id, total, v };
     }
     return (c[i] = top);
   };
   // last turn: only reaching the target counts; otherwise points up to what is still needed
   const worth = p => (last ? (p.total >= need ? 1 : 0.2 * p.total / need) : Math.min(p.v, need) / need);
-  const cost = o.rerollCost * (last ? 0.3 : 1);
+  const cost = o.table ? 0 : o.rerollCost * (last ? 0.3 : 1);
+  // table mode: playing id for pts with r rerolls left in the pool is worth the chance to win the table from there
+  // (later turns by tableTail), plus tableKeep per reroll kept; the order adds its rerolls to the pool
+  const tail = o.table ? tableTail(run, t.turnsLeft - 1) : null;
+  const playWorth = (id, pts, r) => {
+    const rr = r + (id === t.order ? TABLES.order.rerolls : 0);
+    return last ? (pts >= need ? 1 + o.tableKeep * rr : 0) : tail(need - pts, rr) + o.tableKeep * rr;
+  };
+  // the plays a hand allows, for table mode: [points, id] of the best play that is not the order, and of the order
+  const optsC = [[], []];
+  const opts = (i, first) => {
+    const c = optsC[first ? 1 : 0];
+    if (c[i]) return c[i];
+    const at = pts[first ? 1 : 0];
+    let top = [0, null], ord = null;
+    for (const id of IDS[i]) {
+      if (base.banned.includes(id)) continue;
+      const p = at(i, id);
+      if (id === t.order) ord = [p, id]; else if (p > top[0]) top = [p, id];
+    }
+    return (c[i] = ord ? [top, ord] : [top]);
+  };
+  const stops = [];
+  const stopAt = (i, r, first) => {
+    const key = (first ? 1 : 0) * 64 + r;
+    const row = stops[key] || (stops[key] = new Float64Array(HANDS.length).fill(NaN));
+    if (Number.isNaN(row[i])) row[i] = Math.max(...opts(i, first).map(([pts, id]) => playWorth(id, pts, r)));
+    return row[i];
+  };
   const levels = [];
   const level = r => {
     if (levels[r]) return levels[r];
+    if (o.table) {
+      const v = new Float64Array(HANDS.length), E = r > 0 ? expect(level(r - 1), 0) : null;
+      for (let i = 0; i < HANDS.length; i++) {
+        let top = stopAt(i, r, false);
+        if (E) for (const m of MOVES[i]) { const e = E[m.k]; if (e > top) top = e; }
+        v[i] = top;
+      }
+      return (levels[r] = v);
+    }
     const v = new Float64Array(HANDS.length);
     if (r === 0) for (let i = 0; i < HANDS.length; i++) v[i] = worth(bestPlay(i, false));
     else {
-      const below = level(r - 1), stop = level(0);
+      const E = expect(level(r - 1), -cost), stop = level(0);
       for (let i = 0; i < HANDS.length; i++) {
         let top = stop[i];
-        for (const m of MOVES[i]) { let e = -cost; for (let j = 0; j < m.to.length; j++) e += m.p[j] * below[m.to[j]]; if (e > top) top = e; }
+        for (const m of MOVES[i]) { const e = E[m.k]; if (e > top) top = e; }
         v[i] = top;
       }
     }
@@ -1332,34 +1452,43 @@ function planner(run, o) {
   // the value of a hand with r rerolls left and the move that gets it (null: play now)
   const V = (key, r, first) => {
     const i = INDEX.get(key);
-    let v = worth(bestPlay(i, first)), act = null;
+    let v = o.table ? stopAt(i, r, first) : worth(bestPlay(i, first)), act = null;
     if (r > 0) {
-      const below = level(r - 1);
-      for (const m of MOVES[i]) { let e = -cost; for (let j = 0; j < m.to.length; j++) e += m.p[j] * below[m.to[j]]; if (e > v) { v = e; act = m.keep; } }
+      const E = expect(level(r - 1), -cost);
+      for (const m of MOVES[i]) { const e = E[m.k]; if (e > v) { v = e; act = m.keep; } }
     }
     return { v, act };
   };
   // the worth of the player's own move: playing combination id now, or keeping these faces and rerolling the rest
   const playV = (key, first, id) => {
-    const d = HANDS[INDEX.get(key)], ctx = { ...base, turn: { ...base.turn, rollsUsed: first ? 1 : 2 } };
-    if (ctx.banned.includes(id) || !detect(d)[id]) return 0;
-    const s = score(d, id, ctx);
-    return worth({ total: s.total, v: s.total + (id === t.order ? orderBonus : 0) });
+    const i = INDEX.get(key);
+    if (base.banned.includes(id) || !IDS[i].includes(id)) return 0;
+    const total = pts[first ? 1 : 0](i, id);
+    return worth({ total, v: total + (id === t.order ? orderBonus : 0) });
   };
   const keepV = (key, r, faces) => {
-    const m = MOVES[INDEX.get(key)].find(x => x.keep.join('') === keyOf(faces)), below = level(r - 1);
-    let e = -cost;
-    for (let j = 0; j < m.to.length; j++) e += m.p[j] * below[m.to[j]];
-    return e;
+    const m = MOVES[INDEX.get(key)].find(x => x.keep.join('') === keyOf(faces));
+    return expect(level(r - 1), -cost)[m.k];
   };
-  return { V, bestPlay: (key, first) => bestPlay(INDEX.get(key), first), playV, keepV, need, last };
+  // table mode: the combination to play with r rerolls left in the pool
+  const choose = (key, r, first) => {
+    const i = INDEX.get(key), at = pts[first ? 1 : 0];
+    let top = null;
+    for (const id of IDS[i]) {
+      if (base.banned.includes(id)) continue;
+      const p = at(i, id), v = playWorth(id, p, r) + p * 1e-9;
+      if (!top || v > top.v) top = { id, total: p, v };
+    }
+    return top;
+  };
+  return { V, bestPlay: (key, first) => bestPlay(INDEX.get(key), first), choose, playV, keepV, worth, need, last };
 }
 
 // rerolls this turn may use: its share of the pool, all of it on the last turn, more when behind
 function budget(run, o) {
   const t = run.t;
   if (t.turnsLeft === 1) return t.rerolls;
-  if (o.spread === 0) return t.rerolls;
+  if (o.spread === 0 || o.table) return t.rerolls;
   const behind = (t.target - t.points) / t.turnsLeft > t.target / t.turns;
   return Math.min(t.rerolls, Math.ceil(t.rerolls / t.turnsLeft) + (behind ? 1 : 0));
 }
@@ -1475,6 +1604,10 @@ function handsWorth(run, played, change) {
 function turnWorth(run, change = c => c, rerolls = Math.round(TABLES.rerolls / TABLES.turns)) {
   MOVES ??= buildMoves();
   const c0 = context(run), ctx0 = change({ ...c0, banned: [], levels: { ...c0.levels }, amulets: [...c0.amulets] });
+  // the same scoring context, rerolls and table length give the same number: the shop asks for it again and again
+  const key = `${scoreKey(ctx0)}|${rerolls}|${TABLES.turns}`;
+  const hit = WORTH.get(key);
+  if (hit !== undefined) return hit;
   const first = OUT[5];
   let sum = 0;
   // amulets tell turns apart only by «last turn» and «no reroll» (scoring.js, lastTurn, firstRoll): one ordinary turn
@@ -1483,31 +1616,31 @@ function turnWorth(run, change = c => c, rerolls = Math.round(TABLES.rerolls / T
   const lastAsks = asks('lastTurn'), firstAsks = asks('firstRoll');
   for (const left of TABLES.turns > 1 && lastAsks ? [2, 1] : [1]) {
     const weight = lastAsks ? (left === 1 ? 1 : TABLES.turns - 1) : TABLES.turns;
-    const top = used => {
-      const v = new Float64Array(HANDS.length), ctx = { ...ctx0, turn: { rollsUsed: used, turnsLeft: left, rerolls } };
-      for (let i = 0; i < HANDS.length; i++) for (const id of Object.keys(detect(HANDS[i]))) v[i] = Math.max(v[i], score(HANDS[i], id, ctx).total);
-      return v;
-    };
+    const top = used => topTotals({ ...ctx0, turn: { rollsUsed: used, turnsLeft: left, rerolls } });
     const stop = top(2);
     let below = stop;
     for (let r = 1; r < rerolls; r++) {
-      const v = new Float64Array(HANDS.length);
+      const v = new Float64Array(HANDS.length), E = expect(below, 0);
       for (let i = 0; i < HANDS.length; i++) {
         let best = stop[i];
-        for (const m of MOVES[i]) { let e = 0; for (let j = 0; j < m.to.length; j++) e += m.p[j] * below[m.to[j]]; if (e > best) best = e; }
+        for (const m of MOVES[i]) { const e = E[m.k]; if (e > best) best = e; }
         v[i] = best;
       }
       below = v;
     }
     const now = firstAsks ? top(1) : stop;
+    const E = rerolls > 0 ? expect(below, 0) : null;
     for (let i = 0; i < HANDS.length; i++) {
       let best = now[i];
-      if (rerolls > 0) for (const m of MOVES[i]) { let e = 0; for (let j = 0; j < m.to.length; j++) e += m.p[j] * below[m.to[j]]; if (e > best) best = e; }
+      if (E) for (const m of MOVES[i]) { const e = E[m.k]; if (e > best) best = e; }
       sum += weight * first[i].p * best;
     }
   }
+  if (WORTH.size >= 5000) WORTH.clear();
+  WORTH.set(key, sum / TABLES.turns);
   return sum / TABLES.turns;
 }
+const WORTH = new Map();
 
 // the offered amulets from the most to the least they add per hand (gain: points, share: of the hand now)
 function rankAmulets(run, ids, played) {
@@ -1518,7 +1651,93 @@ function rankAmulets(run, ids, played) {
   }).sort((a, b) => b.gain - a.gain);
 }
 
-return { PLAN, keyOf, warm, planner, budget, turnBudget, setHolds, advise, judge, handsWorth, turnWorth, rankAmulets };
+// For the strong bot (option table): the chance that k more turns with r rerolls in all bring at least x points,
+// as tail(x, r). The rerolls are split evenly over the turns and each turn plays for the most points; the points of one
+// turn are a distribution in buckets of `step`, the turns add up by convolution.
+// zero buckets are skipped on both sides (most of a turn's buckets are empty): adding 0 changes nothing, so the sums
+// are the same to the last bit
+const conv = (a, b) => {
+  const o = new Float64Array(a.length + b.length - 1), nz = [];
+  for (let j = 0; j < b.length; j++) if (b[j]) nz.push(j);
+  for (let i = 0; i < a.length; i++) if (a[i]) for (const j of nz) o[i + j] += a[i] * b[j];
+  return o;
+};
+const DISTS = new Map();
+// one turn's points with rf rerolls (tl: turns left, for the amulets that ask), cached per run state; the hands a turn
+// ends on (points and odds, in the order they are reached) do not depend on the bucket size, so they are kept once
+// and put into buckets of each step as asked
+function turnDists(run, step, tl) {
+  const c0 = context(run);
+  const key = `${tl}|${scoreKey(c0)}|${c0.banned.join()}`;
+  let e = DISTS.get(key);
+  if (!e) {
+    if (DISTS.size > 400) DISTS.clear();
+    MOVES ??= buildMoves();
+    const sc = used => topTotals({ ...c0, turn: { rollsUsed: used, turnsLeft: tl, rerolls: 2 } }, c0.banned);
+    e = { later: sc(2), first: sc(1), L: [], A: [], ends: [], out: new Map() };
+    e.L[0] = e.later;
+    DISTS.set(key, e);
+  }
+  // the most-points worth with r rerolls left and the best keep (index into MOVES[i], -1: stop)
+  const lev = r => {
+    while (e.L.length <= r) {
+      const q = e.L.length, E = expect(e.L[q - 1], 0), v = new Float64Array(HANDS.length), arg = new Int16Array(HANDS.length);
+      for (let i = 0; i < HANDS.length; i++) {
+        let b = e.later[i], bi = -1;
+        MOVES[i].forEach((m, mi) => { const x = E[m.k]; if (x > b) { b = x; bi = mi; } });
+        v[i] = b; arg[i] = bi;
+      }
+      e.L.push(v); e.A[q] = arg;
+    }
+  };
+  // where a turn with rf rerolls ends: [points, odds, points, odds, …]
+  const ends = rf => {
+    if (e.ends[rf]) return e.ends[rf];
+    lev(rf);
+    const out = [];
+    let dist = new Float64Array(HANDS.length);
+    OUT[5].forEach((o, j) => { dist[j] += o.p; });
+    for (let r = rf, first = true; r >= 0; r--, first = false) {
+      const next = new Float64Array(HANDS.length);
+      for (let i = 0; i < HANDS.length; i++) {
+        if (!dist[i]) continue;
+        if (r === 0) { out.push(e.later[i], dist[i]); continue; }
+        // first roll: stop when its score (С первого раза) beats the best keep
+        const mi = e.A[r][i];
+        let m = mi >= 0 ? MOVES[i][mi] : null;
+        if (first && m && e.first[i] >= expect(e.L[r - 1], 0)[m.k]) m = null;
+        if (!m) out.push(first ? e.first[i] : e.later[i], dist[i]);
+        else for (let j = 0; j < m.to.length; j++) next[m.to[j]] += dist[i] * m.p[j];
+      }
+      dist = next;
+    }
+    return (e.ends[rf] = out);
+  };
+  let byStep = e.out.get(step);
+  if (!byStep) e.out.set(step, byStep = []);
+  return rf => {
+    if (byStep[rf]) return byStep[rf];
+    const out = [], seq = ends(rf);
+    for (let n = 0; n < seq.length; n += 2) { const k = Math.floor(seq[n] / step); out[k] = (out[k] || 0) + seq[n + 1]; }
+    return (byStep[rf] = Float64Array.from(out, x => x || 0));
+  };
+}
+function tableTail(run, k) {
+  const t = run.t, step = Math.max(5, Math.round(t.target / 300));
+  const gen = turnDists(run, step, 2), lastD = turnDists(run, step, 1), tails = new Map();
+  const tail = r => {
+    if (tails.has(r)) return tails.get(r);
+    let s = Float64Array.of(1);
+    for (let j = 0; j < k; j++) { const rf = Math.floor(r / k) + (j < r % k ? 1 : 0); s = conv(s, (j === k - 1 ? lastD : gen)(rf)); }
+    const tl = new Float64Array(s.length + 1);
+    for (let i = s.length - 1; i >= 0; i--) tl[i] = tl[i + 1] + s[i];
+    tails.set(r, tl);
+    return tl;
+  };
+  return (x, r) => { if (x <= 0) return 1; if (k <= 0) return 0; const tl = tail(r), j = Math.ceil(x / step); return j < tl.length ? tl[j] : 0; };
+}
+
+return { PLAN, keyOf, HANDS, scores, warm, planner, budget, turnBudget, setHolds, advise, judge, handsWorth, turnWorth, rankAmulets, tableTail };
 })();
 
 M["ui/app.js"] = (() => {
@@ -1527,7 +1746,7 @@ M["ui/app.js"] = (() => {
 const COMBOS = M["src/data/combos.js"].default;
 const TABLES = M["src/data/tables.js"].default;
 const { detect, score, best } = M["src/scoring.js"];
-const { newRun, roll, hold, play, load, context, rules, offer, take, leaveShop, nextRerolls, orderFor, moveAmulet, amuletById, abilityById, targetFor, isBoss, bossFor, shopOpen, abilityOffer, canBuy, buy, canRefund, refund, useAbility, SLOTS, tabletsOpen, tabletOffer, tabletBought, tabletPrice, canBuyTablet, buyTablet, refundTablet } = M["src/run.js"];
+const { newRun, roll, hold, play, load, context, rules, offer, take, leaveShop, nextRerolls, amuletById, abilityById, targetFor, isBoss, bossFor, shopOpen, abilityOffer, canBuy, buy, canRefund, refund, useAbility, SLOTS, tabletsOpen, tabletOffer, tabletBought, tabletPrice, canBuyTablet, buyTablet, refundTablet } = M["src/run.js"];
 const { SHOP } = M["src/data/abilities.js"];
 const { applySaved, openTune, tuneChanges } = M["ui/tune.js"];
 const { makeLog, claudeSink } = M["ui/log.js"];
@@ -1541,8 +1760,8 @@ const KIND = { normal: 'обычный стол', hard: 'сложный стол
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 const KEY = 'arcade.run', BEST = 'arcade.best', BOSS_SEEN = 'arcade.bossSeen', TIPS = 'arcade.tips', TUTOR = 'arcade.tutor', STREAK = 'arcade.tutorStreak';
 // replaced by tools/build.mjs with the commit and date the page was built from
-const BUILD = "f78adc2 2026-10-31 19:37";
-const VERSION = "71.7";
+const BUILD = "86b6137 2026-11-01 11:56";
+const VERSION = "71.8";
 // which page this is: 'notebook' for the friends' alpha on the notebook site, anything else is the claude.ai test page
 const TARGET = "notebook";
 const NOTEBOOK = TARGET === 'notebook';
@@ -1567,10 +1786,9 @@ const TIPS_EVERY_RUN = true;
 const TIP = {
   stars: () => `Новое: монетки ${COIN}. Даются за победу и за сэкономленные перебросы. Тратятся в лавке.`,
   order: () => `Новое: заказ стола. На каждом столе одна комбинация отмечена ${ORDER()}. Сыграете её — +${TABLES.order.rerolls} ${plural(TABLES.order.rerolls, 'переброс', 'переброса', 'перебросов')} на этот стол.`,
-  shop: () => `Новое: лавка. Способность — разовая помощь на любом столе, слотов ${SHOP.slots}. Табличка навсегда усиливает одну комбинацию. Передумали — нажмите на покупку ещё раз, пока не ушли из лавки.`,
+  // tablets are explained by their own line above the tablets, so the first shop has one tip less (hints audit, П7)
+  shop: () => `Новое: лавка. Способность — разовая помощь на любом столе, слотов ${SHOP.slots}. Передумали — нажмите на покупку ещё раз, пока не ушли из лавки.`,
   amulet: 'Новое: амулеты. Амулет — постоянный бонус к очкам.',
-  // the order of amulets matters only once there are two of them
-  amulets2: 'Новое: амулеты срабатывают слева направо. Нажмите на амулет на столе, чтобы переставить.',
   // on the table after the first roll, in the line under the amulets, until the first hand is played
   score: () => { const c = COMBOS.find(x => x.id === 'three'); return `Новое: очки = фишки × множитель. У Тройки ${c.chips}×${c.mult}: ${c.chips} плюс сумма трёх кубиков, всё умножить на ${c.mult}.`; },
   boss: 'Новое: с этого этапа у каждого босса своё правило.',
@@ -1583,7 +1801,7 @@ const tutor = () => store.get(TUTOR) !== '0';
 // Chips × multiplier wait for the second table, so the first table has one new thing at a time.
 const firstTable = () => run.stage === 0 && run.table === 0 && run.phase === 'table';
 const forced = t => tutor() && firstTable() && t.turnsLeft === t.turns;
-let scoreShown = false, adv = null, advKey = '';
+let scoreShown = false, orderShown = false, adv = null, advKey = '';
 function advice(t) {
   if (!tutor() || !firstTable() || !t.dice || rolling) return null;
   const k = [t.dice, t.rerolls, t.turnsLeft, t.points, t.rolled, t.order].join('|');
@@ -1655,7 +1873,7 @@ const HOWTO = turns => [
   `Наберите очки до цели стола за ${turns} ${plural(turns, 'ход', 'хода', 'ходов')}.`,
   'Бросьте кубики, нажмите на те, что хотите оставить, остальные перебросьте.',
   'Потом выберите комбинацию внизу: чем она реже, тем больше очков.',
-  'Какие бывают комбинации — по ссылке «Комбинации» внизу экрана.',
+  'Какие бывают комбинации и что делают ваши амулеты — по ссылке «Справка» внизу экрана.',
 ];
 // The combinations reference (author, 31.10.2026: «нужна справка по комбинациям»): what makes each one and an example;
 // dice after « · » do not count towards its chips
@@ -1670,6 +1888,19 @@ const HELP = {
   pair: ['два одинаковых', '4 4 · 1 3 6'],
   chance: ['любые кубики, считаются все пять', '1 3 4 5 6'],
 };
+// The example dice of a combination, as the help shows them: all five dice, and the ones that count (before « · »)
+function exDice(id) {
+  const ex = HELP[id][1].split(' или ').at(-1);
+  return { dice: ex.replace('·', ' ').split(' ').filter(Boolean).map(Number), shown: ex.split(' · ')[0] };
+}
+// What an amulet gives on its own example hand, at level 1 (hints audit, П2): «Например: Фулл-хаус 3 3 3 5 5: 295 → 413»
+function amuletExample(d) {
+  const e = d.example;
+  if (!e) return '';
+  const turn = { rollsUsed: 1, turnsLeft: 1 }, without = score(e.dice, e.combo, { turn }), with_ = score(e.dice, e.combo, { amulets: [d], turn });
+  const faces = without.dice.map(i => e.dice[i]).sort((x, y) => x - y).join(' ');
+  return `Например: ${comboName[e.combo]} ${faces}${e.when ? ` ${e.when}` : ''}: ${without.total}\u00a0→\u00a0${with_.total}`;
+}
 const seenTips = () => { try { return JSON.parse(store.get(TIPS)) || []; } catch { return []; } };
 const seen = id => !tutor() || seenTips().includes(id);
 const markTips = ids => { const s = seenTips(); store.set(TIPS, JSON.stringify([...new Set([...s, ...ids])])); };
@@ -1731,10 +1962,12 @@ function render() {
   am.replaceChildren();
   if (warned && !warned.k.startsWith(stateKey(t) + '{')) warned = null;
   if (farewell && t.dice && t.rolled > 1) farewell = false;
-  const a = advice(t) || warned?.a, lead = warned?.text || (farewell ? 'Вы играете уверенно — подсказчик выключен. Включить можно в «Комбинациях».' : coach(t, a)), scoreTip = !lead && t.dice && !seen('score') && !firstTable();
-  scoreShown = scoreTip;
+  const a = advice(t) || warned?.a, lead = warned?.text || (farewell ? 'Вы играете уверенно — подсказчик выключен. Включить можно в «Справке».' : coach(t, a)), scoreTip = !lead && t.dice && !seen('score') && !firstTable();
+  // the order is told on the table where it first shows, before the roll, not in the shop card (hints audit, П7)
+  const orderTip = !lead && !t.dice && run.phase === 'table' && !!t.order && !seen('order');
+  scoreShown = scoreTip; orderShown = orderTip;
   am.hidden = !run.amulets.length && !seen('amulet');
-  $('info').hidden = am.hidden && !scoreTip && !lead;
+  $('info').hidden = am.hidden && !scoreTip && !orderTip && !lead;
   for (let s = 0; s < SLOTS; s++) {
     const a = run.amulets[s];
     const b = document.createElement('button');
@@ -1748,23 +1981,18 @@ function render() {
   info.className = 'info';
   if (sel >= 0 && run.amulets[sel]) {
     const d = amuletById[run.amulets[sel].id];
-    info.innerHTML = `<span><b>${d.name}</b>: ${d.desc}</span>`;
-    if (run.amulets.length > 1) {
-      for (const [txt, to] of [['←', sel - 1], ['→', sel + 1]]) {
-        if (to < 0 || to >= run.amulets.length) continue;
-        const m = document.createElement('button');
-        m.className = 'mv'; m.textContent = txt; m.dataset.to = to;
-        info.append(m);
-      }
-    }
+    info.innerHTML = `<span><b>${d.name}</b>: ${d.desc}. <small>${amuletExample(d)}</small></span>`;
   } else if (lead) {
     info.textContent = lead;
     info.className = 'info tip';
   } else if (scoreTip) {
     info.textContent = TIP.score();
     info.className = 'info tip';
+  } else if (orderTip) {
+    info.innerHTML = `<span>${TIP.order()}</span>`; // our own text: it draws the order's dots; one span, the line is a flex row
+    info.className = 'info tip';
   } else if (run.amulets.length) {
-    info.textContent = 'Нажмите на амулет, чтобы прочитать и переставить.';
+    info.textContent = 'Нажмите на амулет, чтобы прочитать.';
   } else {
     info.textContent = 'Победите босса, чтобы получить амулет.';
   }
@@ -1836,24 +2064,38 @@ function abilityBar() {
     return;
   }
   run.abilities.forEach((id, k) => {
-    const a = abilityById[id];
-    const b = add(`${a.icon} ${a.name}`, () => {
+    const a = abilityById[id], g = gain(id), shut = closes(id);
+    // what it gives now, on the button: no tooltips on a phone (hints audit, П4)
+    const label = t.armed.includes(id) ? `${a.icon} ${a.name} включён` : shut ? `${a.icon} ${a.name}: закроет стол` : g > 0 ? `${a.icon} ${a.name} +${g}` : `${a.icon} ${a.name}`;
+    const b = add(label, () => {
       if (a.use === 'hand') { useAbility(run, k); log.add('u', id, t.armed.includes(id)); save(); render(); return; }
       pick = { k }; render();
-    }, t.armed.includes(id) ? 'on' : closes(id) ? 'closes' : '');
-    b.title = closes(id) ? `${a.desc}. Сейчас закрывает стол` : a.desc;
+    }, t.armed.includes(id) ? 'on' : shut ? 'closes' : '');
+    b.title = a.desc;
   });
 }
 // Would this ability, used now, take the table to its target with the best combination?
 // (Один кубик is random, so it never promises that.)
 function closes(id) {
   const t = run.t;
-  if (!t.dice || run.phase !== 'table') return false;
+  if (!t.dice || run.phase !== 'table' || rolling) return false;
   const ctx = context(run), need = t.target - t.points, now = best(t.dice, ctx).total;
   if (now >= need) return false;
   if (id === 'double') return now * 2 >= need;
   const faces = i => id === 'flip' ? [7 - t.dice[i]] : id === 'nudge' ? [t.dice[i] - 1, t.dice[i] + 1].filter(f => f >= 1 && f <= 6) : [];
   return t.dice.some((_, i) => faces(i).some(g => { const d = [...t.dice]; d[i] = g; return best(d, ctx).total >= need; }));
+}
+// How many points this ability adds to the best combination now: Дубль — the best combination again, Переворот and
+// Подкрутка — the best die to change. Один кубик is random and promises nothing.
+function gain(id) {
+  const t = run.t;
+  if (!t.dice || run.phase !== 'table' || rolling) return 0;
+  const ctx = context(run), now = best(t.dice, ctx).total;
+  if (id === 'double') return now;
+  const faces = f => id === 'flip' ? [7 - f] : id === 'nudge' ? [f - 1, f + 1].filter(g => g >= 1 && g <= 6) : [];
+  let top = now;
+  t.dice.forEach((f, i) => faces(f).forEach(g => { const d = [...t.dice]; d[i] = g; top = Math.max(top, best(d, ctx).total); }));
+  return top - now;
 }
 function applyAbility(arg) {
   const id = run.abilities[pick.k];
@@ -1873,7 +2115,6 @@ function wonTable(h, btn) {
   tip(h, 'stars');
   const take = run.table === 1 ? TABLES.rerolls - next : 0;
   h('p', `На следующем столе ${rr(next)}${take > 0 ? ` (${bossFor(run).name} забирает ${take})` : ''}.`).className = 'carry';
-  if (orderFor(run, run.stage + (isBoss(run) ? 1 : 0), (run.table + 1) % 3)) tip(h, 'order');
   const shop = shopOpen(run);
   if (shop) h('h3', 'Лавка перед боссом');
   if (shop && !tip(h, 'shop')) h('p', `Способность тратится один раз, на любом столе. Слотов ${SHOP.slots}.`);
@@ -1895,19 +2136,20 @@ function abilityShop() {
     $('card').append(b);
   }
 }
-// A tablet shows the combination's base before and after: no arithmetic for the player
+// A tablet shows the points before and after on the help's example dice, with the player's amulets that always fire or fire
+// on this combination: no multiplying in the head, and an amulet's combination shows its bigger gain (hints audit, П1)
 function tablets(h) {
   h('h3', 'Таблички');
-  const c3 = COMBOS.find(x => x.id === 'three');
-  h('p', `Табличка навсегда усиливает комбинацию: Тройка ${c3.chips}×${c3.mult} → ${c3.chips + c3.level.chips}×${c3.mult + c3.level.mult}.`);
-  const ids = tabletOffer(run);
+  h('p', 'Табличка навсегда усиливает одну комбинацию. На карточке — очки за кубики из справки, с вашими амулетами.');
+  const ids = tabletOffer(run), amulets = context(run).amulets;
   for (const id of ids) {
-    const c = COMBOS.find(x => x.id === id), lv = run.levels[id] || 1, bought = tabletBought(run, id);
-    const base = l => `${c.chips + (l - 1) * c.level.chips}×${c.mult + (l - 1) * c.level.mult}`;
+    const c = COMBOS.find(x => x.id === id), lv = run.levels[id] || 1, bought = tabletBought(run, id), ex = exDice(id);
+    const pts = l => score(ex.dice, id, { levels: { ...run.levels, [id]: l }, amulets }).total;
+    const base = l => `${ex.shown}: ${pts(l)}`;
     const b = document.createElement('button');
     b.className = 'pick buy';
     b.disabled = !canBuyTablet(run, id) && !bought;
-    b.innerHTML = `<span class="ic">📜</span><b>${c.name}, ур. ${lv + (bought ? 0 : 1)} <span class="price">${bought ? 'куплено' : `${COIN}${tabletPrice(run, id)}`}</span></b><small>${bought ? `${base(lv)}. Нажмите ещё раз, чтобы вернуть монетки` : `${base(lv)} → ${base(lv + 1)}`}</small>`;
+    b.innerHTML = `<span class="ic">📜</span><b>${c.name}, ур. ${lv + (bought ? 0 : 1)} <span class="price">${bought ? 'куплено' : `${COIN}${tabletPrice(run, id)}`}</span></b><small>${bought ? `${base(lv)} очков. Нажмите ещё раз, чтобы вернуть монетки` : `${base(lv)}\u00a0→\u00a0${pts(lv + 1)} очков`}</small>`;
     b.onclick = () => {
       if (bought ? refundTablet(run, id) : buyTablet(run, id)) { log.add(bought ? 'v' : 'l', id, ids); log.save(run); save(); render(); }
     };
@@ -2085,10 +2327,12 @@ function tip(h, id) {
   return true;
 }
 
-// Every combination with its current level: what makes it, an example, chips × multiplier
+// The help (hints audit, П6): every combination with its current level, what makes it, an example, chips × multiplier;
+// then everything the player has — amulets with their example, abilities — and where coins come from
 function combosHelp(h, btn) {
   $('card').className = 'card help';
-  h('h2', 'Комбинации');
+  h('h2', 'Справка');
+  h('h3', 'Комбинации');
   h('p', 'Очки = (фишки комбинации + сумма её кубиков) × множитель. Кубики после точки · не считаются.');
   const list = h('div', '');
   list.className = 'help-list';
@@ -2096,9 +2340,25 @@ function combosHelp(h, btn) {
     const lv = run.levels[c.id] || 1, [what, ex] = HELP[c.id];
     const row = document.createElement('div');
     row.className = 'help-row';
-    row.innerHTML = `<b>${c.name}</b><span class="base"><i class="c">${c.chips + (lv - 1) * c.level.chips}</i>×<i class="m">${c.mult + (lv - 1) * c.level.mult}</i></span><small>${what}: ${ex}</small>`;
+    row.innerHTML = `<b>${c.name}${lv > 1 ? ` <small>ур. ${lv}</small>` : ''}</b><span class="base"><i class="c">${c.chips + (lv - 1) * c.level.chips}</i>×<i class="m">${c.mult + (lv - 1) * c.level.mult}</i></span><small>${what}: ${ex}</small>`;
     list.append(row);
   }
+  h('p', 'Уровень комбинации поднимает табличка из лавки.');
+  const items = (title, note, rows) => {
+    if (!rows.length) return;
+    h('h3', title);
+    if (note) h('p', note);
+    for (const [ic, name, desc, ex] of rows) {
+      const row = h('div', '');
+      row.className = 'help-item';
+      row.innerHTML = `<b>${ic} ${name}</b>: ${desc}${ex ? `<small>${ex}</small>` : ''}`;
+    }
+  };
+  items('Ваши амулеты', 'Срабатывают слева направо; игра сама ставит их в самом выгодном порядке.',
+    run.amulets.map(a => amuletById[a.id]).map(d => [d.icon, d.name, d.desc, amuletExample(d)]));
+  items('Ваши способности', '', run.abilities.map(id => abilityById[id]).map(a => [a.icon, a.name, a.desc]));
+  h('h3', 'Монетки');
+  h('p', `Даются за победу на столе (каждые ${SHOP.win.every} ${plural(SHOP.win.every, 'этап', 'этапа', 'этапов')} на 1 больше) и за каждые ${SHOP.change} ${plural(SHOP.change, 'несгоревший переброс', 'несгоревших переброса', 'несгоревших перебросов')} стола. Тратятся в лавке на способности и таблички.`);
   tutorBox($('card'));
   btn('Закрыть', () => { help = false; render(); });
 }
@@ -2189,7 +2449,7 @@ function overlay() {
 
 function amuletPick(h, btn, card) {
   const ids = offer(run);
-  if (!tip(h, 'amulet') && run.amulets.length) tip(h, 'amulets2');
+  tip(h, 'amulet');
   // the start pick only: the bot names the amulet that adds most to ordinary hands; later picks are the player's own skill
   const rec = tutor() && run.phase === 'pick' ? rankAmulets(run, ids)[0] : null;
   if (rec) { const d = amuletById[rec.id]; h('p', `Совет: возьмите ${d.icon} ${d.name} — на обычных ходах прибавит больше других.`).className = 'tip'; }
@@ -2197,7 +2457,7 @@ function amuletPick(h, btn, card) {
     const d = amuletById[id];
     const b = document.createElement('button');
     b.className = 'pick' + (rec?.id === id ? ' adv' : '');
-    b.innerHTML = `<span class="ic">${d.icon}</span><b>${d.name}</b><small>${d.desc}</small>`;
+    b.innerHTML = `<span class="ic">${d.icon}</span><b>${d.name}</b><small>${d.desc}<br>${amuletExample(d)}</small>`;
     b.onclick = () => { markTips(showing); log.add('a', id, ids); take(run, id, { stay: run.phase === 'shop' }); log.save(run); save(); render(); };
     card.append(b);
   }
@@ -2220,6 +2480,7 @@ $('roll').addEventListener('click', () => {
   if (busy || $('roll').disabled) return;
   if (run.t.dice && !watch({ keep: run.t.held.map(Boolean) })) return;
   if (!roll(run)) return;
+  if (orderShown) markTips(['order']);
   pick = null;
   log.add('r', run.t.dice.join(''));
   save(); setCalc(0, 0, 0); showGains([]);
@@ -2279,12 +2540,6 @@ $('amulets').addEventListener('click', e => {
   if (!s) return;
   sel = +s.dataset.s === sel || !run.amulets[+s.dataset.s] ? -1 : +s.dataset.s;
   render();
-});
-$('info').addEventListener('click', e => {
-  const m = e.target.closest('.mv');
-  if (!m) return;
-  log.add('m', sel, +m.dataset.to);
-  moveAmulet(run, sel, +m.dataset.to); sel = +m.dataset.to; save(); render();
 });
 const tunedNow = () => { try { return Object.keys(JSON.parse(store.get('arcade.tune')) || {}).length; } catch { return tuned; } };
 $('help').addEventListener('click', () => { if (busy) return; help = true; render(); });

@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Аркада Яцзы (альфа) v71.9: собрано в закрытом репозитории yatzy-arcade, коммит f6ae4de (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
+<!-- Аркада Яцзы (альфа) v71.10: собрано в закрытом репозитории yatzy-arcade, коммит b487ef6 (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -104,6 +104,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .card h3 { margin: 4px 0 0; font-size: 18px; color: var(--gold); }
 .pick.buy:disabled { opacity: .5; }
 .pick .price { color: var(--gold); font-size: 16px; margin-left: 6px; }
+.nw { white-space: nowrap; }
 .coin { display: inline-block; width: .8em; height: .8em; margin-right: .2em; vertical-align: -.08em; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffe9a8, var(--gold) 55%, #b9821c); box-shadow: inset 0 0 0 .09em rgba(80, 50, 0, .35); }
 
 .dice { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: min(100%, 330px); margin: 6px auto 0; }
@@ -229,8 +230,8 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .roll.adv, .combo.adv, .pick.adv { outline: 3px solid var(--ink); outline-offset: 2px; animation: hint 1.2s ease-in-out infinite; }
 @keyframes hint { 50% { outline-color: transparent; } }
 @media (prefers-reduced-motion: reduce) { .die.adv, .roll.adv, .combo.adv, .pick.adv { animation: none; } }
-.tutor { display: flex; gap: 10px; align-items: center; min-height: 44px; margin: 12px 0 4px; font-size: 15px; color: var(--muted); text-align: left; }
-.tutor input { width: 24px; height: 24px; flex: none; accent-color: var(--gold); }
+.tutor, .buzz { display: flex; gap: 10px; align-items: center; min-height: 44px; margin: 12px 0 4px; font-size: 15px; color: var(--muted); text-align: left; }
+.tutor input, .buzz input { width: 24px; height: 24px; flex: none; accent-color: var(--gold); }
 /* The notebook's look for the friends' alpha on the notebook site (tools/build.mjs adds it after style.css for dist/notebook.html):
    the notebook's colours, fonts, white cards and dice (src/style.css in kitoglav22/yatzy). Only the look changes, the layout stays. */
 :root {
@@ -1275,6 +1276,52 @@ function setup(tg, home) {
 return { telegram };
 })();
 
+M["ui/haptics.js"] = (() => {
+// Vibration (author, 01.11.2026: «вибрацию добавить… так веселее»): a light tick for small things, a strong pattern for wins.
+// Inside Telegram its own haptics are used: they also work on iPhone, where the browser has no vibration at all.
+// Elsewhere navigator.vibrate (Android browsers). The switch is in «Справка», on by default and remembered.
+const KEY = 'arcade.buzz';
+
+// Telegram's haptics once its script has loaded (ui/telegram.js loads it only inside Telegram)
+const tg = () => {
+  const w = typeof window !== 'undefined' && window.Telegram?.WebApp;
+  return w && w.platform && w.platform !== 'unknown' && w.isVersionAtLeast?.('6.1') ? w.HapticFeedback : null;
+};
+
+// From weakest to strongest. tg: Telegram's calls, each [delay ms, kind, style]; ms: the pattern for navigator.vibrate.
+const KINDS = {
+  hold: { tg: [[0, 'select']], ms: 8 }, // a die kept or put back
+  land: { tg: [[0, 'impact', 'light']], ms: 12 }, // each die landing after a roll
+  amulet: { tg: [[0, 'impact', 'medium']], ms: 25 }, // an amulet firing while the hand counts
+  ability: { tg: [[0, 'impact', 'heavy']], ms: 40 }, // an ability used
+  yatzy: { tg: [[0, 'notify', 'success']], ms: [40, 60, 40, 60, 120] }, // five of a kind on the roll
+  win: { tg: [[0, 'notify', 'success']], ms: [30, 70, 30] }, // a table won
+  boss: { tg: [[0, 'impact', 'heavy'], [160, 'impact', 'heavy'], [380, 'notify', 'success']], ms: [60, 80, 60, 80, 220] }, // a boss beaten
+  lose: { tg: [[0, 'notify', 'error']], ms: [120, 100, 120] }, // the run is over
+};
+
+function makeBuzz(store) {
+  const on = () => store.get(KEY) !== '0';
+  // can this device vibrate at all? Desktop browsers have navigator.vibrate but no motor, so a touch screen is asked too
+  const can = () => !!tg() || (typeof navigator !== 'undefined' && 'vibrate' in navigator && matchMedia('(any-pointer: coarse)').matches);
+  function buzz(kind) {
+    const k = KINDS[kind];
+    if (!k || !on()) return;
+    try {
+      const h = tg();
+      if (!h) { navigator.vibrate?.(k.ms); return; }
+      for (const [at, how, style] of k.tg) {
+        const go = () => (how === 'select' ? h.selectionChanged() : how === 'notify' ? h.notificationOccurred(style) : h.impactOccurred(style));
+        if (at) setTimeout(go, at); else go();
+      }
+    } catch { /* no vibration */ }
+  }
+  return { buzz, on, can, set: v => store.set(KEY, v ? '1' : '0') };
+}
+
+return { makeBuzz };
+})();
+
 M["src/plan.js"] = (() => {
 // The turn planner of the smart bot (tools/bot.mjs) and its advice for the screen (the tutorial on the first table).
 // Exact odds over every hand of five dice: which dice to keep, a few rerolls ahead, and when to stop and play.
@@ -1825,6 +1872,7 @@ const { applySaved, openTune, tuneChanges } = M["ui/tune.js"];
 const { makeLog, claudeSink } = M["ui/log.js"];
 const { firebaseSink } = M["ui/firebase.js"];
 const { telegram } = M["ui/telegram.js"];
+const { makeBuzz } = M["ui/haptics.js"];
 const { advise, judge, warm, rankAmulets } = M["src/plan.js"];
 
 const $ = id => document.getElementById(id);
@@ -1833,8 +1881,8 @@ const KIND = { normal: 'обычный стол', hard: 'сложный стол
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 const KEY = 'arcade.run', BEST = 'arcade.best', BOSS_SEEN = 'arcade.bossSeen', TIPS = 'arcade.tips', TUTOR = 'arcade.tutor', STREAK = 'arcade.tutorStreak';
 // replaced by tools/build.mjs with the commit and date the page was built from
-const BUILD = "f6ae4de 2026-11-01 13:09";
-const VERSION = "71.9";
+const BUILD = "b487ef6 2026-11-01 13:45";
+const VERSION = "71.10";
 // which page this is: 'notebook' for the friends' alpha on the notebook site, anything else is the claude.ai test page
 const TARGET = "notebook";
 const NOTEBOOK = TARGET === 'notebook';
@@ -1842,6 +1890,8 @@ const NOTEBOOK = TARGET === 'notebook';
 const dots = n => `<span class="dots" aria-label="${n}">${'<i></i>'.repeat(n)}</span>`;
 // the currency: «монетки» on screen (author, 31.10.2026), `stars` in the code; a coin drawn in CSS, since the 🪙 emoji is missing on older phones
 const COIN = '<i class="coin" aria-label="монетки"></i>';
+// a coin and its number stay on one line («Всего ●» and «4.» on two lines read as two things)
+const coins = n => `<span class="nw">${COIN}${n}</span>`;
 const ORDER = () => '+' + dots(TABLES.order.rerolls);
 const fast = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const wait = ms => new Promise(r => setTimeout(r, fast ? 0 : ms));
@@ -1851,6 +1901,7 @@ const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* no storage */ } },
 };
+const haptic = makeBuzz(store), buzz = haptic.buzz;
 
 // Tips again in every new run, not once per player: while the alpha is played by the author and friends (author, 31.10.2026)
 const TIPS_EVERY_RUN = true;
@@ -1964,6 +2015,8 @@ const HELP = {
   chance: ['любые кубики, считаются все пять', '1 3 4 5 6'],
 };
 // The example dice of a combination, as the help shows them: all five dice, and the ones that count (before « · »)
+// dice faces of one example never break across lines (readability: a lone «5» on the next line read as a separate hand)
+const keep = s => s.split(' или ').map(x => x.replace(/ /g, '\u00a0')).join(' или ');
 function exDice(id) {
   const ex = HELP[id][1].split(' или ').at(-1);
   return { dice: ex.replace('·', ' ').split(' ').filter(Boolean).map(Number), shown: ex.split(' · ')[0] };
@@ -1973,7 +2026,7 @@ function amuletExample(d) {
   const e = d.example;
   if (!e) return '';
   const turn = { rollsUsed: 1, turnsLeft: 1 }, without = score(e.dice, e.combo, { turn }), with_ = score(e.dice, e.combo, { amulets: [d], turn });
-  const faces = without.dice.map(i => e.dice[i]).sort((x, y) => x - y).join(' ');
+  const faces = without.dice.map(i => e.dice[i]).sort((x, y) => x - y).join('\u00a0');
   return `Например: ${comboName[e.combo]} ${faces}${e.when ? ` ${e.when}` : ''}: ${without.total}\u00a0→\u00a0${with_.total}`;
 }
 const seenTips = () => { try { return JSON.parse(store.get(TIPS)) || []; } catch { return []; } };
@@ -2117,20 +2170,22 @@ function render() {
 }
 
 // The table fits the screen without scrolling (Yandex Games 1.10.4) and grows on a tall screen (readability audit, П6):
-// the largest zoom from 0.9 to 1.25 at which nothing scrolls. Worked out anew for a new screen size, table or phase;
-// within one table it only shrinks (a long tip), so the table does not change size with every tap.
-// Lower than 0.9 it does not go: on a very low screen the page scrolls, as before. No CSS zoom (old Firefox) — no fitting.
+// the largest zoom from 0.9 to 1.25 at which nothing scrolls. A longer text (an amulet's line, a tip) shrinks the table at once.
+// It grows back at a pause in play: the amulet's line closed, a card or «Справка» over the table, a new screen size
+// (author, 01.11.2026: «сжимается, а когда убираешь — не разжимается»); during a turn it only shrinks, so a tip or a held die
+// does not make the whole table breathe. Lower than 0.9 it does not go: on a very low screen the page scrolls, as before.
+// No CSS zoom (old Firefox) — no fitting.
 const ZOOM = [0.9, 1.25], canZoom = typeof CSS !== 'undefined' && CSS.supports?.('zoom', '1');
-let fitKey = '', zoom = 1;
+let fitKey = '', fitSel = -1, zoom = 1;
 function fit() {
   if (!canZoom) return;
   const app = $('app'), doc = document.scrollingElement || document.documentElement;
   const set = k => { app.style.zoom = k; app.style.setProperty('--zoom', k); app.style.minHeight = Math.floor(innerHeight / k) + 'px'; };
   const fits = k => { set(k); return doc.scrollHeight <= innerHeight + 1; };
-  const key = [innerWidth, innerHeight, run.stage, run.table, run.phase].join('|');
-  if (key === fitKey && fits(zoom)) return;
-  let lo = ZOOM[0], hi = key === fitKey ? zoom : ZOOM[1];
-  fitKey = key;
+  const key = innerWidth + '|' + innerHeight, regrow = key !== fitKey || (fitSel >= 0 && sel < 0) || !$('overlay').hidden;
+  fitKey = key; fitSel = sel;
+  if (!regrow && fits(zoom)) return;
+  let lo = ZOOM[0], hi = ZOOM[1];
   if (fits(hi)) { zoom = hi; return; }
   if (!fits(lo)) { zoom = lo; return; }
   for (let i = 0; i < 8; i++) { const m = (lo + hi) / 2; if (fits(m)) lo = m; else hi = m; }
@@ -2176,7 +2231,7 @@ function abilityBar() {
     // what it gives now, on the button: no tooltips on a phone (hints audit, П4)
     const label = t.armed.includes(id) ? `${a.icon} ${a.name} включён` : shut ? `${a.icon} ${a.name}: закроет стол` : g > 0 ? `${a.icon} ${a.name} +${g}` : `${a.icon} ${a.name}`;
     const b = add(label, () => {
-      if (a.use === 'hand') { useAbility(run, k); log.add('u', id, t.armed.includes(id)); save(); render(); return; }
+      if (a.use === 'hand') { useAbility(run, k); log.add('u', id, t.armed.includes(id)); save(); if (t.armed.includes(id)) buzz('ability'); render(); return; }
       pick = { k }; render();
     }, t.armed.includes(id) ? 'on' : shut ? 'closes' : '');
     b.title = a.desc;
@@ -2207,7 +2262,7 @@ function gain(id) {
 }
 function applyAbility(arg) {
   const id = run.abilities[pick.k];
-  if (useAbility(run, pick.k, arg)) { log.add('u', id, arg.die, arg.by ?? null, run.t.dice.join('')); save(); }
+  if (useAbility(run, pick.k, arg)) { log.add('u', id, arg.die, arg.by ?? null, run.t.dice.join('')); save(); buzz('ability'); }
   pick = null;
   render();
 }
@@ -2219,7 +2274,7 @@ function wonTable(h, btn) {
   const rr = k => `${k} ${plural(k, 'переброс', 'переброса', 'перебросов')}`;
   const carry = h('p', '');
   carry.className = 'carry';
-  carry.innerHTML = `${COIN}+${t.win ?? 1} за победу${change ? `, ${COIN}+${change} за ${t.rerolls} ${plural(t.rerolls, 'несгоревший переброс', 'несгоревших переброса', 'несгоревших перебросов')}` : ''}. Всего ${COIN}${run.stars}.`;
+  carry.innerHTML = `${coins('+' + (t.win ?? 1))} за победу${change ? `, ${coins('+' + change)} за ${t.rerolls} ${plural(t.rerolls, 'несгоревший переброс', 'несгоревших переброса', 'несгоревших перебросов')}` : ''}. Всего ${coins(run.stars + '.')}`;
   tip(h, 'stars');
   const take = run.table === 1 ? TABLES.rerolls - next : 0;
   h('p', `На следующем столе ${rr(next)}${take > 0 ? ` (${bossFor(run).name} забирает ${take})` : ''}.`).className = 'carry';
@@ -2253,7 +2308,7 @@ function tablets(h) {
   for (const id of ids) {
     const c = COMBOS.find(x => x.id === id), lv = run.levels[id] || 1, bought = tabletBought(run, id), ex = exDice(id);
     const pts = l => score(ex.dice, id, { levels: { ...run.levels, [id]: l }, amulets }).total;
-    const base = l => `${ex.shown}: ${pts(l)}`;
+    const base = l => `${keep(ex.shown)}: ${pts(l)}`;
     const b = document.createElement('button');
     b.className = 'pick buy';
     b.disabled = !canBuyTablet(run, id) && !bought;
@@ -2349,7 +2404,7 @@ async function animate(s) {
   setCalc('', '', '');
   for (const [i, st] of s.steps.entries()) {
     if (st.kind === 'die') { dEls[st.die].classList.add('score'); }
-    if (st.kind === 'amulet') { aEls[st.slot].classList.remove('fire'); void aEls[st.slot].offsetWidth; aEls[st.slot].classList.add('fire'); }
+    if (st.kind === 'amulet') { aEls[st.slot].classList.remove('fire'); void aEls[st.slot].offsetWidth; aEls[st.slot].classList.add('fire'); buzz('amulet'); }
     setCalc(st.chips, Math.round(st.mult * 10) / 10, '');
     $('gain').innerHTML = explain(s, i + 1);
     await wait(st.kind === 'combo' ? 300 : 220);
@@ -2378,6 +2433,9 @@ async function onPlay(id) {
   await animate(s);
   showGains(gains, s);
   busy = false;
+  // the table's end is felt as well as seen: a boss beaten is the strongest, the run over a dull double
+  if (run.phase === 'over') buzz('lose');
+  else if (run.phase !== 'table') buzz(isBoss(run) ? 'boss' : 'win');
   render();
 }
 
@@ -2454,7 +2512,7 @@ function combosHelp(h, btn) {
     const lv = run.levels[c.id] || 1, [what, ex] = HELP[c.id];
     const row = document.createElement('div');
     row.className = 'help-row';
-    row.innerHTML = `<b>${c.name}${lv > 1 ? ` <small>ур. ${lv}</small>` : ''}</b><span class="base"><i class="c">${c.chips + (lv - 1) * c.level.chips}</i>×<i class="m">${c.mult + (lv - 1) * c.level.mult}</i></span><small>${what}: ${ex}</small>`;
+    row.innerHTML = `<b>${c.name}${lv > 1 ? ` <small>ур. ${lv}</small>` : ''}</b><span class="base"><i class="c">${c.chips + (lv - 1) * c.level.chips}</i>×<i class="m">${c.mult + (lv - 1) * c.level.mult}</i></span><small>${what}: ${keep(ex)}</small>`;
     list.append(row);
   }
   h('p', 'Уровень комбинации поднимает табличка из лавки.');
@@ -2480,6 +2538,7 @@ function combosHelp(h, btn) {
   h('h3', 'Монетки');
   h('p', `Даются за победу на столе (каждые ${SHOP.win.every} ${plural(SHOP.win.every, 'этап', 'этапа', 'этапов')} на 1 больше) и за каждые ${SHOP.change} ${plural(SHOP.change, 'несгоревший переброс', 'несгоревших переброса', 'несгоревших перебросов')} стола. Тратятся в лавке на способности и таблички.`);
   tutorBox($('card'));
+  buzzBox($('card'));
   runBox($('card'));
   btn('Закрыть', () => { help = false; render(); });
 }
@@ -2504,6 +2563,18 @@ function tutorBox(card) {
   const c = l.querySelector('input');
   c.checked = tutor();
   c.onchange = () => { store.set(TUTOR, c.checked ? '1' : '0'); store.set(STREAK, '0'); if (c.checked) store.set(TIPS, '[]'); };
+  card.append(l);
+}
+
+// The vibration switch, in «Справка» only, and only where the device can vibrate (not Safari on iPhone, not a computer)
+function buzzBox(card) {
+  if (!haptic.can()) return;
+  const l = document.createElement('label');
+  l.className = 'buzz';
+  l.innerHTML = '<input type="checkbox"> Вибрация: кубики, амулеты, победы';
+  const c = l.querySelector('input');
+  c.checked = haptic.on();
+  c.onchange = () => { haptic.set(c.checked); if (c.checked) buzz('win'); };
   card.append(l);
 }
 
@@ -2607,7 +2678,7 @@ $('dice').addEventListener('click', e => {
   }
   const i = +d.dataset.i, a = advice(run.t);
   if (forced(run.t) && (!a?.keep || a.keep[i] === !!run.t.held[i])) return;
-  hold(run, i); log.add('h', i); save(); render();
+  hold(run, i); log.add('h', i); save(); buzz('hold'); render();
 });
 $('roll').addEventListener('click', () => {
   if (busy || $('roll').disabled) return;
@@ -2618,7 +2689,7 @@ $('roll').addEventListener('click', () => {
   log.add('r', run.t.dice.join(''));
   save(); setCalc(0, 0, 0); showGains([]);
   // with reduced motion the result shows at once
-  if (fast) { render(); return; }
+  if (fast) { buzz(run.t.dice.every(f => f === run.t.dice[0]) ? 'yatzy' : 'land'); render(); return; }
   busy = rolling = true;
   render();
   animateRoll(run.t.held.map(h => !h));
@@ -2644,7 +2715,7 @@ function animateRoll(free) {
       if (t >= stopAt[k]) {
         d.classList.remove('shaking'); d.style.transitionDuration = ''; d.style.transform = '';
         setFace(d, run.t.dice[k]); void d.offsetWidth; d.classList.add('land');
-        try { navigator.vibrate?.(15); } catch { /* no vibration */ }
+        buzz('land');
         continue;
       }
       // a jolt: random offset and tilt, strong at first and calmer towards the stop, with a new face each time
@@ -2662,7 +2733,7 @@ function animateRoll(free) {
     render();
     if (run.t.dice.every(f => f === run.t.dice[0])) {
       shake.classList.remove('yatzy'); void shake.offsetWidth; shake.classList.add('yatzy');
-      try { navigator.vibrate?.([40, 60, 40, 60, 120]); } catch { /* no vibration */ }
+      buzz('yatzy');
     }
   };
   requestAnimationFrame(tick);

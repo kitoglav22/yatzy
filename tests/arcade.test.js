@@ -20,8 +20,9 @@ test('the arcade page opens, can be played and leads back to the notebook', asyn
   await p.click('#arcade');
   await p.waitForURL(/arcade\.html$/);
   assert.equal(await p.title(), 'Аркада Яцзы (альфа)');
-  await p.click('#card button.btn'); // how to play
-  await p.click('#card button.alt'); // the run opens with a free amulet pick: skip it
+  // since arcade 71.13 a new player's first run opens on the table, «Счёты» given, no card to read and no pick
+  assert.ok(await p.locator('#overlay').isHidden());
+  assert.equal(await p.locator('#amulets button').first().getAttribute('aria-label'), 'Счёты');
   await p.click('#roll');
   assert.equal(await p.locator('.die.blank').count(), 0);
   // since arcade 71.9 the version and the way back are at the end of «Справка», a button on top of the table

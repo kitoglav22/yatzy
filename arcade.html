@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Аркада Яцзы (альфа) v71.10: собрано в закрытом репозитории yatzy-arcade, коммит b487ef6 (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
+<!-- Аркада Яцзы (альфа) v71.11: собрано в закрытом репозитории yatzy-arcade, коммит 4118368 (NOTEBOOK_VERSION=71 npm run build → dist/notebook.html). Руками не править. -->
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -157,8 +157,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 @media (max-height: 700px) { .dice { width: min(100%, 280px); } }
 .combo.best { outline: 2px solid var(--gold); }
 /* the table's order: its combination is framed, the mark says how much it adds */
-.combo.order { box-shadow: inset 0 0 0 1px var(--gold); }
-.combo.order:disabled { box-shadow: inset 0 0 0 2px var(--gold); }
+/* the order is marked by «+●●●» only: a gold frame on a cell that cannot be played yet looked like the one button to tap (author, 01.11.2026) */
 .combo .ord { color: var(--gold); font-size: 13px; font-weight: 700; white-space: nowrap; }
 .combo.best .pv::before { content: "▶"; color: var(--gold); font-size: .8em; margin-right: 2px; }
 
@@ -1881,8 +1880,8 @@ const KIND = { normal: 'обычный стол', hard: 'сложный стол
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 const KEY = 'arcade.run', BEST = 'arcade.best', BOSS_SEEN = 'arcade.bossSeen', TIPS = 'arcade.tips', TUTOR = 'arcade.tutor', STREAK = 'arcade.tutorStreak';
 // replaced by tools/build.mjs with the commit and date the page was built from
-const BUILD = "b487ef6 2026-11-01 13:45";
-const VERSION = "71.10";
+const BUILD = "4118368 2026-11-01 14:01";
+const VERSION = "71.11";
 // which page this is: 'notebook' for the friends' alpha on the notebook site, anything else is the claude.ai test page
 const TARGET = "notebook";
 const NOTEBOOK = TARGET === 'notebook';
@@ -2069,8 +2068,12 @@ function dieEl(face, i) {
   return b;
 }
 
+// a new table starts clean: the last hand of the table before does not stay under the empty dice as «48 × 5 = 240» next to 0 points
+let tableKey = '';
 function render() {
   const t = run.t;
+  const key = run.stage + '.' + run.table;
+  if (run.phase === 'table' && key !== tableKey) { if (tableKey) { setCalc(0, 0, 0); showGains([]); } tableKey = key; }
   $('stage').textContent = `Этап ${run.stage + 1} · стол ${run.table + 1} из 3`;
   $('kind').textContent = KIND[t.kind];
   $('kind').className = 'kind' + (t.kind === 'boss' ? ' boss' : '');

@@ -5,11 +5,55 @@ const TG_APP='https://t.me/k22_yatzy_bot/play'; // direct link of the Mini App
   let inTg=/tgWebApp(Data|Platform|Version)=/.test(location.hash);
   try{if(inTg)sessionStorage.setItem('yatzy.tg','1');else inTg=sessionStorage.getItem('yatzy.tg')==='1'}catch(e){}
   if(!inTg)return;
+  // what Telegram put in the address (version, platform, theme) is kept for a reload in the same session
+  const q=new URLSearchParams(location.hash.slice(1));
+  try{if(q.get('tgWebAppVersion'))sessionStorage.setItem('yatzy.tgv',JSON.stringify({v:q.get('tgWebAppVersion'),p:q.get('tgWebAppPlatform'),t:q.get('tgWebAppThemeParams')}))}catch(e){}
+  let ready=false;
   const s=document.createElement('script');
   s.src='https://telegram.org/js/telegram-web-app.js';
-  s.onload=()=>{const tg=window.Telegram&&window.Telegram.WebApp;if(tg&&tg.platform&&tg.platform!=='unknown')tgSetup(tg)};
+  s.onload=()=>{const tg=window.Telegram&&window.Telegram.WebApp;if(tg&&tg.platform&&tg.platform!=='unknown'){ready=true;tgSetup(tg)}else tgBridge()};
+  s.onerror=()=>tgBridge();
+  setTimeout(()=>{if(!ready)tgBridge()},2500);
   document.head.appendChild(s);
 })();
+
+// Telegram's script comes from telegram.org, and some mobile networks do not reach it (02.11.2026: the app opened at half
+// height under a grey header until a VPN was on). Without it the page still talks to Telegram itself, through the channel
+// the app gives every Mini App (the one Telegram's script uses): it asks for full screen, paints the header, keeps the
+// swipe from closing the app, and learns from Telegram's answers how much room its buttons take.
+let tgBridged=false;
+function tgBridge(){
+  if(tgBridged)return;tgBridged=true;
+  let info={};try{info=JSON.parse(sessionStorage.getItem('yatzy.tgv'))||{}}catch(e){}
+  const ver=String(info.v||'6.0').split('.').map(Number),has=v=>{const w=v.split('.').map(Number);for(let i=0;i<2;i++){if((ver[i]||0)!==(w[i]||0))return (ver[i]||0)>(w[i]||0)}return true};
+  const post=(type,data)=>{try{
+    if(window.TelegramWebviewProxy)window.TelegramWebviewProxy.postEvent(type,JSON.stringify(data||{}));
+    else if(window.external&&'notify' in window.external)window.external.notify(JSON.stringify({eventType:type,eventData:data||{}}));
+    else if(window.parent!==window)window.parent.postMessage(JSON.stringify({eventType:type,eventData:data||{}}),'https://web.telegram.org');
+  }catch(e){}};
+  const root=document.documentElement;root.classList.add('tg');
+  // the theme Telegram passed in the address: a dark background means the dark theme
+  try{const bg=JSON.parse(info.t||'{}').bg_color;if(/^#[0-9a-f]{6}$/i.test(bg||'')){const n=parseInt(bg.slice(1),16),l=(n>>16)*.299+(n>>8&255)*.587+(n&255)*.114;root.dataset.theme=l<128?'dark':'light'}}catch(e){}
+  const bg=getComputedStyle(root).getPropertyValue('--bg').trim();
+  // Telegram's answers: where its buttons are and whether the app is full screen
+  const area={a:{},c:{},full:false},paint=()=>{
+    root.style.setProperty('--tg-top',((area.a.top||0)+(area.c.top||0))+'px');root.style.setProperty('--tg-bottom',((area.a.bottom||0)+(area.c.bottom||0))+'px');
+    root.classList.toggle('tgfull',area.full)};
+  const receive=(type,data)=>{data=data||{};
+    if(type==='safe_area_changed')area.a=data;else if(type==='content_safe_area_changed')area.c=data;
+    else if(type==='fullscreen_changed')area.full=!!data.is_fullscreen;else return;
+    paint();window.dispatchEvent(new Event('resize'))};
+  const T=window.Telegram=window.Telegram||{},W=T.WebView=T.WebView||{};
+  if(!W.receiveEvent)W.receiveEvent=receive;
+  if(!window.TelegramGameProxy)window.TelegramGameProxy={receiveEvent:receive};
+  post('web_app_ready');post('web_app_expand');
+  if(has('6.9'))post('web_app_set_header_color',{color:bg});
+  if(has('6.1'))post('web_app_set_background_color',{color:bg});
+  if(has('7.10'))post('web_app_set_bottom_bar_color',{color:bg});
+  if(has('7.7'))post('web_app_setup_swipe_behavior',{allow_vertical_swipe:false});
+  if(has('8.0')){post('web_app_request_safe_area');post('web_app_request_content_safe_area');
+    if(['ios','android'].includes(info.p))post('web_app_request_fullscreen')}
+}
 function tgSetup(tg){
   const has=v=>tg.isVersionAtLeast&&tg.isVersionAtLeast(v);
   document.documentElement.classList.add('tg');

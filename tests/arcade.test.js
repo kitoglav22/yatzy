@@ -54,16 +54,20 @@ test('a link from the bot (startapp=arcade_<tag>) opens the arcade in Telegram w
       await ctx.addInitScript(() => { window.TelegramWebviewProxy = { postEvent: t => sessionStorage.setItem('asked', (sessionStorage.getItem('asked') || '') + t + ' ') }; });
     } });
   await q.goto(env.url + tg + 'arcade_Dasha'); // only the address after # changes: the page has to load again
-  q.reload().catch(() => {});
-  await q.waitForURL(/arcade\.html\?from=dasha#tgWebAppData=x/);
-  assert.match(await q.evaluate(() => sessionStorage.getItem('asked')), /web_app_request_fullscreen/, 'full screen is asked for before the arcade opens');
+  await q.reload();
+  // full screen is asked for, and the arcade waits for Telegram to switch, so it does not load during the switch
+  assert.match(await q.evaluate(() => sessionStorage.getItem('asked')), /web_app_request_fullscreen/);
+  await q.waitForTimeout(400);
+  assert.ok(!q.url().includes('arcade.html'), 'still waiting for Telegram');
+  await q.evaluate(() => Telegram.WebView.receiveEvent('fullscreen_changed', { is_fullscreen: true }));
+  await q.waitForURL(/arcade\.html\?from=dasha#tgWebAppData=x/, { timeout: 1000 });
   assert.equal(await q.evaluate(() => localStorage.getItem('arcade.from')), 'dasha', 'the arcade keeps the tag for its log');
   // the same link again in this visit (the way back from the arcade) stays in the notebook
   await q.goto(env.url + tg + 'arcade_Dasha');
   await q.waitForTimeout(300);
   assert.ok(!q.url().includes('arcade.html'));
   assert.ok(await q.locator('#arc0').isVisible());
-  // a plain «arcade» marks the bot's own button; a room code is not the arcade
+  // a plain «arcade» marks the bot's own button; with no answer from Telegram the arcade opens anyway
   await q.evaluate(() => sessionStorage.clear());
   await q.goto(env.url + tg + 'arcade'); // only the address after # changes: the page has to load again
   q.reload().catch(() => {});

@@ -1,4 +1,5 @@
-// Telegram bot for Yatzy: "your turn" messages, daily reminders, nudges, invitations from any chat, friends' rating.
+// Telegram bot for Yatzy: "your turn" messages, daily reminders, nudges, invitations from any chat, friends' rating,
+// and the arcade's «Что нового» for everyone who knows the bot.
 // One Cloudflare Worker with no dependencies: this whole file goes into the worker's code editor.
 //
 // Telegram sends the bot's updates here (webhook), and a cron trigger runs the worker every minute. The app never calls
@@ -7,7 +8,7 @@
 // cannot read or write; what the app may read goes to pub/. The worker signs in to Firebase with a service account.
 //
 // Secrets: BOT_TOKEN (from BotFather), FB_SA (the service account key JSON), HOOK_SECRET (any long random string).
-// Optional variables: FB_URL, APP_LINK, SITE.
+// Optional variables: FB_URL, APP_LINK, SITE (the notebook site; the arcade's news are read from its arcade.html).
 
 const CELLS = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'three', 'four', 'small', 'large', 'house', 'chance', 'yatzy'];
 const NAMES = { u1: 'Единицы', u2: 'Двойки', u3: 'Тройки', u4: 'Четвёрки', u5: 'Пятёрки', u6: 'Шестёрки', three: 'Тройка', four: 'Каре', small: 'Малый стрит', large: 'Большой стрит', house: 'Фулл-хаус', chance: 'Шанс', yatzy: 'Яцзы', joker: 'Джокер' };
@@ -33,7 +34,18 @@ const HELLO = 'Привет! Здесь две игры в кости.\n\n🎲 <
 const ARCADE_TEXT = '🎲 <b>Аркада</b> — играете один. Бросаете кости, набираете очки и проходите столы. Первые ходы игра подскажет сама.';
 const YATZY_TEXT = '📒 <b>Блокнот Яцзы</b> — обычная Яцзы с друзьями: кубики свои или на экране, можно онлайн. Чтобы позвать друга из любого чата, напишите там @k22_yatzy_bot и выберите «Новая партия».';
 const SHARE_TEXT = '🎲 Попробуй аркаду в кости: играешь один, проходишь столы. Правила объяснят по ходу.';
-const COMMANDS = [{ command: 'start', description: 'Что здесь есть' }, { command: 'arcade', description: 'Играть в аркаду' }, { command: 'yatzy', description: 'Блокнот Яцзы' }];
+const COMMANDS = [{ command: 'start', description: 'Что здесь есть' }, { command: 'arcade', description: 'Играть в аркаду' }, { command: 'yatzy', description: 'Блокнот Яцзы' }, { command: 'news', description: 'Новости аркады' }];
+// «Что нового» after an arcade update: the lines of src/data/news.js (yatzy-arcade) that the release put into the head of arcade.html.
+// Everyone the bot knows gets them, unless they blocked the bot or pressed «Не присылать новости»; within five minutes of an update
+// (author, 03.11.2026, card «Всем, после выпуска»).
+const NEWS_HOUR = null;        // null: within five minutes of each update; an hour (Moscow time, e.g. 19) gathers a day's updates into one evening message
+const NEWS_LINES = 5;          // the newest lines when several updates came since the last message
+const NEWS_BATCH = 20;         // messages in one run; the rest go in the next minutes
+const NEWS_TITLE = '🎲 <b>Что нового в аркаде</b>';
+const NEWS_PLAY = '🎲 Играть в аркаду', NEWS_QUIET = '🔕 Не присылать новости';
+const QUIET_OK = 'Хорошо, новостей больше не будет. Вернуть их: /news';
+const NEWS_ON = 'Буду присылать сюда, что нового в аркаде, когда она обновится. Не хочется — нажмите кнопку ниже.';
+const MSK = 3 * 60 * 60e3;
 
 // ---- game helpers, the same rules as the app ----
 const filled = sc => CELLS.filter(c => sc[c] != null).length;
@@ -92,7 +104,7 @@ function elo(rs, totals) {
 }
 
 // db: get(path), keys(path) and update({path: value}), one write of many paths at once
-function makeBot({ db, tg, now = Date.now, token, appLink = APP_LINK }) {
+function makeBot({ db, tg, now = Date.now, token, appLink = APP_LINK, site = SITE, web = get }) {
   const button = (text, code) => ({ inline_keyboard: [[{ text, url: appLink + (code ? '?startapp=' + code : '') }]] });
   const lastMove = g => { const e = (g.log || []).slice(-1)[0]; if (!e) return ''; const i = g.players.findIndex(p => p.id === e.pid), v = i < 0 ? null : (g.scores[i] || {})[e.cid]; return v == null || !NAMES[e.cid] ? '' : `${g.players[i].name}: ${NAMES[e.cid]} ${v || 'вычеркнуто'}. ` };
   // the arcade opens straight from the notebook's Mini App (src/telegram.js reads start_param «arcade»); a friend gets a ready message
@@ -103,6 +115,8 @@ function makeBot({ db, tg, now = Date.now, token, appLink = APP_LINK }) {
     ...(cmd !== 'arcade' ? [[{ text: '📒 Открыть блокнот Яцзы', url: appLink }]] : []),
     ...(cmd !== 'yatzy' ? [[{ text: '📨 Позвать друга в аркаду', url: share }]] : []),
   ] });
+  // the news: a link that the arcade counts as ?from=news, and a button that stops them
+  const newsKeys = (quiet = true) => ({ inline_keyboard: [[{ text: NEWS_PLAY, url: appLink + '?startapp=arcade_news' }], ...(quiet ? [[{ text: NEWS_QUIET, callback_data: 'quiet' }]] : [])] });
   const parse = r => { try { const s = r && typeof r.state === 'string' ? JSON.parse(r.state) : null; return okState(s) ? { s, on: r.on && typeof r.on === 'object' ? r.on : {} } : null } catch (e) { return null } };
 
   // one run: the app's requests, then rooms where a cell was written, then turns that wait for a message
@@ -255,19 +269,33 @@ function makeBot({ db, tg, now = Date.now, token, appLink = APP_LINK }) {
       await db.update(more);
     }
     // for the setup link: what this run found
-    return { changes: Object.keys(out).length, queue: list.length, oldest: list.length ? pushTime(list[0][0]) : null, signed: asks.length, bad,
+    return { quiet: !codes.length && !checks && !sends.length, changes: Object.keys(out).length, queue: list.length, oldest: list.length ? pushTime(list[0][0]) : null, signed: asks.length, bad,
       players: Object.keys(users).length, rooms: Object.keys(seats).length, sent: sends.length - blocked.size, diag: srv.diag || out['srv/diag'] || null };
   }
 
   // updates from Telegram: /start and inline invitations from any chat
   async function update(u) {
     // /start and the menu commands: what the two games are and a button straight into each
-    const cmd = u.message && (String(u.message.text || '').match(/^\/(start|arcade|yatzy)\b/) || [])[1];
+    const cmd = u.message && (String(u.message.text || '').match(/^\/(start|arcade|yatzy|news)\b/) || [])[1];
     if (cmd) {
       const f = u.message.from;
       await db.update({ ['srv/users/' + f.id]: { name: String(f.first_name || '').slice(0, 32), off: false, at: now() } });
-      const text = cmd === 'arcade' ? ARCADE_TEXT : cmd === 'yatzy' ? YATZY_TEXT : HELLO;
-      await tg('sendMessage', { chat_id: f.id, text, parse_mode: 'HTML', reply_markup: menu(cmd) });
+      if (cmd === 'news') {
+        await db.update({ ['srv/quiet/' + f.id]: null });
+        await tg('sendMessage', { chat_id: f.id, text: NEWS_ON, reply_markup: newsKeys() });
+      } else {
+        const text = cmd === 'arcade' ? ARCADE_TEXT : cmd === 'yatzy' ? YATZY_TEXT : HELLO;
+        await tg('sendMessage', { chat_id: f.id, text, parse_mode: 'HTML', reply_markup: menu(cmd) });
+      }
+    }
+    // «Не присылать новости» under a news message: remembered, and the button goes away
+    if (u.callback_query) {
+      const c = u.callback_query;
+      if (c.data === 'quiet' && c.from) {
+        await db.update({ ['srv/quiet/' + c.from.id]: now() });
+        await tg('answerCallbackQuery', { callback_query_id: c.id, text: QUIET_OK, show_alert: true });
+        if (c.message && c.message.chat) await tg('editMessageReplyMarkup', { chat_id: c.message.chat.id, message_id: c.message.message_id, reply_markup: newsKeys(false) });
+      } else await tg('answerCallbackQuery', { callback_query_id: c.id });
     }
     if (u.inline_query) {
       const q = String(u.inline_query.query || '').trim().toUpperCase(), code = okCode(q) ? q : null, fresh = roomCode();
@@ -278,7 +306,46 @@ function makeBot({ db, tg, now = Date.now, token, appLink = APP_LINK }) {
       await tg('answerInlineQuery', { inline_query_id: u.inline_query.id, results, cache_time: 0, is_personal: true });
     }
   }
-  return { tick, update };
+  // the arcade's news. The head of arcade.html carries «<!-- arcade-news {"arcade":37,"version":"72.37","news":{"37":[…],…}} -->»
+  // (tools/build.mjs in yatzy-arcade). The first look only remembers the build; later ones tell the lines of the builds after it.
+  async function readNews() {
+    const r = await web(site + 'arcade.html?news=' + Math.floor(now() / MIN), { headers: { range: 'bytes=0-16383' } });
+    if (!r.ok) return null;
+    const m = (await r.text()).slice(0, 16384).match(/<!-- arcade-news (\{.*?\}) -->/);
+    let n = null; try { n = m && JSON.parse(m[1]) } catch (e) {}
+    return n && Number.isInteger(n.arcade) && n.news && typeof n.news === 'object' ? n : null;
+  }
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const newsText = lines => NEWS_TITLE + '\n\n' + lines.map(l => '• ' + esc(l)).join('\n');
+  // one run: every five minutes (or in the news hour) look at the page; a message being sent goes on in the next minutes
+  async function news() {
+    let st = (await db.get('srv/news')) || {};
+    const t = now(), msk = new Date(t + MSK), day = msk.toISOString().slice(0, 10);
+    if (!(Array.isArray(st.left) && st.left.length)) {
+      const due = st.arcade == null || NEWS_HOUR == null ? Math.floor(t / MIN) % 5 === 0 : msk.getUTCHours() === NEWS_HOUR && st.day !== day;
+      if (!due) return null;
+      const n = await readNews();
+      if (!n) return null;
+      if (st.arcade == null) { await db.update({ 'srv/news': { arcade: n.arcade, day } }); return { arcade: n.arcade, sent: 0 } }
+      const lines = Object.keys(n.news).map(Number).filter(b => b > st.arcade && b <= n.arcade).sort((a, b) => b - a)
+        .flatMap(b => Array.isArray(n.news[b]) ? n.news[b].filter(l => typeof l === 'string' && l.trim()) : []).slice(0, NEWS_LINES);
+      const arcade = Math.max(st.arcade, n.arcade);
+      if (!lines.length) { await db.update({ 'srv/news': { ...st, arcade, day } }); return { arcade, sent: 0 } }
+      const [users, quiet] = await Promise.all([db.get('srv/users').then(v => v || {}), db.get('srv/quiet').then(v => v || {})]);
+      st = { arcade, day, at: t, text: newsText(lines), left: Object.keys(users).filter(id => !users[id].off && !quiet[id]) };
+    }
+    // written before sending: a failed write means a missed message, never the same message twice
+    const batch = st.left.slice(0, NEWS_BATCH);
+    await db.update({ 'srv/news': { ...st, left: st.left.slice(NEWS_BATCH) } });
+    const off = {};
+    for (const id of batch) {
+      const r = await tg('sendMessage', { chat_id: id, text: st.text, parse_mode: 'HTML', reply_markup: newsKeys() });
+      if (r && r.error_code === 403) off[`srv/users/${id}/off`] = true;
+    }
+    if (Object.keys(off).length) await db.update(off);
+    return { arcade: st.arcade, sent: batch.length - Object.keys(off).length };
+  }
+  return { tick, update, news };
 }
 
 // ---- Firebase Realtime Database over REST, signed in with the service account ----
@@ -314,7 +381,7 @@ function bot(env) {
   const token = env.BOT_TOKEN, db = firebase(JSON.parse(env.FB_SA), env.FB_URL || FB_URL);
   const tg = (method, body) => get(`https://api.telegram.org/bot${token}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
     .then(r => r.json()).catch(e => ({ ok: false, description: String(e && e.message || e) }));
-  made = { ...makeBot({ db, tg, token, appLink: env.APP_LINK || APP_LINK }), db, tg, key: env.BOT_TOKEN + env.FB_SA };
+  made = { ...makeBot({ db, tg, token, appLink: env.APP_LINK || APP_LINK, site: env.SITE || SITE }), db, tg, key: env.BOT_TOKEN + env.FB_SA };
   return made;
 }
 const answer = (body, status = 200) => new Response(typeof body === 'string' ? body : JSON.stringify(body, null, 2), { status, headers: { 'content-type': (typeof body === 'string' ? 'text/plain' : 'application/json') + '; charset=utf-8' } });
@@ -340,7 +407,7 @@ export default {
     const me = await b.tg('getMe', {});
     report.telegram = me.ok ? '@' + me.result.username : 'ошибка: ' + (me.description || 'нет ответа') + ' (проверьте BOT_TOKEN)';
     if (me.ok) {
-      const hook = await b.tg('setWebhook', { url: url.origin + '/', secret_token: env.HOOK_SECRET, allowed_updates: ['message', 'inline_query'] });
+      const hook = await b.tg('setWebhook', { url: url.origin + '/', secret_token: env.HOOK_SECRET, allowed_updates: ['message', 'inline_query', 'callback_query'] });
       report.webhook = hook.ok ? 'подключён: ' + url.origin + '/' : 'ошибка: ' + hook.description;
       // the bot's look: description, profile line, commands and the menu button; each failure is named in the report
       const look = await Promise.all([
@@ -362,6 +429,8 @@ export default {
       report.queue = !t.queue ? 'пусто' : `${t.queue}, самый старый ${ago(t.oldest)} мин назад` + (Date.now() - t.oldest > 3 * MIN ? ': таймер раз в минуту не работает (шаг 4)' : '');
       report.requests = `с подписью Telegram: ${t.signed}, с неверной подписью: ${t.bad}`;
       report.known = `игроков: ${t.players}, комнат: ${t.rooms}`;
+      const nw = (await b.db.get('srv/news')) || {};
+      report.news = nw.arcade == null ? 'ещё не смотрел аркаду' : `знает выпуск аркады ${nw.arcade}` + (nw.at ? `, последние новости ${ago(nw.at)} мин назад` : '') + (Array.isArray(nw.left) && nw.left.length ? `, ещё не отправлено: ${nw.left.length}` : '');
       if (t.diag) report.lastBadSignIn = `${ago(t.diag.at)} мин назад, ${t.diag.op}, поля: ${t.diag.fields}, длина ${t.diag.len}`;
       report.ok = me.ok;
     } catch (e) { report.firebase = 'ошибка: ' + (e && e.message) }
@@ -369,6 +438,8 @@ export default {
   },
   // every minute
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(bot(env).tick().catch(e => console.log('tick', e && e.message)));
+    // the news only in a quiet minute: a free worker may make 50 outside calls per run
+    const b = bot(env);
+    ctx.waitUntil(b.tick().then(t => t.quiet ? b.news() : null).catch(e => console.log('tick', e && e.message)));
   },
 };

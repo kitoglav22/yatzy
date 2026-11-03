@@ -229,6 +229,7 @@ test('the worker: webhook secret, the setup link with a service account sign-in,
   globalThis.fetch = async (url, opt = {}) => {
     const u = new URL(url), body = opt.body;
     calls.push({ url: u.origin + u.pathname, method: opt.method || 'GET', body });
+    if (u.host === 'kitoglav22.github.io') return new Response('<!doctype html>', { status: 200 });
     if (u.host === 'api.telegram.org') return json(u.pathname.endsWith('/getMe') ? { ok: true, result: { username: 'k22_yatzy_bot', supports_inline_queries: true } } : { ok: true });
     if (u.host === 'oauth2.googleapis.com') {
       const jwt = new URLSearchParams(body).get('assertion').split('.');
@@ -248,12 +249,13 @@ test('the worker: webhook secret, the setup link with a service account sign-in,
     assert.ok(calls.some(c => c.url.endsWith('/answerInlineQuery')));
     assert.equal((await w.fetch(new Request('https://yatzy.x.workers.dev/?setup=nope'), env, ctx)).status, 403, 'a wrong secret does nothing');
     const rep = await (await w.fetch(new Request('https://yatzy.x.workers.dev/?setup=hook'), env, ctx)).json();
-    assert.deepEqual(rep, { ok: true, telegram: '@k22_yatzy_bot', webhook: 'подключён: https://yatzy.x.workers.dev/', look: 'ok', firebase: 'ok', tick: 'ok, изменений: 1', queue: 'пусто', requests: 'с подписью Telegram: 0, с неверной подписью: 0', known: 'игроков: 0, комнат: 0' });
+    assert.deepEqual(rep, { ok: true, telegram: '@k22_yatzy_bot', webhook: 'подключён: https://yatzy.x.workers.dev/', look: 'ok', firebase: 'ok', tick: 'ok, изменений: 1', queue: 'пусто', requests: 'с подписью Telegram: 0, с неверной подписью: 0', known: 'игроков: 0, комнат: 0', news: 'ещё не смотрел аркаду' });
     // the bot's look is written by the setup link, within Telegram's limits
     const sent = m => JSON.parse(calls.find(c => c.url.endsWith('/' + m)).body);
     assert.ok(sent('setMyDescription').description.length <= 512 && sent('setMyShortDescription').short_description.length <= 120);
     assert.deepEqual(sent('setChatMenuButton').menu_button, { type: 'web_app', text: 'Играть', web_app: { url: 'https://kitoglav22.github.io/yatzy/' } });
-    assert.deepEqual(sent('setMyCommands').commands.map(c => c.command), ['start', 'arcade', 'yatzy']);
+    assert.deepEqual(sent('setMyCommands').commands.map(c => c.command), ['start', 'arcade', 'yatzy', 'news']);
+    assert.ok(JSON.parse(calls.find(c => c.url.endsWith('/setWebhook')).body).allowed_updates.includes('callback_query'), 'the «Не присылать новости» button reaches the bot');
     const hook = JSON.parse(calls.find(c => c.url.endsWith('/setWebhook')).body);
     assert.deepEqual([hook.url, hook.secret_token], ['https://yatzy.x.workers.dev/', 'hook']);
     assert.deepEqual(JSON.parse(calls.find(c => c.method === 'PATCH').body), { 'pub/bot': true });
@@ -316,4 +318,76 @@ test('a refused sign-in is noted without its values; push ids tell how old a req
   const id = (ms => { let s = ''; for (let i = 0; i < 8; i++) { s = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'[ms % 64] + s; ms = Math.floor(ms / 64) } return s })(1761750000000) + 'abcdefghijkl';
   x.db.set('req/' + id, JSON.stringify({ op: 'moved', code: 'ABCDE' }));
   assert.equal((await x.tick()).oldest, 1761750000000);
+});
+
+// the arcade's «Что нового»: the head of the notebook site's arcade.html, as tools/build.mjs in yatzy-arcade writes it
+function newsSetup() {
+  const x = setup(), pages = [];
+  let head = null;
+  const web = async (url, opt) => { pages.push({ url, range: opt.headers.range }); return head == null ? { ok: false } : { ok: true, text: async () => head } };
+  const bot = W.makeBot({ db: x.db, tg: async (m, b) => { x.sent.push({ m, ...b }); return b.chat_id === '666' ? { ok: false, error_code: 403 } : { ok: true } }, now: x.now, token: TOKEN, web });
+  const page = (arcade, news) => { head = `<!doctype html>\n<!-- Аркада Яцзы (альфа) v72.${arcade}: … -->\n<!-- arcade-news ${JSON.stringify({ arcade, version: '72.' + arcade, news })} -->\n<html>` };
+  // the first evening hour in Moscow (19:00 is 16:00 UTC) of the next day
+  // a given hour of the next day, UTC (19:00 in Moscow is 16:00 UTC)
+  const nextDay = (h = 16) => { const d = new Date(x.now()); d.setUTCDate(d.getUTCDate() + 1); d.setUTCHours(h, 0, 0, 0); x.later(d - x.now()) };
+  const users = (...ids) => { for (const id of ids) x.db.set('srv/users/' + id, { name: 'T' + id, off: false, at: 1 }) };
+  const told = () => x.sent.filter(s => s.m === 'sendMessage' && s.text.startsWith('🎲 <b>Что нового')).map(s => String(s.chat_id));
+  return { ...x, bot, page, nextDay, users, told, pages };
+}
+
+test('arcade news: the first look only remembers the build; the next update goes to everyone once, in the evening', async () => {
+  const x = newsSetup();
+  x.users('1', '2', '3');
+  x.later(5 * 60e3 - x.now() % (5 * 60e3));
+  assert.equal(await x.bot.news(), null, 'no page with news yet: nothing, and nothing remembered');
+  x.page(36, { 36: ['Теперь видно, где конец забега.'] });
+  assert.deepEqual(await x.bot.news(), { arcade: 36, sent: 0 });
+  assert.equal(x.pages.at(-1).range, 'bytes=0-16383', 'only the head of the page is read');
+  assert.ok(x.pages.at(-1).url.startsWith('https://kitoglav22.github.io/yatzy/arcade.html?'));
+  assert.deepEqual(x.told(), [], 'a build seen when the bot started is not news');
+  // two updates in one day, the second only polish: one message in the evening, lines of the newest build first
+  x.page(38, { 36: ['Старое.'], 37: ['Способность теперь можно взять после каждого стола.'], 38: ['Новая вещь <b>с</b> & знаками.'] });
+  x.nextDay(10);
+  assert.equal(await x.bot.news(), null, 'not in the morning');
+  x.nextDay();
+  assert.deepEqual(await x.bot.news(), { arcade: 38, sent: 3 });
+  assert.deepEqual(x.told(), ['1', '2', '3']);
+  const m = x.sent.find(s => s.m === 'sendMessage');
+  assert.equal(m.text, '🎲 <b>Что нового в аркаде</b>\n\n• Новая вещь &lt;b&gt;с&lt;/b&gt; &amp; знаками.\n• Способность теперь можно взять после каждого стола.');
+  assert.equal(m.parse_mode, 'HTML');
+  assert.equal(m.reply_markup.inline_keyboard[0][0].url, 'https://t.me/k22_yatzy_bot/play?startapp=arcade_news');
+  assert.equal(m.reply_markup.inline_keyboard[1][0].callback_data, 'quiet');
+  // the same evening and the next one: nothing new, nothing sent
+  x.later(60e3); await x.bot.news();
+  x.nextDay(); await x.bot.news();
+  assert.equal(x.told().length, 3);
+});
+
+test('arcade news: «Не присылать новости» and a blocked bot stop them, /news brings them back; many players go in batches', async () => {
+  const x = newsSetup();
+  const ids = Array.from({ length: 25 }, (_, i) => String(100 + i));
+  x.users('1', '666', ...ids);
+  x.db.set('srv/users/9', { name: 'T9', off: true, at: 1 });
+  x.page(36, {}); x.db.set('srv/news', { arcade: 36, day: '2000-01-01' });
+  await x.bot.update({ callback_query: { id: 'c1', data: 'quiet', from: { id: 1 }, message: { chat: { id: 1 }, message_id: 7 } } });
+  assert.ok(x.db.at('srv/quiet/1'));
+  const ans = x.sent.find(s => s.m === 'answerCallbackQuery');
+  assert.equal(ans.callback_query_id, 'c1'); assert.match(ans.text, /\/news/);
+  const edit = x.sent.find(s => s.m === 'editMessageReplyMarkup');
+  assert.deepEqual([edit.chat_id, edit.message_id, edit.reply_markup.inline_keyboard.length], [1, 7, 1], 'only «Играть» stays');
+  x.page(37, { 37: ['Способность теперь можно взять после каждого стола.'] });
+  x.nextDay();
+  assert.deepEqual(await x.bot.news(), { arcade: 37, sent: 20 }, '20 in one run');
+  assert.equal(x.db.at('srv/users/666/name'), 'T666', 'the rest of the record stays');
+  x.later(60e3);
+  assert.deepEqual(await x.bot.news(), { arcade: 37, sent: 5 }, 'the rest in the next minute; one of them blocked the bot');
+  assert.equal(x.db.at('srv/users/666/off'), true);
+  x.later(60e3);
+  assert.equal(await x.bot.news(), null, 'all told');
+  assert.deepEqual(x.told().sort(), ['666', ...ids].sort());
+  // /news: on again, with the button to stop
+  await x.bot.update({ message: { from: { id: 1, first_name: 'Аня' }, text: '/news' } });
+  assert.equal(x.db.at('srv/quiet/1'), null);
+  const on = x.sent.at(-1);
+  assert.equal(on.chat_id, 1); assert.match(on.text, /раза в день/); assert.equal(on.reply_markup.inline_keyboard[1][0].callback_data, 'quiet');
 });

@@ -47,9 +47,16 @@ test('the arcade page opens, can be played and leads back to the notebook', asyn
 
 test('a link from the bot (startapp=arcade_<tag>) opens the arcade in Telegram with the tag, once per visit', async () => {
   const tg = '#tgWebAppData=x&tgWebAppPlatform=ios&tgWebAppVersion=8.0&tgWebAppStartParam=';
-  const q = await env.device('tgarc', null, { viewport: { width: 390, height: 780 }, hash: tg + 'arcade_Dasha',
-    setup: ctx => ctx.route('https://telegram.org/js/telegram-web-app.js', r => r.fulfill({ contentType: 'text/javascript', body: '' })) });
+  const q = await env.device('tgarc', null, { viewport: { width: 390, height: 780 }, hash: tg + 'none',
+    setup: async ctx => {
+      await ctx.route('https://telegram.org/js/telegram-web-app.js', r => r.fulfill({ contentType: 'text/javascript', body: '' }));
+      // Telegram's channel: what the pages ask of it, kept through the move to the arcade
+      await ctx.addInitScript(() => { window.TelegramWebviewProxy = { postEvent: t => sessionStorage.setItem('asked', (sessionStorage.getItem('asked') || '') + t + ' ') }; });
+    } });
+  await q.goto(env.url + tg + 'arcade_Dasha'); // only the address after # changes: the page has to load again
+  q.reload().catch(() => {});
   await q.waitForURL(/arcade\.html\?from=dasha#tgWebAppData=x/);
+  assert.match(await q.evaluate(() => sessionStorage.getItem('asked')), /web_app_request_fullscreen/, 'full screen is asked for before the arcade opens');
   assert.equal(await q.evaluate(() => localStorage.getItem('arcade.from')), 'dasha', 'the arcade keeps the tag for its log');
   // the same link again in this visit (the way back from the arcade) stays in the notebook
   await q.goto(env.url + tg + 'arcade_Dasha');

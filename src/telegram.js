@@ -7,7 +7,7 @@ const TG_APP='https://t.me/k22_yatzy_bot/play'; // direct link of the Mini App
   if(!inTg)return;
   // what Telegram put in the address (version, platform, theme) is kept for a reload in the same session
   const q=new URLSearchParams(location.hash.slice(1));
-  if(tgArcade(q.get('tgWebAppStartParam')||new URLSearchParams(location.search).get('tgWebAppStartParam')))return;
+  if(tgArcade(q.get('tgWebAppStartParam')||new URLSearchParams(location.search).get('tgWebAppStartParam'),q))return;
   try{if(q.get('tgWebAppVersion'))sessionStorage.setItem('yatzy.tgv',JSON.stringify({v:q.get('tgWebAppVersion'),p:q.get('tgWebAppPlatform'),t:q.get('tgWebAppThemeParams')}))}catch(e){}
   let ready=false;
   const s=document.createElement('script');
@@ -20,12 +20,24 @@ const TG_APP='https://t.me/k22_yatzy_bot/play'; // direct link of the Mini App
 
 // a link from the bot (…/play?startapp=arcade, or arcade_<tag> for a friend's own link) opens the arcade itself. Once per visit,
 // so the arcade's back button returns here; the tag goes to ?from= (the arcade keeps the first one, latin letters, up to 20)
-function tgArcade(sp){
+function tgArcade(sp,q){
   const m=String(sp||'').match(/^arcade(?:_([A-Za-z0-9_-]{1,20}))?$/);if(!m)return false;
   try{if(sessionStorage.getItem('yatzy.tgStart')===sp)return false;sessionStorage.setItem('yatzy.tgStart',sp)}catch(e){return false}
   // Telegram's data in the address goes along, so the arcade's own Telegram script finds it (theme, back button)
-  location.replace('arcade.html?from='+(m[1]||'tg').toLowerCase()+location.hash);return true;
+  const go=()=>location.replace('arcade.html?from='+(m[1]||'tg').toLowerCase()+location.hash);
+  // straight from the link the notebook has not asked for full screen yet, and the arcade does not ask itself
+  // (03.11.2026: the arcade opened at half height): ask now, through Telegram's own channel, and leave a moment later
+  const v=String(q&&q.get('tgWebAppVersion')||'').split('.').map(Number);
+  if(q&&['ios','android'].includes(q.get('tgWebAppPlatform'))&&(v[0]>8||v[0]===8)){tgPost('web_app_expand');tgPost('web_app_request_fullscreen');setTimeout(go,250)}
+  else go();
+  return true;
 }
+// a message to Telegram through the channel it gives every Mini App (the one its script uses)
+function tgPost(type,data){try{
+  if(window.TelegramWebviewProxy)window.TelegramWebviewProxy.postEvent(type,JSON.stringify(data||{}));
+  else if(window.external&&'notify' in window.external)window.external.notify(JSON.stringify({eventType:type,eventData:data||{}}));
+  else if(window.parent!==window)window.parent.postMessage(JSON.stringify({eventType:type,eventData:data||{}}),'https://web.telegram.org');
+}catch(e){}}
 
 // Telegram's script comes from telegram.org, and some mobile networks do not reach it (02.11.2026: the app opened at half
 // height under a grey header until a VPN was on). Without it the page still talks to Telegram itself, through the channel
@@ -36,11 +48,7 @@ function tgBridge(){
   if(tgBridged)return;tgBridged=true;
   let info={};try{info=JSON.parse(sessionStorage.getItem('yatzy.tgv'))||{}}catch(e){}
   const ver=String(info.v||'6.0').split('.').map(Number),has=v=>{const w=v.split('.').map(Number);for(let i=0;i<2;i++){if((ver[i]||0)!==(w[i]||0))return (ver[i]||0)>(w[i]||0)}return true};
-  const post=(type,data)=>{try{
-    if(window.TelegramWebviewProxy)window.TelegramWebviewProxy.postEvent(type,JSON.stringify(data||{}));
-    else if(window.external&&'notify' in window.external)window.external.notify(JSON.stringify({eventType:type,eventData:data||{}}));
-    else if(window.parent!==window)window.parent.postMessage(JSON.stringify({eventType:type,eventData:data||{}}),'https://web.telegram.org');
-  }catch(e){}};
+  const post=tgPost;
   const root=document.documentElement;root.classList.add('tg');
   // the theme Telegram passed in the address: a dark background means the dark theme
   try{const bg=JSON.parse(info.t||'{}').bg_color;if(/^#[0-9a-f]{6}$/i.test(bg||'')){const n=parseInt(bg.slice(1),16),l=(n>>16)*.299+(n>>8&255)*.587+(n&255)*.114;root.dataset.theme=l<128?'dark':'light'}}catch(e){}

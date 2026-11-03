@@ -205,8 +205,21 @@ test('inline invitations: a new game anywhere, or a call into a known room; /sta
   assert.equal(r.results.length, 2);
   assert.match(r.results[0].reply_markup.inline_keyboard[0][0].url, /startapp=ABCDE$/);
   await x.bot.update({ message: { from: { id: 5, first_name: 'Аня' }, text: '/start' } });
-  assert.match(x.sent.at(-1).text, /напишу сюда.*@k22_yatzy_bot/s);
+  r = x.sent.at(-1);
+  assert.match(r.text, /Аркада.*Блокнот Яцзы.*напишу сюда/s);
   assert.equal(x.db.at('srv/users/5').off, false);
+  // three buttons: the arcade straight away, the notebook, and a ready message for a friend with the arcade's link
+  const urls = r.reply_markup.inline_keyboard.map(row => row[0].url);
+  assert.deepEqual(urls.slice(0, 2), ['https://t.me/k22_yatzy_bot/play?startapp=arcade', 'https://t.me/k22_yatzy_bot/play']);
+  assert.equal(new URL(urls[2]).searchParams.get('url'), 'https://t.me/k22_yatzy_bot/play?startapp=arcade');
+  // the menu commands answer with their own game only
+  await x.bot.update({ message: { from: { id: 5, first_name: 'Аня' }, text: '/arcade' } });
+  assert.deepEqual(x.sent.at(-1).reply_markup.inline_keyboard.map(row => row[0].text), ['🎲 Играть в аркаду', '📨 Позвать друга в аркаду']);
+  await x.bot.update({ message: { from: { id: 5, first_name: 'Аня' }, text: '/yatzy@k22_yatzy_bot' } });
+  assert.deepEqual(x.sent.at(-1).reply_markup.inline_keyboard.map(row => row[0].text), ['📒 Открыть блокнот Яцзы']);
+  const n = x.sent.length;
+  await x.bot.update({ message: { from: { id: 5, first_name: 'Аня' }, text: '/arcadeX' } });
+  assert.equal(x.sent.length, n, 'an unknown command gets no answer');
 });
 
 test('the worker: webhook secret, the setup link with a service account sign-in, the cron run', async () => {
@@ -235,7 +248,12 @@ test('the worker: webhook secret, the setup link with a service account sign-in,
     assert.ok(calls.some(c => c.url.endsWith('/answerInlineQuery')));
     assert.equal((await w.fetch(new Request('https://yatzy.x.workers.dev/?setup=nope'), env, ctx)).status, 403, 'a wrong secret does nothing');
     const rep = await (await w.fetch(new Request('https://yatzy.x.workers.dev/?setup=hook'), env, ctx)).json();
-    assert.deepEqual(rep, { ok: true, telegram: '@k22_yatzy_bot', webhook: 'подключён: https://yatzy.x.workers.dev/', firebase: 'ok', tick: 'ok, изменений: 1', queue: 'пусто', requests: 'с подписью Telegram: 0, с неверной подписью: 0', known: 'игроков: 0, комнат: 0' });
+    assert.deepEqual(rep, { ok: true, telegram: '@k22_yatzy_bot', webhook: 'подключён: https://yatzy.x.workers.dev/', look: 'ok', firebase: 'ok', tick: 'ok, изменений: 1', queue: 'пусто', requests: 'с подписью Telegram: 0, с неверной подписью: 0', known: 'игроков: 0, комнат: 0' });
+    // the bot's look is written by the setup link, within Telegram's limits
+    const sent = m => JSON.parse(calls.find(c => c.url.endsWith('/' + m)).body);
+    assert.ok(sent('setMyDescription').description.length <= 512 && sent('setMyShortDescription').short_description.length <= 120);
+    assert.deepEqual(sent('setChatMenuButton').menu_button, { type: 'web_app', text: 'Играть', web_app: { url: 'https://kitoglav22.github.io/yatzy/' } });
+    assert.deepEqual(sent('setMyCommands').commands.map(c => c.command), ['start', 'arcade', 'yatzy']);
     const hook = JSON.parse(calls.find(c => c.url.endsWith('/setWebhook')).body);
     assert.deepEqual([hook.url, hook.secret_token], ['https://yatzy.x.workers.dev/', 'hook']);
     assert.deepEqual(JSON.parse(calls.find(c => c.method === 'PATCH').body), { 'pub/bot': true });

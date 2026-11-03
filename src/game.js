@@ -1,8 +1,18 @@
 // the score table, entering scores, players, past games and the two tabs
 function render(){
   const tb=$('table');
+  // the arcade button on top is for the time of a game; without one the first page itself offers the arcade
+  if($('arcade'))$('arcade').hidden=!window.arcadeLink||!game;
   if(!game){
-    tb.innerHTML=`<tbody><tr><td style="padding:28px 20px;text-align:center"><p style="margin:0 0 14px;font-weight:700">Выберите, кто играет, и начните партию</p><div class="row" style="justify-content:center"><button class="btn primary" id="start0">Выбрать игроков</button>${window.openOnline?'<button class="btn" id="onl0">Играть онлайн</button>':''}</div></td></tr></tbody>`;
+    // with the arcade next to the site (offline.js sets arcadeLink) a newcomer chooses between the two games right here
+    const onl=window.openOnline?'<button class="btn" id="onl0">Играть онлайн</button>':'';
+    tb.innerHTML=window.arcadeLink
+      ?`<tbody><tr><td class="choose"><h2>Во что играем?</h2>
+        <h3>🎲 Аркада <small>· один игрок</small></h3><p>Бросаете кости и набираете очки, чтобы пройти стол. Подсказки по ходу игры.</p>
+        <a class="btn primary" id="arc0" href="${window.arcadeLink}">Играть в аркаду</a><hr>
+        <h3>📒 Яцзы с друзьями</h3><p>Блокнот для счёта: кубики свои или на экране, можно онлайн.</p>
+        <button class="btn" id="start0">Выбрать игроков</button>${onl}</td></tr></tbody>`
+      :`<tbody><tr><td style="padding:28px 20px;text-align:center"><p style="margin:0 0 14px;font-weight:700">Выберите, кто играет, и начните партию</p><div class="row" style="justify-content:center"><button class="btn primary" id="start0">Выбрать игроков</button>${onl}</div></td></tr></tbody>`;
     $('start0').onclick=openSetup;if($('onl0'))$('onl0').onclick=window.openOnline;$('banner').innerHTML='';$('actions').innerHTML='';$('legend').innerHTML='';drawTotbar();renderHist();keepAwake();window.onAfterRender&&window.onAfterRender();return;
   }
   const n=game.players.length,T=game.players.map((_,i)=>totals(i)),turn=whoseTurn();

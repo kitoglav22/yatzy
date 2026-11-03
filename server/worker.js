@@ -7,7 +7,7 @@
 // cannot read or write; what the app may read goes to pub/. The worker signs in to Firebase with a service account.
 //
 // Secrets: BOT_TOKEN (from BotFather), FB_SA (the service account key JSON), HOOK_SECRET (any long random string).
-// Optional variables: FB_URL, APP_LINK.
+// Optional variables: FB_URL, APP_LINK, SITE.
 
 const CELLS = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'three', 'four', 'small', 'large', 'house', 'chance', 'yatzy'];
 const NAMES = { u1: 'Единицы', u2: 'Двойки', u3: 'Тройки', u4: 'Четвёрки', u5: 'Пятёрки', u6: 'Шестёрки', three: 'Тройка', four: 'Каре', small: 'Малый стрит', large: 'Большой стрит', house: 'Фулл-хаус', chance: 'Шанс', yatzy: 'Яцзы', joker: 'Джокер' };
@@ -22,6 +22,18 @@ const CLEAN_BATCH = 10;       // rooms looked at in one quiet minute
 const MAX_ROOMS = 15, MAX_CHECKS = 8, MAX_REQS = 60;   // a free worker may make 50 outside calls per run
 const FB_URL = 'https://yatzy-654ba-default-rtdb.europe-west1.firebasedatabase.app';
 const APP_LINK = 'https://t.me/k22_yatzy_bot/play';
+const SITE = 'https://kitoglav22.github.io/yatzy/';   // the menu button «Играть» opens the notebook's first page with the choice
+
+// ---- what the bot says about itself; the setup link writes these into Telegram, so BotFather is not needed ----
+// shown in the empty chat before «Начать» (up to 512 characters)
+const DESCRIPTION = '🎲 Игра в кости прямо в Telegram.\n\nАркада — игра для одного: бросаете кости, собираете комбинации и проходите столы. Правила объясняются по ходу.\n\nБлокнот Яцзы — счёт для обычной Яцзы с друзьями, за одним столом или онлайн.\n\nНажмите «Начать» внизу.';
+// the profile line and the text under a shared link to the bot (up to 120 characters)
+const ABOUT = 'Игра в кости: аркада для одного и блокнот Яцзы для игры с друзьями. Бесплатно, прямо в Telegram.';
+const HELLO = 'Привет! Здесь две игры в кости.\n\n🎲 <b>Аркада</b> — играете один. Бросаете кости, набираете очки и проходите столы. Первые ходы игра подскажет сама.\n\n📒 <b>Блокнот Яцзы</b> — обычная Яцзы с друзьями: кубики свои или на экране, можно онлайн. Когда в онлайн-партии придёт ваш ход, я напишу сюда.';
+const ARCADE_TEXT = '🎲 <b>Аркада</b> — играете один. Бросаете кости, набираете очки и проходите столы. Первые ходы игра подскажет сама.';
+const YATZY_TEXT = '📒 <b>Блокнот Яцзы</b> — обычная Яцзы с друзьями: кубики свои или на экране, можно онлайн. Чтобы позвать друга из любого чата, напишите там @k22_yatzy_bot и выберите «Новая партия».';
+const SHARE_TEXT = '🎲 Попробуй аркаду в кости: играешь один, проходишь столы. Правила объяснят по ходу.';
+const COMMANDS = [{ command: 'start', description: 'Что здесь есть' }, { command: 'arcade', description: 'Играть в аркаду' }, { command: 'yatzy', description: 'Блокнот Яцзы' }];
 
 // ---- game helpers, the same rules as the app ----
 const filled = sc => CELLS.filter(c => sc[c] != null).length;
@@ -83,6 +95,14 @@ function elo(rs, totals) {
 function makeBot({ db, tg, now = Date.now, token, appLink = APP_LINK }) {
   const button = (text, code) => ({ inline_keyboard: [[{ text, url: appLink + (code ? '?startapp=' + code : '') }]] });
   const lastMove = g => { const e = (g.log || []).slice(-1)[0]; if (!e) return ''; const i = g.players.findIndex(p => p.id === e.pid), v = i < 0 ? null : (g.scores[i] || {})[e.cid]; return v == null || !NAMES[e.cid] ? '' : `${g.players[i].name}: ${NAMES[e.cid]} ${v || 'вычеркнуто'}. ` };
+  // the arcade opens straight from the notebook's Mini App (src/telegram.js reads start_param «arcade»); a friend gets a ready message
+  const arcadeLink = appLink + '?startapp=arcade';
+  const share = 'https://t.me/share/url?url=' + encodeURIComponent(arcadeLink) + '&text=' + encodeURIComponent(SHARE_TEXT);
+  const menu = cmd => ({ inline_keyboard: [
+    ...(cmd !== 'yatzy' ? [[{ text: '🎲 Играть в аркаду', url: arcadeLink }]] : []),
+    ...(cmd !== 'arcade' ? [[{ text: '📒 Открыть блокнот Яцзы', url: appLink }]] : []),
+    ...(cmd !== 'yatzy' ? [[{ text: '📨 Позвать друга в аркаду', url: share }]] : []),
+  ] });
   const parse = r => { try { const s = r && typeof r.state === 'string' ? JSON.parse(r.state) : null; return okState(s) ? { s, on: r.on && typeof r.on === 'object' ? r.on : {} } : null } catch (e) { return null } };
 
   // one run: the app's requests, then rooms where a cell was written, then turns that wait for a message
@@ -241,10 +261,13 @@ function makeBot({ db, tg, now = Date.now, token, appLink = APP_LINK }) {
 
   // updates from Telegram: /start and inline invitations from any chat
   async function update(u) {
-    if (u.message && /^\/start/.test(u.message.text || '')) {
+    // /start and the menu commands: what the two games are and a button straight into each
+    const cmd = u.message && (String(u.message.text || '').match(/^\/(start|arcade|yatzy)\b/) || [])[1];
+    if (cmd) {
       const f = u.message.from;
       await db.update({ ['srv/users/' + f.id]: { name: String(f.first_name || '').slice(0, 32), off: false, at: now() } });
-      await tg('sendMessage', { chat_id: f.id, text: 'Привет! Это блокнот для Яцзы с кубиками и игрой онлайн. Когда в онлайн-партии придёт твой ход, я напишу сюда.\n\nЧтобы позвать друга из любого чата, напиши там @' + (appLink.split('/')[3] || 'bot') + ' и выбери «Новая партия».', reply_markup: button('Открыть Яцзы') });
+      const text = cmd === 'arcade' ? ARCADE_TEXT : cmd === 'yatzy' ? YATZY_TEXT : HELLO;
+      await tg('sendMessage', { chat_id: f.id, text, parse_mode: 'HTML', reply_markup: menu(cmd) });
     }
     if (u.inline_query) {
       const q = String(u.inline_query.query || '').trim().toUpperCase(), code = okCode(q) ? q : null, fresh = roomCode();
@@ -319,7 +342,15 @@ export default {
     if (me.ok) {
       const hook = await b.tg('setWebhook', { url: url.origin + '/', secret_token: env.HOOK_SECRET, allowed_updates: ['message', 'inline_query'] });
       report.webhook = hook.ok ? 'подключён: ' + url.origin + '/' : 'ошибка: ' + hook.description;
-      await b.tg('setMyCommands', { commands: [{ command: 'start', description: 'Открыть Яцзы' }] });
+      // the bot's look: description, profile line, commands and the menu button; each failure is named in the report
+      const look = await Promise.all([
+        b.tg('setMyCommands', { commands: COMMANDS }),
+        b.tg('setMyDescription', { description: DESCRIPTION }),
+        b.tg('setMyShortDescription', { short_description: ABOUT }),
+        b.tg('setChatMenuButton', { menu_button: { type: 'web_app', text: 'Играть', web_app: { url: env.SITE || SITE } } }),
+      ]);
+      const failed = ['команды', 'описание', 'о боте', 'кнопка меню'].filter((_, i) => !look[i].ok);
+      report.look = failed.length ? 'ошибка: ' + failed.join(', ') + ' (' + (look.find(r => !r.ok).description || 'нет ответа') + ')' : 'ok';
       if (!me.result.supports_inline_queries) report.inline = 'выключен: в BotFather отправьте /setinline';
     }
     try {

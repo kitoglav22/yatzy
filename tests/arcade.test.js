@@ -7,17 +7,28 @@ let env, p;
 before(async () => { env = await start(); p = await env.device('phone', null, { viewport: { width: 390, height: 780 } }); });
 after(async () => { assert.deepEqual(env.errors, []); await env.stop(); });
 
-test('the site has a link to the arcade alpha, and it fits on a phone next to the players button', async () => {
+test('during a game the arcade is a button on top, next to the players button; without a game it is not there', async () => {
   const a = p.locator('#arcade');
+  assert.ok(await a.isHidden(), 'the first page offers the arcade itself');
+  await p.evaluate(() => { game = newGameFor([{ id: 'a', name: 'Аня' }, { id: 'b', name: 'Миша' }]); render(); });
   assert.ok(await a.isVisible());
-  assert.equal(await a.textContent(), 'Аркада (альфа)');
+  assert.equal(await a.textContent(), 'Аркада');
   assert.equal(await a.getAttribute('href'), 'arcade.html');
   assert.ok(await p.locator('#players').isVisible());
+  assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no sideways scroll');
+  await p.evaluate(() => { game = null; render(); });
+  assert.ok(await a.isHidden());
+});
+
+test('without a game the first page offers both games: the arcade and the notebook', async () => {
+  assert.equal(await p.textContent('.choose h2'), 'Во что играем?');
+  assert.equal(await p.getAttribute('#arc0', 'href'), 'arcade.html');
+  for (const id of ['#arc0', '#start0', '#onl0']) assert.ok(await p.locator(id).isVisible(), id);
   assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no sideways scroll');
 });
 
 test('the arcade page opens, can be played and leads back to the notebook', async () => {
-  await p.click('#arcade');
+  await p.click('#arc0');
   await p.waitForURL(/arcade\.html$/);
   assert.equal(await p.title(), 'Аркада Яцзы (альфа)');
   // since arcade 71.13 a new player's first run opens on the table, «Счёты» given, no card to read and no pick
@@ -31,5 +42,23 @@ test('the arcade page opens, can be played and leads back to the notebook', asyn
   assert.equal(await p.locator('#tune').count(), 0, 'no balance panel for friends');
   await p.click('#home');
   await p.waitForURL(u => !u.pathname.endsWith('arcade.html'));
-  assert.ok(await p.locator('#arcade').isVisible());
+  assert.ok(await p.locator('#arc0').isVisible());
+});
+
+test('a link from the bot (startapp=arcade_<tag>) opens the arcade in Telegram with the tag, once per visit', async () => {
+  const tg = '#tgWebAppData=x&tgWebAppPlatform=ios&tgWebAppVersion=8.0&tgWebAppStartParam=';
+  const q = await env.device('tgarc', null, { viewport: { width: 390, height: 780 }, hash: tg + 'arcade_Dasha',
+    setup: ctx => ctx.route('https://telegram.org/js/telegram-web-app.js', r => r.fulfill({ contentType: 'text/javascript', body: '' })) });
+  await q.waitForURL(/arcade\.html\?from=dasha#tgWebAppData=x/);
+  assert.equal(await q.evaluate(() => localStorage.getItem('arcade.from')), 'dasha', 'the arcade keeps the tag for its log');
+  // the same link again in this visit (the way back from the arcade) stays in the notebook
+  await q.goto(env.url + tg + 'arcade_Dasha');
+  await q.waitForTimeout(300);
+  assert.ok(!q.url().includes('arcade.html'));
+  assert.ok(await q.locator('#arc0').isVisible());
+  // a plain «arcade» marks the bot's own button; a room code is not the arcade
+  await q.evaluate(() => sessionStorage.clear());
+  await q.goto(env.url + tg + 'arcade'); // only the address after # changes: the page has to load again
+  q.reload().catch(() => {});
+  await q.waitForURL(/arcade\.html\?from=tg#/);
 });

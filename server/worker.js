@@ -39,6 +39,7 @@ const COMMANDS = [{ command: 'start', description: 'Что здесь есть' 
 // Everyone the bot knows gets them, unless they blocked the bot or pressed «Не присылать новости»; within five minutes of an update
 // (author, 03.11.2026, card «Всем, после выпуска»).
 const NEWS_HOUR = null;        // null: within five minutes of each update; an hour (Moscow time, e.g. 19) gathers a day's updates into one evening message
+const NEWS_FROM = 36;          // the build that was live when the news began: its lines and older ones are never sent
 const NEWS_LINES = 5;          // the newest lines when several updates came since the last message
 const NEWS_BATCH = 20;         // messages in one run; the rest go in the next minutes
 const NEWS_TITLE = '🎲 <b>Что нового в аркаде</b>';
@@ -307,7 +308,7 @@ function makeBot({ db, tg, now = Date.now, token, appLink = APP_LINK, site = SIT
     }
   }
   // the arcade's news. The head of arcade.html carries «<!-- arcade-news {"arcade":37,"version":"72.37","news":{"37":[…],…}} -->»
-  // (tools/build.mjs in yatzy-arcade). The first look only remembers the build; later ones tell the lines of the builds after it.
+  // (tools/build.mjs in yatzy-arcade). The bot tells the lines of the builds after the last one it told about (at first NEWS_FROM).
   async function readNews() {
     const r = await web(site + 'arcade.html?news=' + Math.floor(now() / MIN), { headers: { range: 'bytes=0-16383' } });
     if (!r.ok) return null;
@@ -320,13 +321,13 @@ function makeBot({ db, tg, now = Date.now, token, appLink = APP_LINK, site = SIT
   // one run: every five minutes (or in the news hour) look at the page; a message being sent goes on in the next minutes
   async function news() {
     let st = (await db.get('srv/news')) || {};
+    if (!Number.isInteger(st.arcade)) st = { ...st, arcade: NEWS_FROM };
     const t = now(), msk = new Date(t + MSK), day = msk.toISOString().slice(0, 10);
     if (!(Array.isArray(st.left) && st.left.length)) {
-      const due = st.arcade == null || NEWS_HOUR == null ? Math.floor(t / MIN) % 5 === 0 : msk.getUTCHours() === NEWS_HOUR && st.day !== day;
+      const due = NEWS_HOUR == null ? Math.floor(t / MIN) % 5 === 0 : msk.getUTCHours() === NEWS_HOUR && st.day !== day;
       if (!due) return null;
       const n = await readNews();
       if (!n) return null;
-      if (st.arcade == null) { await db.update({ 'srv/news': { arcade: n.arcade, day } }); return { arcade: n.arcade, sent: 0 } }
       const lines = Object.keys(n.news).map(Number).filter(b => b > st.arcade && b <= n.arcade).sort((a, b) => b - a)
         .flatMap(b => Array.isArray(n.news[b]) ? n.news[b].filter(l => typeof l === 'string' && l.trim()) : []).slice(0, NEWS_LINES);
       const arcade = Math.max(st.arcade, n.arcade);
@@ -430,7 +431,7 @@ export default {
       report.requests = `с подписью Telegram: ${t.signed}, с неверной подписью: ${t.bad}`;
       report.known = `игроков: ${t.players}, комнат: ${t.rooms}`;
       const nw = (await b.db.get('srv/news')) || {};
-      report.news = nw.arcade == null ? 'ещё не смотрел аркаду' : `знает выпуск аркады ${nw.arcade}` + (nw.at ? `, последние новости ${ago(nw.at)} мин назад` : '') + (Array.isArray(nw.left) && nw.left.length ? `, ещё не отправлено: ${nw.left.length}` : '');
+      report.news = nw.arcade == null ? `ждёт выпуск аркады после ${NEWS_FROM}` : `знает выпуск аркады ${nw.arcade}` + (nw.at ? `, последние новости ${ago(nw.at)} мин назад` : '') + (Array.isArray(nw.left) && nw.left.length ? `, ещё не отправлено: ${nw.left.length}` : '');
       if (t.diag) report.lastBadSignIn = `${ago(t.diag.at)} мин назад, ${t.diag.op}, поля: ${t.diag.fields}, длина ${t.diag.len}`;
       report.ok = me.ok;
     } catch (e) { report.firebase = 'ошибка: ' + (e && e.message) }

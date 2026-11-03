@@ -327,15 +327,14 @@ function newsSetup() {
   const web = async (url, opt) => { pages.push({ url, range: opt.headers.range }); return head == null ? { ok: false } : { ok: true, text: async () => head } };
   const bot = W.makeBot({ db: x.db, tg: async (m, b) => { x.sent.push({ m, ...b }); return b.chat_id === '666' ? { ok: false, error_code: 403 } : { ok: true } }, now: x.now, token: TOKEN, web });
   const page = (arcade, news) => { head = `<!doctype html>\n<!-- Аркада Яцзы (альфа) v72.${arcade}: … -->\n<!-- arcade-news ${JSON.stringify({ arcade, version: '72.' + arcade, news })} -->\n<html>` };
-  // the first evening hour in Moscow (19:00 is 16:00 UTC) of the next day
-  // a given hour of the next day, UTC (19:00 in Moscow is 16:00 UTC)
+  // a given hour of the next day, UTC
   const nextDay = (h = 16) => { const d = new Date(x.now()); d.setUTCDate(d.getUTCDate() + 1); d.setUTCHours(h, 0, 0, 0); x.later(d - x.now()) };
   const users = (...ids) => { for (const id of ids) x.db.set('srv/users/' + id, { name: 'T' + id, off: false, at: 1 }) };
   const told = () => x.sent.filter(s => s.m === 'sendMessage' && s.text.startsWith('🎲 <b>Что нового')).map(s => String(s.chat_id));
   return { ...x, bot, page, nextDay, users, told, pages };
 }
 
-test('arcade news: the first look only remembers the build; the next update goes to everyone once, in the evening', async () => {
+test('arcade news: the first look only remembers the build; the next update goes to everyone once, within five minutes', async () => {
   const x = newsSetup();
   x.users('1', '2', '3');
   x.later(5 * 60e3 - x.now() % (5 * 60e3));
@@ -345,11 +344,11 @@ test('arcade news: the first look only remembers the build; the next update goes
   assert.equal(x.pages.at(-1).range, 'bytes=0-16383', 'only the head of the page is read');
   assert.ok(x.pages.at(-1).url.startsWith('https://kitoglav22.github.io/yatzy/arcade.html?'));
   assert.deepEqual(x.told(), [], 'a build seen when the bot started is not news');
-  // two updates in one day, the second only polish: one message in the evening, lines of the newest build first
+  // two updates since the last look: one message, lines of the newest build first; the page is read every five minutes
   x.page(38, { 36: ['Старое.'], 37: ['Способность теперь можно взять после каждого стола.'], 38: ['Новая вещь <b>с</b> & знаками.'] });
-  x.nextDay(10);
-  assert.equal(await x.bot.news(), null, 'not in the morning');
-  x.nextDay();
+  x.later(60e3);
+  assert.equal(await x.bot.news(), null, 'between the five-minute looks');
+  x.later(4 * 60e3);
   assert.deepEqual(await x.bot.news(), { arcade: 38, sent: 3 });
   assert.deepEqual(x.told(), ['1', '2', '3']);
   const m = x.sent.find(s => s.m === 'sendMessage');
@@ -357,8 +356,8 @@ test('arcade news: the first look only remembers the build; the next update goes
   assert.equal(m.parse_mode, 'HTML');
   assert.equal(m.reply_markup.inline_keyboard[0][0].url, 'https://t.me/k22_yatzy_bot/play?startapp=arcade_news');
   assert.equal(m.reply_markup.inline_keyboard[1][0].callback_data, 'quiet');
-  // the same evening and the next one: nothing new, nothing sent
-  x.later(60e3); await x.bot.news();
+  // later looks: nothing new, nothing sent
+  x.later(5 * 60e3); await x.bot.news();
   x.nextDay(); await x.bot.news();
   assert.equal(x.told().length, 3);
 });
@@ -389,5 +388,5 @@ test('arcade news: «Не присылать новости» and a blocked bot 
   await x.bot.update({ message: { from: { id: 1, first_name: 'Аня' }, text: '/news' } });
   assert.equal(x.db.at('srv/quiet/1'), null);
   const on = x.sent.at(-1);
-  assert.equal(on.chat_id, 1); assert.match(on.text, /раза в день/); assert.equal(on.reply_markup.inline_keyboard[1][0].callback_data, 'quiet');
+  assert.equal(on.chat_id, 1); assert.match(on.text, /обновится/); assert.equal(on.reply_markup.inline_keyboard[1][0].callback_data, 'quiet');
 });

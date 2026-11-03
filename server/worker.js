@@ -36,14 +36,15 @@ const YATZY_TEXT = '📒 <b>Блокнот Яцзы</b> — обычная Яц�
 const SHARE_TEXT = '🎲 Попробуй аркаду в кости: играешь один, проходишь столы. Правила объяснят по ходу.';
 const COMMANDS = [{ command: 'start', description: 'Что здесь есть' }, { command: 'arcade', description: 'Играть в аркаду' }, { command: 'yatzy', description: 'Блокнот Яцзы' }, { command: 'news', description: 'Новости аркады' }];
 // «Что нового» after an arcade update: the lines of src/data/news.js (yatzy-arcade) that the release put into the head of arcade.html.
-// Everyone the bot knows gets them, unless they blocked the bot or pressed «Не присылать новости»; at most once a day, in the evening.
-const NEWS_HOUR = 19;          // Moscow time; null sends within five minutes of each update
+// Everyone the bot knows gets them, unless they blocked the bot or pressed «Не присылать новости»; within five minutes of an update
+// (author, 03.11.2026, card «Всем, после выпуска»).
+const NEWS_HOUR = null;        // null: within five minutes of each update; an hour (Moscow time, e.g. 19) gathers a day's updates into one evening message
 const NEWS_LINES = 5;          // the newest lines when several updates came since the last message
 const NEWS_BATCH = 20;         // messages in one run; the rest go in the next minutes
 const NEWS_TITLE = '🎲 <b>Что нового в аркаде</b>';
 const NEWS_PLAY = '🎲 Играть в аркаду', NEWS_QUIET = '🔕 Не присылать новости';
 const QUIET_OK = 'Хорошо, новостей больше не будет. Вернуть их: /news';
-const NEWS_ON = 'Буду присылать сюда, что нового в аркаде: не чаще раза в день, вечером. Не хочется — нажмите кнопку ниже.';
+const NEWS_ON = 'Буду присылать сюда, что нового в аркаде, когда она обновится. Не хочется — нажмите кнопку ниже.';
 const MSK = 3 * 60 * 60e3;
 
 // ---- game helpers, the same rules as the app ----
@@ -316,7 +317,7 @@ function makeBot({ db, tg, now = Date.now, token, appLink = APP_LINK, site = SIT
   }
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const newsText = lines => NEWS_TITLE + '\n\n' + lines.map(l => '• ' + esc(l)).join('\n');
-  // one run: in the news hour (or every five minutes) look at the page; a message being sent goes on in the next minutes
+  // one run: every five minutes (or in the news hour) look at the page; a message being sent goes on in the next minutes
   async function news() {
     let st = (await db.get('srv/news')) || {};
     const t = now(), msk = new Date(t + MSK), day = msk.toISOString().slice(0, 10);

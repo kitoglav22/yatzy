@@ -24,14 +24,16 @@ function tgArcade(sp,q){
   const m=String(sp||'').match(/^arcade(?:_([A-Za-z0-9_-]{1,20}))?$/);if(!m)return false;
   try{if(sessionStorage.getItem('yatzy.tgStart')===sp)return false;sessionStorage.setItem('yatzy.tgStart',sp)}catch(e){return false}
   // Telegram's data in the address goes along, so the arcade's own Telegram script finds it (theme, back button)
-  const go=()=>location.replace('arcade.html?from='+(m[1]||'tg').toLowerCase()+location.hash);
+  const go=full=>location.replace('arcade.html?from='+(m[1]||'tg').toLowerCase()+location.hash+(full?'&tgWebAppFullscreen=1':''));
   // straight from the link the notebook has not asked for full screen yet, and the arcade does not ask itself
   // (03.11.2026: the arcade opened at half height): ask now, through Telegram's own channel, and leave once Telegram
   // says it is full screen. Leaving earlier, the arcade loads during the switch, misses Telegram's answers and puts its
   // header under Telegram's buttons (03.11.2026). Without an answer in 1.5 s it leaves anyway.
   const v=String(q&&q.get('tgWebAppVersion')||'').split('.').map(Number);
   if(q&&['ios','android'].includes(q.get('tgWebAppPlatform'))&&v[0]>=8&&!q.get('tgWebAppFullscreen')){
-    let left=false;const leave=()=>{if(!left){left=true;go()}};
+    // the arcade's Telegram script learns about full screen only from the address (tgWebAppFullscreen) or from Telegram's
+    // later news, which it missed; without it the arcade keeps its header under Telegram's buttons (iPhone, 03.11.2026)
+    let left=false;const leave=()=>{if(!left){left=true;go(true)}};
     const T=window.Telegram=window.Telegram||{},W=T.WebView=T.WebView||{};
     // Telegram's answers come here until its script takes over; Telegram has a moment to send the new safe area
     W.receiveEvent=(type,data)=>{

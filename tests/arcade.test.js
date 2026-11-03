@@ -60,7 +60,7 @@ test('a link from the bot (startapp=arcade_<tag>) opens the arcade in Telegram w
   await q.waitForTimeout(400);
   assert.ok(!q.url().includes('arcade.html'), 'still waiting for Telegram');
   await q.evaluate(() => Telegram.WebView.receiveEvent('fullscreen_changed', { is_fullscreen: true }));
-  await q.waitForURL(/arcade\.html\?from=dasha#tgWebAppData=x/, { timeout: 1000 });
+  await q.waitForURL(/arcade\.html\?from=dasha#tgWebAppData=x.*&tgWebAppFullscreen=1$/, { timeout: 1000 });
   assert.equal(await q.evaluate(() => localStorage.getItem('arcade.from')), 'dasha', 'the arcade keeps the tag for its log');
   // the same link again in this visit (the way back from the arcade) stays in the notebook
   await q.goto(env.url + tg + 'arcade_Dasha');

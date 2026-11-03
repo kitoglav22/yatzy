@@ -49,6 +49,15 @@ a.btn{text-decoration:none;color:inherit}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 
 .card{background:var(--paper);border:1px solid var(--rule);border-radius:16px;overflow:hidden}
+/* the first page without a game: the arcade or the notebook */
+td.choose{padding:22px 18px;text-align:left}
+.choose h2{font-family:var(--display);font-weight:800;font-size:1.2rem;text-align:center;margin:0 0 16px}
+.choose h3{font-size:1.15rem;font-weight:800;margin:0 0 4px}
+.choose h3 small{font-size:.95rem;font-weight:600;color:var(--muted)}
+.choose p{margin:0 0 12px;color:var(--muted)}
+.choose .btn{display:flex;width:100%}
+.choose .btn+.btn{margin-top:8px}
+.choose hr{border:0;border-top:1px solid var(--rule);margin:20px 0}
 table{width:100%;border-collapse:collapse;table-layout:fixed;font-variant-numeric:tabular-nums}
 th,td{border-bottom:1px solid var(--rule);padding:8px 12px;text-align:left;vertical-align:middle}
 td+td,th+th{border-left:1px solid var(--rule);text-align:center}
@@ -288,7 +297,7 @@ html.tgfull .sheet-bg{padding-top:var(--tg-top,0px)}
   <header>
     <h1><span class="pip" aria-hidden="true"><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i></span>Яцзы</h1>
     <div class="row">
-      <a class="btn small" id="arcade" href="arcade.html" hidden>Аркада (альфа)</a>
+      <a class="btn small" id="arcade" href="arcade.html" hidden>Аркада</a>
       <button class="btn small" id="players">Игроки</button>
     </div>
   </header>
@@ -412,8 +421,18 @@ function buzz(kind){try{if(haptic)return haptic(kind);navigator.vibrate&&navigat
 // the score table, entering scores, players, past games and the two tabs
 function render(){
   const tb=$('table');
+  // the arcade button on top is for the time of a game; without one the first page itself offers the arcade
+  if($('arcade'))$('arcade').hidden=!window.arcadeLink||!game;
   if(!game){
-    tb.innerHTML=`<tbody><tr><td style="padding:28px 20px;text-align:center"><p style="margin:0 0 14px;font-weight:700">Выберите, кто играет, и начните партию</p><div class="row" style="justify-content:center"><button class="btn primary" id="start0">Выбрать игроков</button>${window.openOnline?'<button class="btn" id="onl0">Играть онлайн</button>':''}</div></td></tr></tbody>`;
+    // with the arcade next to the site (offline.js sets arcadeLink) a newcomer chooses between the two games right here
+    const onl=window.openOnline?'<button class="btn" id="onl0">Играть онлайн</button>':'';
+    tb.innerHTML=window.arcadeLink
+      ?`<tbody><tr><td class="choose"><h2>Во что играем?</h2>
+        <h3>🎲 Аркада <small>· один игрок</small></h3><p>Бросаете кости и набираете очки, чтобы пройти стол. Подсказки по ходу игры.</p>
+        <a class="btn primary" id="arc0" href="${window.arcadeLink}">Играть в аркаду</a><hr>
+        <h3>📒 Яцзы с друзьями</h3><p>Блокнот для счёта: кубики свои или на экране, можно онлайн.</p>
+        <button class="btn" id="start0">Выбрать игроков</button>${onl}</td></tr></tbody>`
+      :`<tbody><tr><td style="padding:28px 20px;text-align:center"><p style="margin:0 0 14px;font-weight:700">Выберите, кто играет, и начните партию</p><div class="row" style="justify-content:center"><button class="btn primary" id="start0">Выбрать игроков</button>${onl}</div></td></tr></tbody>`;
     $('start0').onclick=openSetup;if($('onl0'))$('onl0').onclick=window.openOnline;$('banner').innerHTML='';$('actions').innerHTML='';$('legend').innerHTML='';drawTotbar();renderHist();keepAwake();window.onAfterRender&&window.onAfterRender();return;
   }
   const n=game.players.length,T=game.players.map((_,i)=>totals(i)),turn=whoseTurn();
@@ -1041,7 +1060,7 @@ load();render();setView(location.hash==='#stats'?'stats':'game');
 // GitHub Pages version only: file backup and offline cache
 $('sync').textContent='Всё хранится на этом устройстве';
 // the arcade alpha (arcade.html, built in the private yatzy-arcade repo) lives next to the site; the claude.ai page has none
-$('arcade').hidden=false;
+window.arcadeLink='arcade.html';
 // share sheet first ("Save to Files" can replace the previous copy), plain download as a fallback
 function exportBackup(){
   const json=JSON.stringify({app:'yatzy',v:2,saved:Date.now(),roster,history,game},null,1);
@@ -1528,6 +1547,7 @@ const TG_APP='https://t.me/k22_yatzy_bot/play'; // direct link of the Mini App
   if(!inTg)return;
   // what Telegram put in the address (version, platform, theme) is kept for a reload in the same session
   const q=new URLSearchParams(location.hash.slice(1));
+  if(tgArcade(q.get('tgWebAppStartParam')||new URLSearchParams(location.search).get('tgWebAppStartParam')))return;
   try{if(q.get('tgWebAppVersion'))sessionStorage.setItem('yatzy.tgv',JSON.stringify({v:q.get('tgWebAppVersion'),p:q.get('tgWebAppPlatform'),t:q.get('tgWebAppThemeParams')}))}catch(e){}
   let ready=false;
   const s=document.createElement('script');
@@ -1537,6 +1557,15 @@ const TG_APP='https://t.me/k22_yatzy_bot/play'; // direct link of the Mini App
   setTimeout(()=>{if(!ready)tgBridge()},2500);
   document.head.appendChild(s);
 })();
+
+// a link from the bot (…/play?startapp=arcade, or arcade_<tag> for a friend's own link) opens the arcade itself. Once per visit,
+// so the arcade's back button returns here; the tag goes to ?from= (the arcade keeps the first one, latin letters, up to 20)
+function tgArcade(sp){
+  const m=String(sp||'').match(/^arcade(?:_([A-Za-z0-9_-]{1,20}))?$/);if(!m)return false;
+  try{if(sessionStorage.getItem('yatzy.tgStart')===sp)return false;sessionStorage.setItem('yatzy.tgStart',sp)}catch(e){return false}
+  // Telegram's data in the address goes along, so the arcade's own Telegram script finds it (theme, back button)
+  location.replace('arcade.html?from='+(m[1]||'tg').toLowerCase()+location.hash);return true;
+}
 
 // Telegram's script comes from telegram.org, and some mobile networks do not reach it (02.11.2026: the app opened at half
 // height under a grey header until a VPN was on). Without it the page still talks to Telegram itself, through the channel
@@ -1618,6 +1647,7 @@ function tgSetup(tg){
   if(window.openOnline)tgBot(tg,has);
   render();
   // a link with a room code opens that room; NEW-<code> comes from an invitation made in a chat and creates the room
+  if(tgArcade(tg.initDataUnsafe&&tg.initDataUnsafe.start_param))return;
   const sp=String(tg.initDataUnsafe&&tg.initDataUnsafe.start_param||'').toUpperCase();
   let seen='';try{seen=sessionStorage.getItem('yatzy.tgStart')||''}catch(e){}
   const m=sp.match(/^(NEW-)?([A-HJ-NP-Z2-9]{5})$/);

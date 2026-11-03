@@ -249,7 +249,7 @@ test('the worker: webhook secret, the setup link with a service account sign-in,
     assert.ok(calls.some(c => c.url.endsWith('/answerInlineQuery')));
     assert.equal((await w.fetch(new Request('https://yatzy.x.workers.dev/?setup=nope'), env, ctx)).status, 403, 'a wrong secret does nothing');
     const rep = await (await w.fetch(new Request('https://yatzy.x.workers.dev/?setup=hook'), env, ctx)).json();
-    assert.deepEqual(rep, { ok: true, telegram: '@k22_yatzy_bot', webhook: 'подключён: https://yatzy.x.workers.dev/', look: 'ok', firebase: 'ok', tick: 'ok, изменений: 1', queue: 'пусто', requests: 'с подписью Telegram: 0, с неверной подписью: 0', known: 'игроков: 0, комнат: 0', news: 'ещё не смотрел аркаду' });
+    assert.deepEqual(rep, { ok: true, telegram: '@k22_yatzy_bot', webhook: 'подключён: https://yatzy.x.workers.dev/', look: 'ok', firebase: 'ok', tick: 'ok, изменений: 1', queue: 'пусто', requests: 'с подписью Telegram: 0, с неверной подписью: 0', known: 'игроков: 0, комнат: 0', news: 'ждёт выпуск аркады после 36' });
     // the bot's look is written by the setup link, within Telegram's limits
     const sent = m => JSON.parse(calls.find(c => c.url.endsWith('/' + m)).body);
     assert.ok(sent('setMyDescription').description.length <= 512 && sent('setMyShortDescription').short_description.length <= 120);
@@ -334,16 +334,16 @@ function newsSetup() {
   return { ...x, bot, page, nextDay, users, told, pages };
 }
 
-test('arcade news: the first look only remembers the build; the next update goes to everyone once, within five minutes', async () => {
+test('arcade news: builds up to 36 are never told; the next update goes to everyone once, within five minutes', async () => {
   const x = newsSetup();
   x.users('1', '2', '3');
   x.later(5 * 60e3 - x.now() % (5 * 60e3));
   assert.equal(await x.bot.news(), null, 'no page with news yet: nothing, and nothing remembered');
-  x.page(36, { 36: ['Теперь видно, где конец забега.'] });
-  assert.deepEqual(await x.bot.news(), { arcade: 36, sent: 0 });
+  x.page(36, { 35: ['Старее.'], 36: ['Теперь видно, где конец забега.'] });
+  assert.deepEqual(await x.bot.news(), { arcade: 36, sent: 0 }, 'the build live when the news began is not news');
   assert.equal(x.pages.at(-1).range, 'bytes=0-16383', 'only the head of the page is read');
   assert.ok(x.pages.at(-1).url.startsWith('https://kitoglav22.github.io/yatzy/arcade.html?'));
-  assert.deepEqual(x.told(), [], 'a build seen when the bot started is not news');
+  assert.deepEqual(x.told(), []);
   // two updates since the last look: one message, lines of the newest build first; the page is read every five minutes
   x.page(38, { 36: ['Старое.'], 37: ['Способность теперь можно взять после каждого стола.'], 38: ['Новая вещь <b>с</b> & знаками.'] });
   x.later(60e3);
@@ -389,4 +389,15 @@ test('arcade news: «Не присылать новости» and a blocked bot 
   assert.equal(x.db.at('srv/quiet/1'), null);
   const on = x.sent.at(-1);
   assert.equal(on.chat_id, 1); assert.match(on.text, /обновится/); assert.equal(on.reply_markup.inline_keyboard[1][0].callback_data, 'quiet');
+});
+
+test('arcade news: a bot deployed before 72.37 tells 37\'s lines when it comes, though it never saw the page before', async () => {
+  const x = newsSetup();
+  x.users('1');
+  x.later(5 * 60e3 - x.now() % (5 * 60e3));
+  assert.equal(await x.bot.news(), null, 'the page without news (72.36) is just skipped');
+  x.page(37, { 36: ['Старое.'], 37: ['Способность теперь можно взять после каждого стола.'] });
+  x.later(5 * 60e3);
+  assert.deepEqual(await x.bot.news(), { arcade: 37, sent: 1 });
+  assert.equal(x.sent.find(s => s.m === 'sendMessage').text, '🎲 <b>Что нового в аркаде</b>\n\n• Способность теперь можно взять после каждого стола.');
 });

@@ -1,6 +1,8 @@
 // the score table, entering scores, players, past games and the two tabs
 function render(){
   const tb=$('table');
+  // the arcade button on top is for the time of a game; without one the first page itself offers the arcade
+  if($('arcade'))$('arcade').hidden=!window.arcadeLink||!game;
   if(!game){
     // with the arcade next to the site (offline.js sets arcadeLink) a newcomer chooses between the two games right here
     const onl=window.openOnline?'<button class="btn" id="onl0">Играть онлайн</button>':'';

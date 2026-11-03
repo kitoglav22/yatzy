@@ -38,6 +38,15 @@ a.btn{text-decoration:none;color:inherit}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 
 .card{background:var(--paper);border:1px solid var(--rule);border-radius:16px;overflow:hidden}
+/* the first page without a game: the arcade or the notebook */
+td.choose{padding:22px 18px;text-align:left}
+.choose h2{font-family:var(--display);font-weight:800;font-size:1.2rem;text-align:center;margin:0 0 16px}
+.choose h3{font-size:1.15rem;font-weight:800;margin:0 0 4px}
+.choose h3 small{font-size:.95rem;font-weight:600;color:var(--muted)}
+.choose p{margin:0 0 12px;color:var(--muted)}
+.choose .btn{display:flex;width:100%}
+.choose .btn+.btn{margin-top:8px}
+.choose hr{border:0;border-top:1px solid var(--rule);margin:20px 0}
 table{width:100%;border-collapse:collapse;table-layout:fixed;font-variant-numeric:tabular-nums}
 th,td{border-bottom:1px solid var(--rule);padding:8px 12px;text-align:left;vertical-align:middle}
 td+td,th+th{border-left:1px solid var(--rule);text-align:center}

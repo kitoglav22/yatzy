@@ -7,6 +7,7 @@ const TG_APP='https://t.me/k22_yatzy_bot/play'; // direct link of the Mini App
   if(!inTg)return;
   // what Telegram put in the address (version, platform, theme) is kept for a reload in the same session
   const q=new URLSearchParams(location.hash.slice(1));
+  if(tgArcade(q.get('tgWebAppStartParam')||new URLSearchParams(location.search).get('tgWebAppStartParam')))return;
   try{if(q.get('tgWebAppVersion'))sessionStorage.setItem('yatzy.tgv',JSON.stringify({v:q.get('tgWebAppVersion'),p:q.get('tgWebAppPlatform'),t:q.get('tgWebAppThemeParams')}))}catch(e){}
   let ready=false;
   const s=document.createElement('script');
@@ -16,6 +17,15 @@ const TG_APP='https://t.me/k22_yatzy_bot/play'; // direct link of the Mini App
   setTimeout(()=>{if(!ready)tgBridge()},2500);
   document.head.appendChild(s);
 })();
+
+// a link from the bot (…/play?startapp=arcade, or arcade_<tag> for a friend's own link) opens the arcade itself. Once per visit,
+// so the arcade's back button returns here; the tag goes to ?from= (the arcade keeps the first one, latin letters, up to 20)
+function tgArcade(sp){
+  const m=String(sp||'').match(/^arcade(?:_([A-Za-z0-9_-]{1,20}))?$/);if(!m)return false;
+  try{if(sessionStorage.getItem('yatzy.tgStart')===sp)return false;sessionStorage.setItem('yatzy.tgStart',sp)}catch(e){return false}
+  // Telegram's data in the address goes along, so the arcade's own Telegram script finds it (theme, back button)
+  location.replace('arcade.html?from='+(m[1]||'tg').toLowerCase()+location.hash);return true;
+}
 
 // Telegram's script comes from telegram.org, and some mobile networks do not reach it (02.11.2026: the app opened at half
 // height under a grey header until a VPN was on). Without it the page still talks to Telegram itself, through the channel
@@ -97,6 +107,7 @@ function tgSetup(tg){
   if(window.openOnline)tgBot(tg,has);
   render();
   // a link with a room code opens that room; NEW-<code> comes from an invitation made in a chat and creates the room
+  if(tgArcade(tg.initDataUnsafe&&tg.initDataUnsafe.start_param))return;
   const sp=String(tg.initDataUnsafe&&tg.initDataUnsafe.start_param||'').toUpperCase();
   let seen='';try{seen=sessionStorage.getItem('yatzy.tgStart')||''}catch(e){}
   const m=sp.match(/^(NEW-)?([A-HJ-NP-Z2-9]{5})$/);

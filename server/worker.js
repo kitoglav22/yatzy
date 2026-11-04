@@ -270,7 +270,11 @@ function makeBot({ db, tg, now = Date.now, token, appLink = APP_LINK, site = SIT
       await db.update(more);
     }
     // for the setup link: what this run found
-    return { quiet: !codes.length && !checks && !sends.length, changes: Object.keys(out).length, queue: list.length, oldest: list.length ? pushTime(list[0][0]) : null, signed: asks.length, bad,
+    // the news may go out in a run with no new requests and no messages; each room looked at takes a couple of calls,
+    // so fewer news messages then. A player who keeps the app open makes such a look every minute (04.11.2026: the
+    // news of 72.39–72.43 never went because «quiet» also waited for those looks)
+    const spare = !codes.length && !sends.length ? Math.max(4, NEWS_BATCH - 2 * checks) : 0;
+    return { quiet: !codes.length && !checks && !sends.length, spare, changes: Object.keys(out).length, queue: list.length, oldest: list.length ? pushTime(list[0][0]) : null, signed: asks.length, bad,
       players: Object.keys(users).length, rooms: Object.keys(seats).length, sent: sends.length - blocked.size, diag: srv.diag || out['srv/diag'] || null };
   }
 
@@ -319,7 +323,7 @@ function makeBot({ db, tg, now = Date.now, token, appLink = APP_LINK, site = SIT
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const newsText = lines => NEWS_TITLE + '\n\n' + lines.map(l => '• ' + esc(l)).join('\n');
   // one run: every five minutes (or in the news hour) look at the page; a message being sent goes on in the next minutes
-  async function news() {
+  async function news(limit = NEWS_BATCH) {
     let st = (await db.get('srv/news')) || {};
     if (!Number.isInteger(st.arcade)) st = { ...st, arcade: NEWS_FROM };
     const t = now(), msk = new Date(t + MSK), day = msk.toISOString().slice(0, 10);
@@ -336,8 +340,8 @@ function makeBot({ db, tg, now = Date.now, token, appLink = APP_LINK, site = SIT
       st = { arcade, day, at: t, text: newsText(lines), left: Object.keys(users).filter(id => !users[id].off && !quiet[id]) };
     }
     // written before sending: a failed write means a missed message, never the same message twice
-    const batch = st.left.slice(0, NEWS_BATCH);
-    await db.update({ 'srv/news': { ...st, left: st.left.slice(NEWS_BATCH) } });
+    const batch = st.left.slice(0, limit);
+    await db.update({ 'srv/news': { ...st, left: st.left.slice(limit) } });
     const off = {};
     for (const id of batch) {
       const r = await tg('sendMessage', { chat_id: id, text: st.text, parse_mode: 'HTML', reply_markup: newsKeys() });
@@ -439,8 +443,8 @@ export default {
   },
   // every minute
   async scheduled(event, env, ctx) {
-    // the news only in a quiet minute: a free worker may make 50 outside calls per run
+    // the news only in a minute without requests or messages: a free worker may make 50 outside calls per run
     const b = bot(env);
-    ctx.waitUntil(b.tick().then(t => t.quiet ? b.news() : null).catch(e => console.log('tick', e && e.message)));
+    ctx.waitUntil(b.tick().then(t => t.spare ? b.news(t.spare) : null).catch(e => console.log('tick', e && e.message)));
   },
 };

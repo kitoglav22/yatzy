@@ -401,3 +401,21 @@ test('arcade news: a bot deployed before 72.37 tells 37\'s lines when it comes, 
   assert.deepEqual(await x.bot.news(), { arcade: 37, sent: 1 });
   assert.equal(x.sent.find(s => s.m === 'sendMessage').text, '🎲 <b>Что нового в аркаде</b>\n\n• Способность теперь можно взять после каждого стола.');
 });
+
+test('arcade news: a player who keeps the app open on their turn does not hold the news back', async () => {
+  const x = newsSetup();
+  x.users('1', '2', '3');
+  // Лёха's turn, his app stays open: every minute the bot looks whether he has left
+  x.room('ABCDE', game([{ u1: 3 }, {}], { log: [{ pid: 'a1', cid: 'u1' }] }), { d2: true });
+  x.hello(2, 'ABCDE', ['b1']); x.moved('ABCDE'); await x.tick();
+  x.later(6 * 60e3); x.later(5 * 60e3 - x.now() % (5 * 60e3));
+  const t = await x.tick();
+  assert.equal(x.sent.length, 0, 'Лёха is still in the app');
+  assert.equal(t.quiet, false, 'the look at his room is a call: no cleaning this minute');
+  assert.ok(t.spare >= 4 && t.spare < 20, 'but room for fewer news messages');
+  x.page(37, { 37: ['Новое.'] });
+  assert.deepEqual(await x.bot.news(t.spare), { arcade: 37, sent: 3 });
+  assert.deepEqual(x.told().sort(), ['1', '2', '3']);
+  x.hello(1, 'ABCDE', ['a1']); const busy = await x.tick();
+  assert.equal(busy.spare, 0, 'a minute with requests from the app has no room for the news');
+});

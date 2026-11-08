@@ -38,6 +38,8 @@ test('the arcade page opens, can be played and leads back to the notebook', asyn
   assert.equal(await p.locator('.die.blank').count(), 0);
   // since arcade 71.9 the version and the way back are at the end of «Справка», a button on top of the table
   await p.click('#help');
+  await p.locator('#card summary').filter({ hasText: 'Настройки и забег' }).click();
+  assert.ok(await p.locator('#seed').isVisible(), 'version and return link are in the settings section');
   assert.match(await p.textContent('#seed'), /v\d+\.\d+$/, 'the version notebook.arcade is shown');
   assert.equal(await p.locator('#tune').count(), 0, 'no balance panel for friends');
   await p.click('#home');

@@ -35,7 +35,7 @@ test('the arcade page opens, can be played and leads back to the notebook', asyn
   assert.ok(await p.locator('#overlay').isHidden());
   assert.equal(await p.locator('#amulets button').first().getAttribute('aria-label'), 'Счёты');
   await p.click('#roll');
-  assert.equal(await p.locator('.die.blank').count(), 0);
+  await p.locator('.die.blank').first().waitFor({ state: 'detached' });
   // since arcade 71.9 the version and the way back are at the end of «Справка», a button on top of the table
   await p.click('#help');
   await p.locator('#card summary').filter({ hasText: 'Настройки и забег' }).click();
@@ -63,7 +63,7 @@ test('a link from the bot (startapp=arcade_<tag>) opens the arcade in Telegram w
   assert.ok(!q.url().includes('arcade.html'), 'still waiting for Telegram');
   await q.evaluate(() => Telegram.WebView.receiveEvent('fullscreen_changed', { is_fullscreen: true }));
   await q.waitForURL(/arcade\.html\?from=dasha#tgWebAppData=x.*&tgWebAppFullscreen=1$/, { timeout: 1000 });
-  assert.equal(await q.evaluate(() => localStorage.getItem('arcade.from')), 'dasha', 'the arcade keeps the tag for its log');
+  await q.waitForFunction(() => localStorage.getItem('arcade.from') === 'dasha');
   // the same link again in this visit (the way back from the arcade) stays in the notebook
   await q.goto(env.url + tg + 'arcade_Dasha');
   await q.waitForTimeout(300);

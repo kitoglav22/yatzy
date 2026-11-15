@@ -36,13 +36,15 @@ test('the arcade page opens, can be played and leads back to the notebook', asyn
   assert.equal(await p.locator('#amulets button').first().getAttribute('aria-label'), 'Счёты');
   await p.click('#roll');
   await p.locator('.die.blank').first().waitFor({ state: 'detached' });
-  // since arcade 71.9 the version and the way back are at the end of «Справка», a button on top of the table
+  // From the table, the new menu has a direct link back to the notebook.
   await p.click('#help');
-  await p.locator('#card summary').filter({ hasText: 'Настройки и забег' }).click();
-  assert.ok(await p.locator('#seed').isVisible(), 'version and return link are in the settings section');
-  assert.match(await p.textContent('#seed'), /v\d+\.\d+$/, 'the version notebook.arcade is shown');
+  const menu = p.getByRole('dialog', { name: 'Меню' });
+  const back = menu.getByRole('link', { name: '← Блокнот' });
+  assert.equal(await back.getAttribute('href'), './');
   assert.equal(await p.locator('#tune').count(), 0, 'no balance panel for friends');
-  await p.click('#home');
+  const html = await (await p.request.get(p.url())).text();
+  assert.match(html, /^<!doctype html>\n<!-- Аркада Яцзы \(альфа\) v\d+\.\d+:/);
+  await back.click();
   await p.waitForURL(u => !u.pathname.endsWith('arcade.html'));
   assert.ok(await p.locator('#arc0').isVisible());
 });
